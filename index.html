@@ -74,6 +74,12 @@ body.playing #bgfx .grid,body.playing #bgfx .stars{animation-play-state:paused}
 .rk .n{width:30px;color:var(--mute)}
 .rk .rn{flex:1}
 .rk .sc{color:var(--accent)}
+.pf{display:flex;align-items:center;gap:12px;padding:10px 12px;margin-bottom:8px;border-radius:12px;border:1px solid var(--accent);background:linear-gradient(135deg,rgba(53,242,255,.14),rgba(255,61,240,.1));box-shadow:0 0 14px rgba(53,242,255,.25)}
+.pf .pa{font-size:32px;line-height:1}
+.pf .pn{flex:1;display:flex;flex-direction:column;gap:2px;min-width:0}
+.pf .pt{font-size:15px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pf .pr{font-size:12px;color:var(--mute)}
+.pf .sc{color:var(--accent);font-size:18px;font-weight:700}
 #admArea{margin-top:18px;text-align:center}
 #admBox{margin-top:10px;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px;text-align:right}
 #admLogin{display:flex;gap:8px}
@@ -362,7 +368,9 @@ const sfx={
   land(){noise(.05,.03,1200)},
   slice(){noise(.09,.1,6000);tone(1100,.08,'sawtooth',.03,-700)},
   bomb(){noise(.6,.22,700);tone(140,.55,'sawtooth',.14,-100)},
-  whoosh(){tone(220,.18,'sine',.025,240)}
+  whoosh(){tone(220,.18,'sine',.025,240)},
+  flip(){tone(700,.05,'square',.04,260)},
+  nope(){tone(210,.14,'sawtooth',.06,-90)}
 };
 
 /* ================= storage ================= */
@@ -371,7 +379,7 @@ const SB_URL='https://sabxzrwdqhxfdzxonwmw.supabase.co';
 const SB_KEY='sb_publishable_vpVUe8xUxnxSgY1fiv3p9A_eQBWY3Hp';
 const Store=(()=>{
   const KEY='arcade_v1';
-  const blank=()=>({breakout:{best:0,last:0,plays:0},pong:{best:0,last:0,plays:0,wins:0,losses:0},dino:{best:0,last:0,plays:0},ninja:{best:0,last:0,plays:0}});
+  const blank=()=>({breakout:{best:0,last:0,plays:0},pong:{best:0,last:0,plays:0,wins:0,losses:0},dino:{best:0,last:0,plays:0},ninja:{best:0,last:0,plays:0},memory:{best:0,last:0,plays:0}});
   let g=blank(),ok=true,dirty=false;
   const startBest={};
   try{
@@ -382,7 +390,7 @@ const Store=(()=>{
   function flush(){if(!dirty)return;dirty=false;try{localStorage.setItem(KEY,JSON.stringify(g))}catch(e){ok=false}}
   setInterval(flush,1500);
   const NK='arcade_name',RK='arcade_rank',MAXR=20;
-  let name='',pid='';const rank={breakout:[],pong:[],dino:[],ninja:[]};
+  let name='',pid='';const rank={breakout:[],pong:[],dino:[],ninja:[],memory:[]};
   try{
     name=localStorage.getItem(NK)||'';
     pid=localStorage.getItem('arcade_pid')||'';
@@ -491,6 +499,7 @@ const Shell={
     if(n!==lastShown){lastShown=n;$('sc').textContent=FA(n)}
     if(!cur.norec&&Store.live(cur.id,n))$('bs').textContent=FA(n);
   },
+  hud(n){n=Math.floor(n);if(n!==lastShown){lastShown=n;$('sc').textContent=FA(n)}},
   info(s){$('info').textContent=s},
   begin(){Store.begin(cur.id);runActive=true;runScore=0},
   finish(n){runActive=false;return Store.finish(cur.id,n)},
@@ -498,9 +507,10 @@ const Shell={
 };
 const META=[
   {id:'breakout',icon:'🧱',name:'بریک‌اوت',desc:'آجرها رو بشکن و پاورآپ بگیر',color:'#ff9f43'},
-  {id:'pong',icon:'🏓',name:'پینگ‌پنگ',desc:'مقابل بات؛ آسان، متوسط یا سخت',color:'#48dbfb',norec:true},
+  {id:'pong',icon:'🏓',name:'پینگ‌پنگ',desc:'مقابل بات؛ هرچی سخت‌تر ببری، امتیاز بیشتر',color:'#48dbfb'},
   {id:'dino',icon:'🦖',name:'دایناسور',desc:'از روی کاکتوس‌ها بپر',color:'#1dd1a1'},
-  {id:'ninja',icon:'🍉',name:'نینجای میوه',desc:'میوه‌ها رو ببر، مراقب بمب باش',color:'#ff4d6d'}
+  {id:'ninja',icon:'🍉',name:'نینجای میوه',desc:'میوه‌ها رو ببر، مراقب بمب باش',color:'#ff4d6d'},
+  {id:'memory',icon:'🛸',name:'کارت فضایی',desc:'کارت‌ها رو برگردون و جفت‌های مثل هم رو پیدا کن',color:'#c77dff'}
 ];
 let tab='total',rk=0,adminCode='';
 const IDS=META.filter(m=>!m.norec).map(m=>m.id);
@@ -517,14 +527,30 @@ function arm(btn,label,run){
   btn._t=setTimeout(()=>{btn._t=0;btn.textContent=btn._o;btn.classList.remove('arm')},3000);
 }
 const admErr=m=>{$('admErr').textContent=m||''};
+function profileCard(box,L){
+  const mine=tab==='total'?localTotal().reduce((a,x)=>a+x.s,0):Store.best(tab);
+  const i=L.findIndex(x=>x.pid&&x.pid===Store.pid());
+  const val=i>=0?L[i].s:mine;
+  let sub;
+  if(i>=0)sub='رتبه‌ی '+FA(i+1);
+  else if(mine>0)sub=L.length>=20?'خارج از ۲۰ نفر برتر':'هنوز توی لیست آنلاین نیست';
+  else sub='هنوز رکوردی نداری';
+  const mk=(c,t)=>{const e=document.createElement('span');e.className=c;e.textContent=t;return e};
+  const d=document.createElement('div');d.className='pf';
+  const nm=document.createElement('span');nm.className='pn';
+  nm.appendChild(mk('pt',Store.name()));nm.appendChild(mk('pr',sub));
+  d.appendChild(mk('pa',Pref.get('av')));d.appendChild(nm);d.appendChild(mk('sc',val>0?FA(val):'—'));
+  box.appendChild(d);
+}
 function drawRank(L,note){
   const box=$('rank');box.textContent='';
+  profileCard(box,L);
   if(note){const p=document.createElement('p');p.className='ds';p.style.marginBottom='6px';p.textContent=note;box.appendChild(p)}
   if(!L.length){const p=document.createElement('p');p.className='ds';p.textContent='هنوز رکوردی ثبت نشده.';box.appendChild(p);return}
   L.forEach((r,i)=>{
     const d=document.createElement('div');d.className='rk'+(r.pid&&r.pid===Store.pid()?' me':'');
     d.innerHTML=`<span class="n">${i<3?['🥇','🥈','🥉'][i]:FA(i+1)}</span><span class="rn"></span><b class="sc">${FA(r.s)}</b>`;
-    d.children[1].textContent=r.n;
+    d.children[1].textContent=((!r.pid||r.pid===Store.pid())?Pref.get('av')+' ':'')+r.n;
     if(adminCode&&r.pid){
       const x=document.createElement('button');x.className='del';x.textContent='🗑';x.setAttribute('aria-label','حذف');
       x.onclick=()=>arm(x,'مطمئنی؟',async()=>{
@@ -616,7 +642,7 @@ function renderMenu(){
   const box=$('cards');box.textContent='';
   for(const m of META){
     const g=Store.get(m.id);
-    const stat=m.norec?`برد: <b>${FA(g.wins)}</b> · باخت: ${FA(g.losses)}`:`رکورد: <b>${FA(g.best)}</b> · آخرین: ${FA(g.last)} · ${FA(g.plays)} بار بازی`;
+    const stat=m.id==='pong'?`رکورد: <b>${FA(g.best)}</b> · برد: ${FA(g.wins)} · باخت: ${FA(g.losses)}`:`رکورد: <b>${FA(g.best)}</b> · آخرین: ${FA(g.last)} · ${FA(g.plays)} بار بازی`;
     const b=document.createElement('button');
     b.className='card';b.style.setProperty('--c',m.color);b.style.setProperty('--i',META.indexOf(m));
     b.innerHTML=`<span class="ic">${m.icon}</span><span class="tx"><b class="nm">${m.name}</b><span class="ds">${m.desc}</span><span class="st">${stat}</span></span>`;
@@ -929,18 +955,18 @@ return{id,enter,update,draw,down,up(){},playing:()=>st==='play',idle:()=>st==='r
 Games.pong=(()=>{
 const id='pong',WIN=7;
 const DIFFS=[
-  {n:'آسان',c:'#7dffb0',sp:170,err:.95,lag:.38,lagR:.3,ball:300,max:520,pred:0},
-  {n:'متوسط',c:'#ffd166',sp:270,err:.5,lag:.18,lagR:.15,ball:340,max:640,pred:0},
-  {n:'سخت',c:'#ff6b81',sp:430,err:.08,lag:.03,lagR:.06,ball:370,max:720,pred:1}
+  {n:'آسان',c:'#7dffb0',sp:170,err:.95,lag:.38,lagR:.3,ball:300,max:520,pred:0,pts:100},
+  {n:'متوسط',c:'#ffd166',sp:270,err:.5,lag:.18,lagR:.15,ball:340,max:640,pred:0,pts:200},
+  {n:'سخت',c:'#ff6b81',sp:430,err:.08,lag:.03,lagR:.06,ball:370,max:720,pred:1,pts:300}
 ];
 let di=clamp(Math.round(+Pref.get('diff')),0,2);
 const D=()=>DIFFS[di];
 const P={x:W/2,y:H-62,w:84,h:12,vx:0},B={x:W/2,y:48,w:84,h:12};
 const ball={x:W/2,y:H/2,vx:0,vy:0,r:7,trail:[]};
-let st='ready',ps=0,bs=0,rally=0,longest=0,serveT=0,serveDir=1,botErr=0,botLag=0,lock=0,won=false,msg='',msgT=0,t=0;
-const bx=i=>330-i*148,by=()=>st==='over'?405:300,BWD=116,BHT=44;
+let st='ready',ps=0,bs=0,rally=0,longest=0,serveT=0,serveDir=1,botErr=0,botLag=0,lock=0,won=false,newBest=false,scr=0,msg='',msgT=0,t=0;
+const bx=i=>330-i*148,by=()=>st==='over'?420:300,BWD=116,BHT=44;
 function setDiff(i){di=clamp(i,0,2);Pref.set('diff',di);sfx.ui()}
-function sync(){Shell.score(ps);Shell.info('بات '+FA(bs))}
+function sync(){Shell.hud(ps);Shell.info('بات '+FA(bs))}
 function serve(dir){
   ball.x=W/2;ball.y=H/2;ball.vx=ball.vy=0;ball.trail=[];
   serveDir=dir;serveT=1;rally=0;botErr=0;botLag=0;
@@ -950,17 +976,19 @@ function launchBall(){
   ball.vx=sp*Math.sin(a);ball.vy=serveDir*sp*Math.cos(a);sfx.launch();
 }
 function enter(){
-  st='ready';ps=bs=rally=longest=0;P.x=B.x=W/2;ball.x=W/2;ball.y=H/2;ball.vx=ball.vy=0;ball.trail=[];
+  st='ready';newBest=false;scr=0;ps=bs=rally=longest=0;P.x=B.x=W/2;ball.x=W/2;ball.y=H/2;ball.vx=ball.vy=0;ball.trail=[];
   sync();
 }
 function start(){
-  ps=bs=rally=longest=0;won=false;
-  Store.add(id,'plays');sync();
+  ps=bs=rally=longest=0;won=false;newBest=false;scr=0;
+  Shell.begin();sync();
   serve(Math.random()<.5?1:-1);st='serve';sfx.launch();
 }
 function end(w){
   won=w;st='over';
   Store.add(id,w?'wins':'losses');
+  scr=w?D().pts+(WIN-bs)*30+Math.min(longest,20)*5:0;
+  newBest=Shell.finish(scr);
   lock=Date.now()+800;
   if(w)sfx.clear();else sfx.over();
 }
@@ -1071,9 +1099,9 @@ function draw(){
     txt('پینگ‌پنگ',W/2,150,52,'#5fd4ff');
     txt('مقابل بات بازی کن',W/2,190,17,'#cfc4ff','400');
     txt('اولین نفری که ۷ امتیاز بگیره برنده‌ست',W/2,228,16,'#f3ecff','400');
-    txt('این بازی رکورد نداره؛ فقط برای کیفه',W/2,256,14,'#a79bd0','400');
+    txt('برای ثبت رکورد باید ببری؛ سخت‌تر = امتیاز بیشتر',W/2,256,14,'#a79bd0','400');
     btns();
-    txt('برد '+FA(g2.wins)+' · باخت '+FA(g2.losses),W/2,385,16,'#ffd166');
+    txt('رکورد '+FA(g2.best)+' · برد '+FA(g2.wins)+' · باخت '+FA(g2.losses),W/2,385,16,'#ffd166');
     ctx.globalAlpha=pulse;txt('برای شروع بزن',W/2,440,24,'#fff');ctx.globalAlpha=1;
     txt('حرکت: ماوس، کشیدن انگشت یا ← →',W/2,555,13,'#a79bd0','400');
     txt('سختی با کلیدهای ۱ ۲ ۳ هم عوض می‌شه',W/2,578,13,'#a79bd0','400');
@@ -1082,6 +1110,8 @@ function draw(){
     txt(won?'بردی! 🎉':'باختی!',W/2,220,52,won?'#7dffb0':'#ff6b81');
     txt(FA(ps)+' - '+FA(bs),W/2,272,28,'#fff');
     txt('طولانی‌ترین رالی: '+FA(longest),W/2,308,15,'#cfc4ff','400');
+    if(won){txt('امتیاز: '+FA(scr),W/2,346,24,'#fff');txt(newBest?'🎉 رکورد جدید!':'رکورد: '+FA(Store.best(id)),W/2,376,18,newBest?'#7dffb0':'#ffd166')}
+    else txt('برای ثبت امتیاز باید ببری',W/2,350,16,'#a79bd0','400');
     btns();
     ctx.globalAlpha=pulse;txt('برای بازی دوباره بزن',W/2,490,20,'#fff');ctx.globalAlpha=1;
   }
@@ -1104,7 +1134,7 @@ function key(c){
   if(m===undefined)return false;
   setDiff(m);return true;
 }
-return{id,norec:true,enter,update,draw,down,up(){},key,playing:()=>st==='play'||st==='serve',idle:()=>st==='ready'||st==='over'};
+return{id,enter,update,draw,down,up(){},key,playing:()=>st==='play'||st==='serve',idle:()=>st==='ready'||st==='over'};
 })();
 
 /* ================= DINO ================= */
@@ -1444,6 +1474,145 @@ function down(e){
 }
 function up(){havePrev=false}
 return{id,enter,update,draw,down,up,move,playing:()=>st==='play',idle:()=>st==='ready'||st==='over'};
+})();
+
+/* ================= MEMORY (کارت‌های فضایی) ================= */
+Games.memory=(()=>{
+const id='memory';
+const SYM=['👽','🚀','🛸','🤖','☄️','🌌','🔭','🛰️'],PAIRS=SYM.length,COLS=4;
+const CW=92,CH=108,GX=14,GY=12,OX=(W-(COLS*CW+(COLS-1)*GX))/2,OY=84;
+const MISS=15,TLIM=90,TPTS=10;
+let st='ready',cards=[],first=null,wait=0,found=0,streak=0,miss=0,score=0,time=0,started=false,bonus=0,fin=0,newBest=false,lock=0,t=0,floats=[];
+const stars=Array.from({length:50},()=>({x:Math.random()*W,y:Math.random()*H,s:Math.random()*1.6+.4,p:Math.random()*6}));
+const bg=ctx.createLinearGradient(0,0,0,H);bg.addColorStop(0,'#0a0f2e');bg.addColorStop(.55,'#1a0d3d');bg.addColorStop(1,'#07091c');
+const pos=i=>({x:OX+(i%COLS)*(CW+GX),y:OY+Math.floor(i/COLS)*(CH+GY)});
+function deal(){
+  const a=[];for(let i=0;i<PAIRS;i++)a.push(i,i);
+  for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]]}
+  cards=a.map(k=>({k,up:false,ok:false,f:0,pop:0}));
+}
+function reset(){deal();first=null;wait=0;found=0;streak=0;miss=0;score=0;time=0;started=false;bonus=0;fin=0;floats=[]}
+function sync(){Shell.hud(score);Shell.info('جفت '+FA(found)+'/'+FA(PAIRS))}
+function enter(){reset();st='ready';newBest=false;sync()}
+function start(){reset();newBest=false;Shell.begin();st='play';sync();sfx.launch()}
+function win(){
+  st='over';
+  bonus=Math.max(0,Math.round(TLIM-time))*TPTS;
+  fin=score+bonus;
+  Shell.hud(fin);
+  newBest=Shell.finish(fin);
+  lock=Date.now()+800;sfx.clear();
+}
+function resolve(){
+  const a=first,b=cards.find(c=>c.up&&!c.ok&&c!==first);
+  first=null;
+  if(!a||!b)return;
+  if(a.k===b.k){
+    a.ok=b.ok=true;a.pop=b.pop=.5;found++;streak++;
+    const m=Math.min(streak,4),pts=100*m,p=pos(cards.indexOf(a));
+    score+=pts;
+    floats.push({x:p.x+CW/2,y:p.y+CH/2,txt:'+'+FA(pts)+(m>1?' ×'+FA(m):''),life:.9,c:m>1?'#ffd166':'#ffffff'});
+    sfx.pop(found,streak);sync();
+    if(found>=PAIRS)win();
+  }else{
+    a.up=b.up=false;streak=0;miss++;score=Math.max(0,score-MISS);
+    sfx.nope();sync();
+  }
+}
+function pick(x,y){
+  if(st!=='play'||wait>0)return;
+  for(let i=0;i<cards.length;i++){
+    const c=cards[i],p=pos(i);
+    if(x>=p.x&&x<=p.x+CW&&y>=p.y&&y<=p.y+CH){
+      if(c.up||c.ok)return;
+      c.up=true;started=true;sfx.flip();
+      if(!first){first=c;return}
+      wait=first.k===c.k?.35:.8;
+      return;
+    }
+  }
+}
+function update(dt){
+  t+=dt;
+  for(const c of cards){
+    c.f+=clamp((c.up||c.ok?1:0)-c.f,-dt*6,dt*6);
+    if(c.pop>0)c.pop-=dt;
+  }
+  for(const f of floats){f.y-=34*dt;f.life-=dt}
+  floats=floats.filter(f=>f.life>0);
+  if(st!=='play')return;
+  if(started)time+=dt;
+  if(wait>0){wait-=dt;if(wait<=0){wait=0;resolve()}}
+}
+function drawCard(c,i){
+  const p=pos(i),k=Math.abs(1-2*c.f),face=c.f>.5;
+  const pop=c.pop>0?1+Math.sin(c.pop/.5*Math.PI)*.08:1;
+  ctx.save();ctx.translate(p.x+CW/2,p.y+CH/2);ctx.scale(Math.max(k,.02)*pop,pop);
+  if(face){
+    if(c.ok&&GFX.fx>0){ctx.shadowColor='#7dffb0';ctx.shadowBlur=10*GFX.fx}
+    const g=ctx.createLinearGradient(0,-CH/2,0,CH/2);
+    g.addColorStop(0,c.ok?'#14524f':'#1d2a62');g.addColorStop(1,c.ok?'#0a2a33':'#10163a');
+    ctx.fillStyle=g;rr(-CW/2,-CH/2,CW,CH,12);ctx.fill();
+    ctx.shadowBlur=0;ctx.shadowColor='transparent';
+    ctx.strokeStyle=c.ok?'#7dffb0':'#35f2ff';ctx.lineWidth=2.5;ctx.stroke();
+    ctx.fillStyle='#fff';ctx.font=`46px ${FONT}`;ctx.textAlign='center';ctx.textBaseline='middle';
+    ctx.fillText(SYM[c.k],0,3);ctx.textBaseline='alphabetic';
+  }else{
+    const g=ctx.createLinearGradient(0,-CH/2,0,CH/2);
+    g.addColorStop(0,'#2a1b6e');g.addColorStop(1,'#0f0a33');
+    ctx.fillStyle=g;rr(-CW/2,-CH/2,CW,CH,12);ctx.fill();
+    ctx.strokeStyle='#8b6bff';ctx.lineWidth=2;ctx.stroke();
+    ctx.strokeStyle='rgba(53,242,255,.55)';ctx.lineWidth=2;
+    ctx.beginPath();ctx.arc(0,0,22,0,6.283);ctx.stroke();
+    ctx.fillStyle='rgba(255,61,240,.8)';
+    ctx.beginPath();ctx.moveTo(0,-11);ctx.lineTo(3,-3);ctx.lineTo(11,0);ctx.lineTo(3,3);ctx.lineTo(0,11);ctx.lineTo(-3,3);ctx.lineTo(-11,0);ctx.lineTo(-3,-3);ctx.closePath();ctx.fill();
+  }
+  ctx.restore();
+}
+function draw(){
+  ctx.fillStyle=bg;ctx.fillRect(0,0,W,H);
+  const tt=reduce?0:t;
+  for(const s of stars){ctx.globalAlpha=.25+.3*Math.sin(tt*s.s+s.p);ctx.fillStyle='#cfe8ff';ctx.fillRect(s.x,s.y,s.s,s.s)}
+  ctx.globalAlpha=1;
+  ctx.fillStyle='rgba(120,80,255,.12)';ctx.beginPath();ctx.arc(W-30,H+50,180,0,6.283);ctx.fill();
+  ctx.strokeStyle='rgba(53,242,255,.16)';ctx.lineWidth=2;ctx.beginPath();ctx.ellipse(W-30,H+50,250,48,-.35,0,6.283);ctx.stroke();
+
+  txt('زمان '+FA(Math.floor(time)),14,34,16,'#cfe8ff','700','left');
+  txt('اشتباه '+FA(miss),W-14,34,16,'#ff8fa3','700','right');
+  if(st==='play')txt('جفت بعدی ×'+FA(Math.min(streak+1,4)),W/2,34,15,'#ffd166');
+  cards.forEach(drawCard);
+  for(const f of floats){ctx.globalAlpha=clamp(f.life*1.5,0,1);txt(f.txt,f.x,f.y,20,f.c)}
+  ctx.globalAlpha=1;
+
+  const pulse=.55+.45*Math.sin(t*4);
+  if(st==='ready'){
+    dim(.72);
+    txt('کارت فضایی',W/2,140,50,'#c77dff');
+    txt('جفت‌های مثل هم رو پیدا کن',W/2,182,17,'#cfc4ff','400');
+    txt('هر بار دو کارت رو برگردون؛ مثل هم بودن = جفت',W/2,236,15,'#f3ecff','400');
+    txt('جفت پشت‌سرهم = کمبو (تا ×۴)',W/2,266,15,'#ffd166','400');
+    txt('هر اشتباه ۱۵ امتیاز کم می‌کنه',W/2,296,15,'#ff8fa3','400');
+    txt('زودتر تموم کنی، پاداش زمان بیشتر می‌گیری',W/2,326,15,'#7dffb0','400');
+    txt('رکورد: '+FA(Store.best(id)),W/2,390,18,'#ffd166');
+    ctx.globalAlpha=pulse;txt('برای شروع بزن',W/2,445,24,'#fff');ctx.globalAlpha=1;
+  }else if(st==='over'){
+    dim(.74);
+    txt('بردی! 🛸',W/2,150,52,'#7dffb0');
+    txt('زمان: '+FA(Math.round(time))+' ثانیه · اشتباه: '+FA(miss),W/2,196,16,'#cfc4ff','400');
+    txt('امتیاز جفت‌ها: '+FA(score),W/2,246,18,'#fff','400');
+    txt('پاداش زمان: +'+FA(bonus),W/2,278,18,'#fff','400');
+    txt('امتیاز نهایی: '+FA(fin),W/2,332,30,'#fff');
+    if(newBest)txt('🎉 رکورد جدید!',W/2,376,22,'#7dffb0');
+    else txt('رکورد: '+FA(Store.best(id)),W/2,376,18,'#ffd166');
+    ctx.globalAlpha=pulse;txt('برای بازی دوباره بزن',W/2,440,20,'#fff');ctx.globalAlpha=1;
+  }
+}
+function down(e){
+  if(Date.now()<lock)return;
+  if(st==='ready'||st==='over'){start();return}
+  if(e&&e.clientX!==undefined)pick(px(e),py(e));
+}
+return{id,enter,update,draw,down,up(){},playing:()=>st==='play',idle:()=>st==='ready'||st==='over'};
 })();
 
 /* ================= input ================= */
