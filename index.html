@@ -12,8 +12,8 @@ html,body{height:100%;background:var(--bg);color:var(--ink);font-family:Vazirmat
 body{display:flex;align-items:center;justify-content:center}
 body.locked #app{visibility:hidden}
 #app{position:relative;z-index:1;width:min(100vw,460px)}
-body.playing #app{width:min(100vw,calc((100vh - 48px) * .75))}
-@supports (height:100dvh){body.playing #app{width:min(100vw,calc((100dvh - 48px) * .75))}}
+body.playing #app{width:min(100vw,calc((100vh - 24px) * .94))}
+@supports (height:100dvh){body.playing #app{width:min(100vw,calc((100dvh - 24px) * .94))}}
 
 /* ---------- پس‌زمینه‌ی فضایی ---------- */
 #bgfx{position:fixed;inset:0;z-index:0;overflow:hidden;pointer-events:none}
@@ -379,7 +379,7 @@ const SB_URL='https://sabxzrwdqhxfdzxonwmw.supabase.co';
 const SB_KEY='sb_publishable_vpVUe8xUxnxSgY1fiv3p9A_eQBWY3Hp';
 const Store=(()=>{
   const KEY='arcade_v1';
-  const blank=()=>({breakout:{best:0,last:0,plays:0},pong:{best:0,last:0,plays:0,wins:0,losses:0},dino:{best:0,last:0,plays:0},ninja:{best:0,last:0,plays:0},memory:{best:0,last:0,plays:0},flappy:{best:0,last:0,plays:0}});
+  const blank=()=>({breakout:{best:0,last:0,plays:0},pong:{best:0,last:0,plays:0,wins:0,losses:0},dino:{best:0,last:0,plays:0},ninja:{best:0,last:0,plays:0},memory:{best:0,last:0,plays:0},flappy:{best:0,last:0,plays:0},snake:{best:0,last:0,plays:0}});
   let g=blank(),ok=true,dirty=false;
   const startBest={};
   try{
@@ -390,7 +390,7 @@ const Store=(()=>{
   function flush(){if(!dirty)return;dirty=false;try{localStorage.setItem(KEY,JSON.stringify(g))}catch(e){ok=false}}
   setInterval(flush,1500);
   const NK='arcade_name',RK='arcade_rank',MAXR=20;
-  let name='',pid='';const rank={breakout:[],pong:[],dino:[],ninja:[],memory:[],flappy:[]};
+  let name='',pid='';const rank={breakout:[],pong:[],dino:[],ninja:[],memory:[],flappy:[],snake:[]};
   try{
     name=localStorage.getItem(NK)||'';
     pid=localStorage.getItem('arcade_pid')||'';
@@ -511,7 +511,8 @@ const META=[
   {id:'dino',icon:'🦖',name:'دایناسور',desc:'از روی کاکتوس‌ها بپر',color:'#1dd1a1'},
   {id:'ninja',icon:'🍉',name:'نینجای میوه',desc:'میوه‌ها رو ببر، مراقب بمب باش',color:'#ff4d6d'},
   {id:'memory',icon:'🛸',name:'کارت فضایی',desc:'کارت‌ها رو برگردون و جفت‌های مثل هم رو پیدا کن',color:'#c77dff'},
-  {id:'flappy',icon:'🐦',name:'فلپی‌برد',desc:'پرنده رو بالا نگه دار و از لوله‌ها رد شو',color:'#48dbfb'}
+  {id:'flappy',icon:'🐦',name:'فلپی‌برد',desc:'پرنده رو بالا نگه دار و از لوله‌ها رد شو',color:'#48dbfb'},
+  {id:'snake',icon:'🐍',name:'مار',desc:'سیب بخور، بلندتر شو و به خودت نخور',color:'#7dffb0'}
 ];
 let tab='total',rk=0,adminCode='';
 const IDS=META.filter(m=>!m.norec).map(m=>m.id);
@@ -1716,6 +1717,244 @@ function overlay(){
 return{id,enter,update,draw,down,up(){},key,playing:()=>st==='play',idle:()=>st==='ready'||st==='over'};
 })();
 
+
+/* ================= SNAKE (مار) ================= */
+Games.snake=(()=>{
+  const id='snake';
+  const COLS=24,ROWS=32,CELL=20,OX=(W-COLS*CELL)/2,OY=0;
+  const BOARD_W=COLS*CELL,BOARD_H=ROWS*CELL;
+  let st='ready',score=0,t=0,stepT=0,newBest=false,lock=0;
+  let dir={x:1,y:0},next={x:1,y:0},snake=[],prevSnake=[],apple={x:12,y:15};
+  let speed=7.5,swipe=null;
+
+  const same=(a,b)=>a.x===b.x&&a.y===b.y;
+  const center=s=>({x:OX+s.x*CELL+CELL/2,y:OY+s.y*CELL+CELL/2});
+
+  function placeApple(){
+    let tries=0;
+    do{
+      apple={x:1+Math.floor(Math.random()*(COLS-2)),y:1+Math.floor(Math.random()*(ROWS-2))};
+      tries++;
+    }while(snake.some(s=>same(s,apple))&&tries<500);
+  }
+
+  function reset(){
+    snake=[{x:7,y:15},{x:6,y:15},{x:5,y:15},{x:4,y:15}];
+    prevSnake=snake.map(s=>({...s}));
+    dir={x:1,y:0};next={x:1,y:0};score=0;stepT=0;speed=7.5;swipe=null;
+    placeApple();sync();
+  }
+
+  function sync(){
+    Shell.score(score);
+    Shell.info('🍎 طول مار: '+FA(snake.length));
+  }
+
+  function enter(){
+    st='ready';newBest=false;reset();
+  }
+
+  function start(){
+    reset();newBest=false;Shell.begin();st='play';sfx.launch();
+  }
+
+  function setDir(x,y){
+    if(st==='ready'||st==='over')start();
+    if(st!=='play')return;
+    // جلوگیری از برگشت مستقیم داخل بدن
+    if(x===-dir.x&&y===-dir.y)return;
+    next={x,y};
+  }
+
+  function down(e){
+    if(Date.now()<lock)return;
+    if(st==='ready'||st==='over')start();
+    if(st!=='play')return;
+    if(e&&e.clientX!==undefined){
+      swipe={x:e.clientX,y:e.clientY};
+      const r=cv.getBoundingClientRect();
+      const tx=(e.clientX-r.left)/r.width*W;
+      const ty=(e.clientY-r.top)/r.height*H;
+      const h=center(snake[0]);
+      const dx=tx-h.x,dy=ty-h.y;
+      if(Math.abs(dx)+Math.abs(dy)>18){
+        if(Math.abs(dx)>Math.abs(dy))setDir(dx>0?1:-1,0);
+        else setDir(0,dy>0?1:-1);
+      }
+      return;
+    }
+    setDir(0,-1);
+  }
+
+  function move(e){
+    if(st!=='play'||!swipe||e.clientX===undefined)return;
+    const dx=e.clientX-swipe.x,dy=e.clientY-swipe.y;
+    if(Math.abs(dx)+Math.abs(dy)<22)return;
+    if(Math.abs(dx)>Math.abs(dy))setDir(dx>0?1:-1,0);
+    else setDir(0,dy>0?1:-1);
+    swipe=null;
+  }
+
+  function key(k){
+    const m={
+      ArrowUp:[0,-1],KeyW:[0,-1],
+      ArrowDown:[0,1],KeyS:[0,1],
+      ArrowLeft:[-1,0],KeyA:[-1,0],
+      ArrowRight:[1,0],KeyD:[1,0]
+    };
+    if(!m[k])return false;
+    setDir(m[k][0],m[k][1]);
+    return true;
+  }
+
+  function die(){
+    st='over';swipe=null;
+    newBest=Shell.finish(score);lock=Date.now()+800;sfx.die();
+  }
+
+  function update(dt){
+    t+=dt;
+    if(st!=='play')return;
+    stepT+=dt;
+    // سرعت با امتیاز بالا می‌رود، اما سقف کنترل‌شده دارد تا بازی قابل بازی بماند.
+    const movesPerSec=Math.min(16, speed+Math.floor(score/30)*0.45);
+    const interval=1/movesPerSec;
+    if(stepT<interval)return;
+    stepT-=interval;
+
+    dir=next;
+    prevSnake=snake.map(s=>({...s}));
+    const head={x:snake[0].x+dir.x,y:snake[0].y+dir.y};
+    if(head.x<0||head.x>=COLS||head.y<0||head.y>=ROWS){die();return}
+
+    const eating=same(head,apple);
+    // اگر سیب نخورده‌ایم، خانه‌ی دم در همین حرکت آزاد می‌شود.
+    const bodyCount=snake.length-(eating?0:1);
+    for(let i=0;i<bodyCount;i++){
+      if(same(head,snake[i])){die();return}
+    }
+
+    snake.unshift(head);
+    if(eating){
+      score+=10;
+      speed=Math.min(13,speed+.18);
+      placeApple();
+      sync();
+      sfx.point();
+    }else{
+      snake.pop();
+    }
+  }
+
+  function roundRect(x,y,w,h,r){
+    ctx.beginPath();
+    ctx.roundRect(x,y,w,h,r);
+    ctx.fill();
+  }
+
+  function drawApple(){
+    const c=center(apple);
+    // سیب گرد با ساقه و برگ، بدون افکت سنگین.
+    ctx.fillStyle='#e93f55';
+    ctx.beginPath();ctx.arc(c.x,c.y+1,7.6,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='#ff6d7d';
+    ctx.beginPath();ctx.arc(c.x-2.5,c.y-2,2.1,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='#5a3a20';
+    ctx.fillRect(c.x-1,c.y-9,2.5,4.5);
+    ctx.fillStyle='#72d66f';
+    ctx.beginPath();ctx.ellipse(c.x+4,c.y-8,4.2,2.2,-.35,0,Math.PI*2);ctx.fill();
+  }
+
+  function drawSnake(){
+    if(!snake.length)return;
+
+    // بدن یکپارچه است: اول یک نوار پیوسته می‌کشیم و بعد قطعه‌ها را روی آن می‌نشانیم.
+    // این باعث می‌شود بین خانه‌ها هیچ شکاف مربعی یا فاصله‌ای دیده نشود.
+    ctx.save();
+    const interval=1/Math.min(16,speed+Math.floor(score/30)*0.45);
+    const a=Math.max(0,Math.min(1,stepT/interval));
+    const renderSnake=snake.map((cur,i)=>{
+      const old=prevSnake[i]||cur;
+      return {x:old.x+(cur.x-old.x)*a,y:old.y+(cur.y-old.y)*a};
+    });
+    ctx.lineCap='round';ctx.lineJoin='round';ctx.lineWidth=15.5;
+    ctx.strokeStyle='#38b96f';
+    ctx.beginPath();
+    const tail=center(renderSnake[renderSnake.length-1]);ctx.moveTo(tail.x,tail.y);
+    for(let i=renderSnake.length-2;i>=0;i--){const p=center(renderSnake[i]);ctx.lineTo(p.x,p.y)}
+    ctx.stroke();
+    ctx.lineWidth=11.5;
+    ctx.strokeStyle='#55cf7d';
+    ctx.beginPath();ctx.moveTo(tail.x,tail.y);
+    for(let i=renderSnake.length-2;i>=1;i--){const p=center(renderSnake[i]);ctx.lineTo(p.x,p.y)}
+    ctx.stroke();
+    // لکه‌های ظریف روی بدن برای اینکه مار از یک نوار ساده هم طبیعی‌تر دیده شود.
+    for(let i=renderSnake.length-1;i>=1;i--){
+      const p=center(renderSnake[i]);
+      ctx.fillStyle=i%2?'#3fbd70':'#49c978';
+      ctx.beginPath();ctx.arc(p.x,p.y,7.1,0,Math.PI*2);ctx.fill();
+    }
+    ctx.restore();
+
+    // سر بزرگ‌تر و گردتر.
+    const h=center(renderSnake[0]);
+    ctx.save();
+    ctx.translate(h.x,h.y);
+    const ang=Math.atan2(dir.y,dir.x);
+    ctx.rotate(ang);
+    ctx.fillStyle='#62dc88';
+    ctx.beginPath();ctx.ellipse(0,0,10.2,9,0,0,Math.PI*2);ctx.fill();
+
+    // چشم‌ها
+    ctx.fillStyle='#fff';
+    ctx.beginPath();ctx.arc(4.8,-4.1,3,0,Math.PI*2);ctx.arc(4.8,4.1,3,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='#14231b';
+    ctx.beginPath();ctx.arc(5.7,-4.1,1.35,0,Math.PI*2);ctx.arc(5.7,4.1,1.35,0,Math.PI*2);ctx.fill();
+
+    // بینی و زبان کوچک برای ظاهر زنده‌تر
+    ctx.fillStyle='#d72e48';
+    ctx.beginPath();ctx.arc(10,0,1.5,0,Math.PI*2);ctx.fill();
+    ctx.strokeStyle='#ef5366';ctx.lineWidth=1.2;ctx.beginPath();ctx.moveTo(10,0);ctx.lineTo(14,0);ctx.moveTo(14,0);ctx.lineTo(16,-2);ctx.moveTo(14,0);ctx.lineTo(16,2);ctx.stroke();
+    ctx.restore();
+  }
+
+  function draw(){
+    ctx.fillStyle='#06110d';ctx.fillRect(0,0,W,H);
+    // زمین بازی سبک و واضح
+    ctx.fillStyle='#0b2418';ctx.fillRect(OX,OY,BOARD_W,BOARD_H);
+    ctx.strokeStyle='rgba(125,255,176,.16)';ctx.lineWidth=2;ctx.strokeRect(OX+1,OY+1,BOARD_W-2,BOARD_H-2);
+
+    drawApple();
+    drawSnake();
+    overlay();
+  }
+
+  function overlay(){
+    const pulse=.65+.35*Math.sin(t*4);
+    if(st==='ready'){
+      dim(.52);
+      txt('مار 🐍',W/2,165,48,'#7dffb0');
+      txt('سیب‌ها رو بخور و مار رو بلندتر کن',W/2,212,17,'#e9fff1','400');
+      txt('به دیوار یا بدن خودت نخوری!',W/2,242,15,'#e9fff1','400');
+      txt('رکورد: '+FA(Store.best(id)),W/2,300,18,'#fff36b');
+      ctx.globalAlpha=pulse;txt('لمس کن یا جهت بده برای شروع',W/2,415,21,'#fff');ctx.globalAlpha=1;
+      txt('موبایل: سوایپ · کیبورد: جهت‌ها / WASD',W/2,460,13,'#cfe0ff','400');
+    }else if(st==='over'){
+      dim(.62);
+      txt('باختی! 🐍',W/2,200,46,'#ff6b81');
+      txt('امتیاز: '+FA(score),W/2,250,25,'#fff');
+      txt('طول مار: '+FA(snake.length),W/2,285,17,'#cfe0ff','400');
+      txt('رکورد: '+FA(Store.best(id)),W/2,320,18,'#fff36b');
+      if(newBest)txt('🎉 رکورد جدید!',W/2,360,21,'#7dffb0');
+      ctx.globalAlpha=pulse;txt('برای بازی دوباره لمس کن',W/2,425,20,'#fff');ctx.globalAlpha=1;
+    }else if(st==='play'){
+      txt(FA(score),W/2,62,30,'rgba(255,255,255,.9)','700');
+    }
+  }
+
+  return{id,enter,update,draw,down,move,up(){swipe=null},key,playing:()=>st==='play',idle:()=>st==='ready'||st==='over'};
+})();
+
 /* ================= input ================= */
 const px=e=>{const r=cv.getBoundingClientRect();return(e.clientX-r.left)/r.width*W};
 const py=e=>{const r=cv.getBoundingClientRect();return(e.clientY-r.top)/r.height*H};
@@ -1726,6 +1965,11 @@ function drawMenuBtn(){
   ctx.strokeStyle='rgba(255,255,255,.35)';ctx.lineWidth=1.5;ctx.stroke();
   txt('🏠 رفتن به منو',W/2,MB.y+24,15,'#fff');
 }
+$('play').addEventListener('pointerdown',e=>{
+  if(!cur||cur.id!=='snake'||e.target===cv||e.target.closest('button'))return;
+  audio();cur.down(e);
+});
+
 cv.addEventListener('pointerdown',e=>{
   if(!cur)return;
   audio();In.x=px(e);
