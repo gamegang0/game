@@ -379,7 +379,7 @@ const SB_URL='https://sabxzrwdqhxfdzxonwmw.supabase.co';
 const SB_KEY='sb_publishable_vpVUe8xUxnxSgY1fiv3p9A_eQBWY3Hp';
 const Store=(()=>{
   const KEY='arcade_v1';
-  const blank=()=>({breakout:{best:0,last:0,plays:0},pong:{best:0,last:0,plays:0,wins:0,losses:0},dino:{best:0,last:0,plays:0},ninja:{best:0,last:0,plays:0},memory:{best:0,last:0,plays:0}});
+  const blank=()=>({breakout:{best:0,last:0,plays:0},pong:{best:0,last:0,plays:0,wins:0,losses:0},dino:{best:0,last:0,plays:0},ninja:{best:0,last:0,plays:0},memory:{best:0,last:0,plays:0},flappy:{best:0,last:0,plays:0}});
   let g=blank(),ok=true,dirty=false;
   const startBest={};
   try{
@@ -390,7 +390,7 @@ const Store=(()=>{
   function flush(){if(!dirty)return;dirty=false;try{localStorage.setItem(KEY,JSON.stringify(g))}catch(e){ok=false}}
   setInterval(flush,1500);
   const NK='arcade_name',RK='arcade_rank',MAXR=20;
-  let name='',pid='';const rank={breakout:[],pong:[],dino:[],ninja:[],memory:[]};
+  let name='',pid='';const rank={breakout:[],pong:[],dino:[],ninja:[],memory:[],flappy:[]};
   try{
     name=localStorage.getItem(NK)||'';
     pid=localStorage.getItem('arcade_pid')||'';
@@ -510,7 +510,8 @@ const META=[
   {id:'pong',icon:'🏓',name:'پینگ‌پنگ',desc:'مقابل بات؛ هرچی سخت‌تر ببری، امتیاز بیشتر',color:'#48dbfb'},
   {id:'dino',icon:'🦖',name:'دایناسور',desc:'از روی کاکتوس‌ها بپر',color:'#1dd1a1'},
   {id:'ninja',icon:'🍉',name:'نینجای میوه',desc:'میوه‌ها رو ببر، مراقب بمب باش',color:'#ff4d6d'},
-  {id:'memory',icon:'🛸',name:'کارت فضایی',desc:'کارت‌ها رو برگردون و جفت‌های مثل هم رو پیدا کن',color:'#c77dff'}
+  {id:'memory',icon:'🛸',name:'کارت فضایی',desc:'کارت‌ها رو برگردون و جفت‌های مثل هم رو پیدا کن',color:'#c77dff'},
+  {id:'flappy',icon:'🐦',name:'فلپی‌برد',desc:'پرنده رو بالا نگه دار و از لوله‌ها رد شو',color:'#48dbfb'}
 ];
 let tab='total',rk=0,adminCode='';
 const IDS=META.filter(m=>!m.norec).map(m=>m.id);
@@ -1613,6 +1614,106 @@ function down(e){
   if(e&&e.clientX!==undefined)pick(px(e),py(e));
 }
 return{id,enter,update,draw,down,up(){},playing:()=>st==='play',idle:()=>st==='ready'||st==='over'};
+})();
+
+
+/* ================= FLAPPY BIRD (فلپی‌برد) ================= */
+Games.flappy=(()=>{
+const id='flappy';
+const bird={x:112,y:H*.45,vy:0,r:12};
+const pipes=[];
+let st='ready',score=0,best=0,spawnT=0,t=0,newBest=false,lock=0;
+const G=920,FLAP=-330,PIPE_W=54,GAP=170,SPEED=150,GROUND=H-42;
+function reset(){
+  bird.x=112;bird.y=H*.45;bird.vy=0;score=0;spawnT=.45;pipes.length=0;t=0;
+  sync();
+}
+function sync(){Shell.score(score);Shell.info('لوله '+FA(score))}
+function enter(){st='ready';newBest=false;reset()}
+function start(){reset();Shell.begin();st='play';sfx.launch()}
+function flap(){
+  if(st==='ready'||st==='over'){start();bird.vy=FLAP;sfx.jump();return}
+  if(st==='play'){bird.vy=FLAP;sfx.jump()}
+}
+function down(){if(Date.now()<lock)return;flap()}
+function key(k){if(k==='ArrowUp'||k==='Space'||k==='KeyW'){flap();return true}return false}
+function addPipe(){
+  const min=120,max=GROUND-120;
+  const gapY=min+Math.random()*(max-min);
+  pipes.push({x:W+20,gapY,passed:false});
+}
+function die(){
+  if(st!=='play')return;
+  st='over';newBest=Shell.finish(score);lock=Date.now()+700;sfx.over();
+}
+function hitPipe(p){
+  const inX=bird.x+bird.r>p.x&&bird.x-bird.r<p.x+PIPE_W;
+  const topH=p.gapY-GAP/2,botY=p.gapY+GAP/2;
+  return inX&&(bird.y-bird.r<topH||bird.y+bird.r>botY);
+}
+function update(dt){
+  t+=dt;if(st!=='play')return;
+  bird.vy+=G*dt;bird.y+=bird.vy*dt;
+  spawnT-=dt;
+  if(spawnT<=0){addPipe();spawnT=1.65}
+  for(const p of pipes){
+    p.x-=SPEED*dt;
+    if(!p.passed&&p.x+PIPE_W<bird.x){p.passed=true;score++;sfx.point();sync()}
+    if(hitPipe(p)){die();return}
+  }
+  while(pipes.length&&pipes[0].x+PIPE_W<-10)pipes.shift();
+  if(bird.y-bird.r<0||bird.y+bird.r>GROUND){die();return}
+}
+function drawPipe(x,y,h,top=true){
+  ctx.fillStyle='#56c596';ctx.fillRect(x,y,PIPE_W,h);
+  ctx.fillStyle='#7ce3ad';ctx.fillRect(x+5,y,8,h);
+  const cy=top?y+h-16:y;
+  ctx.fillStyle='#3ea678';ctx.fillRect(x-4,cy,PIPE_W+8,16);
+  ctx.fillStyle='#72dca7';ctx.fillRect(x,cy,PIPE_W,5);
+}
+function draw(){
+  // Simple flat scene: deliberately low-cost for mobile FPS.
+  ctx.fillStyle='#79d9f5';ctx.fillRect(0,0,W,H);
+  ctx.fillStyle='#a8e7ff';ctx.fillRect(0,0,W,H*.58);
+  // Clouds: only four rectangles, no gradients/shadows.
+  ctx.fillStyle='rgba(255,255,255,.65)';
+  ctx.fillRect(42,92,58,10);ctx.fillRect(60,82,28,10);
+  ctx.fillRect(300,145,66,10);ctx.fillRect(324,135,30,10);
+  for(const p of pipes){
+    drawPipe(p.x,0,p.gapY-GAP/2,true);
+    drawPipe(p.x,p.gapY+GAP/2,GROUND-(p.gapY+GAP/2),false);
+  }
+  ctx.fillStyle='#74d66e';ctx.fillRect(0,GROUND,W,H-GROUND);
+  ctx.fillStyle='#b7ed78';ctx.fillRect(0,GROUND,W,8);
+  ctx.save();ctx.translate(bird.x,bird.y);ctx.rotate(clamp(bird.vy/700,-.35,.65));
+  ctx.fillStyle='#ffd84d';ctx.beginPath();ctx.arc(0,0,bird.r,0,6.283);ctx.fill();
+  ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(5,-4,4,0,6.283);ctx.fill();
+  ctx.fillStyle='#111';ctx.beginPath();ctx.arc(6,-4,1.7,0,6.283);ctx.fill();
+  ctx.fillStyle='#ff9a36';ctx.beginPath();ctx.moveTo(11,1);ctx.lineTo(21,5);ctx.lineTo(11,8);ctx.closePath();ctx.fill();
+  ctx.fillStyle='#f6b63a';ctx.fillRect(-8,5,9,5);ctx.restore();
+  overlay();
+}
+function overlay(){
+  const pulse=.6+.4*Math.sin(t*4);
+  if(st==='ready'){
+    dim(.34);
+    txt('فلپی‌برد 🐦',W/2,200,44,'#fff');
+    txt('با لمس صفحه پرنده رو بالا ببر',W/2,245,17,'#e9fbff','400');
+    txt('از بین لوله‌ها رد شو و امتیاز بگیر',W/2,275,15,'#e9fbff','400');
+    txt('رکورد: '+FA(Store.best(id)),W/2,330,18,'#fff36b');
+    ctx.globalAlpha=pulse;txt('برای شروع لمس کن',W/2,430,23,'#fff');ctx.globalAlpha=1;
+  }else if(st==='over'){
+    dim(.36);
+    txt('باختی!',W/2,220,48,'#ff6b81');
+    txt('امتیاز: '+FA(score),W/2,270,24,'#fff');
+    txt('رکورد: '+FA(Store.best(id)),W/2,305,18,'#fff36b');
+    if(newBest)txt('🎉 رکورد جدید!',W/2,345,21,'#7dffb0');
+    ctx.globalAlpha=pulse;txt('برای بازی دوباره لمس کن',W/2,430,20,'#fff');ctx.globalAlpha=1;
+  }else if(st==='play'){
+    txt(FA(score),W/2,74,34,'rgba(255,255,255,.9)','700');
+  }
+}
+return{id,enter,update,draw,down,up(){},key,playing:()=>st==='play',idle:()=>st==='ready'||st==='over'};
 })();
 
 /* ================= input ================= */
