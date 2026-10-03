@@ -316,7 +316,7 @@ const SB_URL='https://sabxzrwdqhxfdzxonwmw.supabase.co';
 const SB_KEY='sb_publishable_vpVUe8xUxnxSgY1fiv3p9A_eQBWY3Hp';
 const Store=(()=>{
   const KEY='arcade_v1';
-  const blank=()=>({breakout:{best:0,last:0,plays:0},pong:{best:0,last:0,plays:0,wins:0,losses:0},dino:{best:0,last:0,plays:0},ninja:{best:0,last:0,plays:0},memory:{best:0,last:0,plays:0},flappy:{best:0,last:0,plays:0},snake:{best:0,last:0,plays:0},soccer:{best:0,last:0,plays:0}});
+  const blank=()=>({breakout:{best:0,last:0,plays:0},pong:{best:0,last:0,plays:0,wins:0,losses:0},dino:{best:0,last:0,plays:0},ninja:{best:0,last:0,plays:0},memory:{best:0,last:0,plays:0},flappy:{best:0,last:0,plays:0},snake:{best:0,last:0,plays:0},soccer:{best:0,last:0,plays:0},pancake:{best:0,last:0,plays:0}});
   let g=blank(),ok=true,dirty=false;
   const startBest={};
   try{
@@ -337,7 +337,7 @@ const Store=(()=>{
   }catch(e){}
   const saveSkins=()=>{try{localStorage.setItem(SKK,JSON.stringify(savedSkins))}catch(e){}};
   const saveSelectedSkins=()=>{try{localStorage.setItem(SELK,JSON.stringify(selectedSkins))}catch(e){}};
-  const rank={breakout:[],pong:[],dino:[],ninja:[],memory:[],flappy:[],snake:[],soccer:[]};
+  const rank={breakout:[],pong:[],dino:[],ninja:[],memory:[],flappy:[],snake:[],soccer:[],pancake:[]};
   let name='',pid='';
   try{
     name=localStorage.getItem(NK)||'';
@@ -550,7 +550,8 @@ const META=[
   {id:'memory',icon:'🛸',name:'کارت فضایی',desc:'کارت‌ها رو برگردون و جفت‌های مثل هم رو پیدا کن',color:'#c77dff'},
   {id:'flappy',icon:'🐦',name:'فلپی‌برد',desc:'پرنده رو بالا نگه دار و از لوله‌ها رد شو',color:'#48dbfb'},
   {id:'snake',icon:'🐍',name:'مار',desc:'سیب بخور، بلندتر شو و به خودت نخور',color:'#7dffb0'},
-  {id:'soccer',icon:'⚽',name:'ساکر استار',desc:'شوت بزن، از دفاع و دروازه‌بان رد شو و گل بزن',color:'#2ecc71'}
+  {id:'soccer',icon:'⚽',name:'ساکر استار',desc:'شوت بزن، از دفاع و دروازه‌بان رد شو و گل بزن',color:'#2ecc71'},
+  {id:'pancake',icon:'🥞',name:'پنکیک تاور',desc:'پنکیک‌ها رو دقیق روی هم بنداز و تا بی‌نهایت بالا برو',color:'#ffb347'}
 ];
 let tab='total',rk=0,adminCode='';
 const IDS=META.filter(m=>!m.norec).map(m=>m.id);
@@ -787,7 +788,7 @@ function renderMenu(){
     const stat=m.id==='pong'?`رکورد: <b>${FA(g.best)}</b> · برد: ${FA(g.wins)} · باخت: ${FA(g.losses)}`:`رکورد: <b>${FA(g.best)}</b> · آخرین: ${FA(g.last)} · ${FA(g.plays)} بار بازی`;
     const b=document.createElement('button');
     b.className='card arcadeCard';b.style.setProperty('--c',m.color);b.style.setProperty('--i',META.indexOf(m));
-    const badge=(m.id==='dino'?'🦖 DINO RUN':m.id==='snake'?'🐍 SNAKE LAB':m.id==='breakout'?'🧱 BRICK STORM':m.id==='pong'?'🏓 DUEL ARENA':m.id==='ninja'?'🍉 NINJA MODE':m.id==='memory'?'🛸 MEMORY LAB':m.id==='soccer'?'⚽ SOCCER STAR':'🐦 SKY RUN');
+    const badge=(m.id==='dino'?'🦖 DINO RUN':m.id==='snake'?'🐍 SNAKE LAB':m.id==='breakout'?'🧱 BRICK STORM':m.id==='pong'?'🏓 DUEL ARENA':m.id==='ninja'?'🍉 NINJA MODE':m.id==='memory'?'🛸 MEMORY LAB':m.id==='soccer'?'⚽ SOCCER STAR':m.id==='pancake'?'🥞 PANCAKE TOWER':'🐦 SKY RUN');
     b.innerHTML=`<span class="arcadeScene"><span class="arcadeStars"></span><span class="arcadeBadge">${badge} · LIVE</span><span class="arcadeIcon">${m.icon}</span></span><span class="arcadeInfo"><span class="arcadeName">${m.name}</span><span class="arcadeDesc">${m.desc}</span><span class="arcadeMeta"><span>🏆 ${FA(g.best)} · ${FA(g.plays)} بازی</span><span class="arcadePlay">▶ بازی کن</span></span></span>`;
     b.onclick=()=>{audio();sfx.ui();openGame(m.id)};
     box.appendChild(b);
@@ -2549,6 +2550,519 @@ Games.soccer=(()=>{
   }
   return{id,enter,update,draw,down,move,up:release,key,playing:()=>st==='play'||st==='result',idle:()=>st==='ready'||st==='over'};
 })();
+/* ================= PANCAKE TOWER ================= */
+Games.pancake=(()=>{
+  const id='pancake';
+  const PH=30, PLATE_Y=594, BASE_Y=548, GAP=1;
+  const COLORS=[
+    ['#ff7fa4','#ffb4c8','#e95f85'],
+    ['#c58be9','#e0b7fb','#a166d3'],
+    ['#70b9e9','#a9dcfa','#4e9bd1'],
+    ['#91d98b','#bcebb5','#67bf61'],
+    ['#ffe06b','#fff1a4','#e8c84e'],
+    ['#f4bb78','#ffd6a6','#dda05b'],
+    ['#ff94b9','#ffc0d4','#e76f98']
+  ];
+
+  // Static decoration: cheap to draw, no per-frame particle field.
+  const BUBBLES=[
+    [88,150,52,'rgba(255,182,193,.14)'],
+    [388,202,34,'rgba(255,215,142,.13)'],
+    [185,84,28,'rgba(255,153,204,.10)'],
+    [322,330,44,'rgba(255,160,196,.12)'],
+    [72,430,63,'rgba(255,196,120,.09)'],
+    [421,454,51,'rgba(175,205,255,.09)'],
+    [255,520,70,'rgba(255,143,192,.07)']
+  ];
+
+  let st='ready',score=0,combo=0,t=0,shake=0,cam=0,camTarget=0;
+  let dir=1,speed=118,stack=[],active=null,parts=[],floats=[],rings=[];
+  let newBest=false,lock=0,dropFlash=0,round=0;
+
+  function start(){
+    if(Date.now()<lock)return;
+    st='play'; score=0; combo=0; t=0; shake=0; cam=0; camTarget=0;
+    dir=Math.random()<.5?-1:1; speed=118;
+    stack=[]; active=null; parts=[]; floats=[]; rings=[]; round=0;
+    dropFlash=0; newBest=false;
+    Shell.begin();
+
+    const baseW=214;
+    // Base pancake is physically seated on the plate.
+    stack.push({x:W/2,y:BASE_Y,w:baseW,h:PH,ci:5,settle:0});
+    spawn(baseW);
+    Shell.score(0);
+  }
+
+  function spawn(w){
+    const ci=(stack.length+4)%COLORS.length;
+    const minX=w/2+18, maxX=W-w/2-18;
+    const top=stack[stack.length-1];
+
+    active={
+      x:W/2,
+      y:PLATE_Y-PH/2-2,   // firmly touching the plate
+      w,h:PH,ci,
+      phase:'plate',
+      phaseTime:0,
+      riseY:top ? top.y-PH-82 : BASE_Y-PH-82,
+      fall:false,vy:0,rot:0
+    };
+    dir=Math.random()<.5?-1:1;
+    speed=118+Math.min(stack.length,80)*3.2;
+  }
+
+  function beginSweep(){
+    if(!active)return;
+    const half=active.w/2;
+    const minX=half+18, maxX=W-half-18;
+    active.phase='sweep';
+    active.phaseTime=0;
+    active.x=dir>0?minX:maxX;
+    active.y=active.riseY;
+    sfx.wall();
+  }
+
+  function addBurst(x,y,c,n=8){
+    // Deliberately small: keeps the game smooth on low-end phones.
+    for(let i=0;i<n;i++){
+      const a=Math.random()*Math.PI*2, sp=35+Math.random()*105;
+      parts.push({
+        x,y,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp-45,
+        s:1.5+Math.random()*2.5,l:.35+Math.random()*.3,c
+      });
+    }
+    rings.push({x,y,r:7,l:.7,c});
+  }
+
+  function floatText(x,y,s,c){
+    floats.push({x,y,s,c,l:.8,v:-26});
+  }
+
+  function finish(){
+    st='over';
+    newBest=Shell.finish(score);
+    lock=Date.now()+650;
+    sfx.over();
+  }
+
+  function drop(){
+    if(st!=='play'||!active||active.fall||active.phase!=='sweep')return;
+    active.fall=true;
+    active.vy=500+Math.min(stack.length,50)*7;
+    active.rot=0;
+    sfx.launch();
+    dropFlash=.14;
+  }
+
+  function settle(){
+    const top=stack[stack.length-1];
+    const aL=active.x-active.w/2, aR=active.x+active.w/2;
+    const bL=top.x-top.w/2, bR=top.x+top.w/2;
+    const overlap=Math.min(aR,bR)-Math.max(aL,bL);
+
+    if(overlap<=5){
+      addBurst(active.x,active.y,'#ff6f91',12);
+      sfx.miss(); finish(); return;
+    }
+
+    const ratio=clamp(overlap/Math.min(active.w,top.w),0,1);
+    const center=(Math.max(aL,bL)+Math.min(aR,bR))/2;
+    const newW=clamp(overlap+5,26,Math.min(active.w,top.w));
+
+    active.x=center;
+    active.y=top.y-PH-GAP;
+    active.w=newW;
+    active.fall=false;
+    active.vy=0;
+    active.rot=0;
+
+    stack.push({
+      x:active.x,y:active.y,w:newW,h:PH,ci:active.ci,settle:1
+    });
+
+    round++;
+    combo=ratio>.86?combo+1:0;
+
+    const pts=10+Math.floor(ratio*15)+Math.min(combo,12)*2+(round%10===0?25:0);
+    score+=pts;
+
+    if(ratio>.94){
+      sfx.clear();
+      floatText(active.x,active.y-24,'PERFECT! +'+FA(pts),'#e8a72d');
+      addBurst(active.x,active.y-10,'#ffe77b',10);
+    }else{
+      sfx.point();
+      floatText(active.x,active.y-20,'+'+FA(pts),'#ffffff');
+      addBurst(active.x,active.y-8,COLORS[active.ci][0],7);
+    }
+
+    if(overlap<Math.min(active.w,top.w)-12){
+      floatText(W/2,top.y-36,'کمی برش خورد ✂️','#8f9caf');
+    }
+
+    shake=.09;
+    dropFlash=.16;
+    Shell.score(score);
+
+    camTarget=Math.max(0,stack[stack.length-1].y-180);
+    const nextW=Math.max(26,newW);
+    spawn(nextW);
+
+    if(stack.length%5===0){
+      floatText(W/2,125,'🔥 طبقه '+FA(stack.length),'#d27e9b');
+      sfx.mile();
+    }
+  }
+
+  function update(dt){
+    t+=dt;
+    if(shake>0)shake=Math.max(0,shake-dt*2);
+    if(dropFlash>0)dropFlash=Math.max(0,dropFlash-dt*3);
+
+    // Small bounded effect pools.
+    for(const p of parts){
+      p.x+=p.vx*dt; p.y+=p.vy*dt; p.vy+=260*dt; p.l-=dt;
+    }
+    parts=parts.filter(p=>p.l>0);
+
+    for(const f of floats){f.y+=f.v*dt;f.l-=dt}
+    floats=floats.filter(f=>f.l>0);
+
+    for(const r of rings){r.r+=80*dt;r.l-=dt*2}
+    rings=rings.filter(r=>r.l>0);
+
+    if(st!=='play')return;
+
+    camTarget=Math.max(0,stack[stack.length-1].y-180);
+    cam+=(camTarget-cam)*Math.min(1,dt*7);
+
+    if(!active)return;
+
+    if(active.phase==='plate'){
+      // Stay attached to the plate. No horizontal movement here.
+      active.x=W/2;
+      active.y=PLATE_Y-PH/2-2;
+      active.phaseTime+=dt;
+
+      // After a short pause, lift the pancake toward the top of the tower.
+      if(active.phaseTime>=0.72){
+        active.phase='rise';
+        active.phaseTime=0;
+        active.riseY=(stack[stack.length-1]?.y ?? BASE_Y)-PH-82;
+        sfx.launch();
+      }
+    }else if(active.phase==='rise'){
+      // Smooth vertical travel from the plate to the sweeping height.
+      const target=active.riseY;
+      const dy=target-active.y;
+      const step=Math.max(180,Math.abs(dy)*5)*dt;
+
+      if(Math.abs(dy)<=step){
+        active.y=target;
+        beginSweep();
+      }else{
+        active.y+=Math.sign(dy)*step;
+      }
+    }else if(active.phase==='sweep' && !active.fall){
+      // Only after reaching the upper position does it move left <-> right.
+      active.x+=dir*speed*dt;
+      const half=active.w/2;
+      const minX=half+18, maxX=W-half-18;
+
+      if(active.x<=minX){
+        active.x=minX;
+        dir=1;
+        sfx.wall();
+      }else if(active.x>=maxX){
+        active.x=maxX;
+        dir=-1;
+        sfx.wall();
+      }
+
+      active.y=active.riseY;
+    }else if(active.fall){
+      active.vy+=1050*dt;
+      active.y+=active.vy*dt;
+      active.rot+=dir*.28*dt;
+
+      const top=stack[stack.length-1];
+      const target=top.y-PH-GAP;
+
+      if(active.y>=target){
+        active.y=target;
+        settle();
+      }
+    }
+  }
+
+  function pancake(x,y,w,ci,alpha=1,rot=0,glow=0,sy=1){
+    const [a,b,c]=COLORS[ci%COLORS.length];
+    ctx.save();
+    ctx.translate(x,y);
+    ctx.rotate(rot);
+    ctx.scale(1,sy);
+    ctx.globalAlpha=alpha;
+
+    // One compact shadow instead of expensive large blur layers.
+    ctx.fillStyle='rgba(150,93,74,.13)';
+    rr(-w/2+2,-PH/2+6,w,PH,9);ctx.fill();
+
+    const gr=ctx.createLinearGradient(0,-PH/2,0,PH/2);
+    gr.addColorStop(0,b);
+    gr.addColorStop(.48,a);
+    gr.addColorStop(1,c);
+    ctx.fillStyle=gr;
+    rr(-w/2,-PH/2,w,PH,9);ctx.fill();
+
+    ctx.strokeStyle='rgba(255,255,255,.30)';
+    ctx.lineWidth=1;
+    rr(-w/2+.7,-PH/2+.7,w-1.4,PH-1.4,8);
+    ctx.stroke();
+
+    ctx.fillStyle='rgba(255,255,255,.25)';
+    rr(-w*.34,-PH*.31,w*.68,4,2);ctx.fill();
+
+    ctx.fillStyle='rgba(125,74,54,.11)';
+    rr(-w*.30,PH*.12,w*.60,3,1.5);ctx.fill();
+
+    ctx.restore();
+  }
+
+  function drawBubbles(){
+    for(const b of BUBBLES){
+      const yy=b[1]-cam*.035+Math.sin(t*.5+b[0])*.8;
+      ctx.fillStyle=b[3];
+      ctx.beginPath();
+      ctx.arc(b[0],yy,b[2],0,Math.PI*2);
+      ctx.fill();
+    }
+  }
+
+  function drawPlate(){
+    ctx.save();
+    ctx.translate(W/2,PLATE_Y);
+
+    const g=ctx.createLinearGradient(0,-28,0,28);
+    g.addColorStop(0,'#ffffff');
+    g.addColorStop(.65,'#fffafd');
+    g.addColorStop(1,'#ded9e0');
+
+    ctx.fillStyle=g;
+    ctx.beginPath();
+    ctx.ellipse(0,0,187,31,0,0,Math.PI*2);
+    ctx.fill();
+
+    ctx.strokeStyle='rgba(205,194,205,.72)';
+    ctx.lineWidth=2;
+    ctx.beginPath();
+    ctx.ellipse(0,0,171,23,0,0,Math.PI*2);
+    ctx.stroke();
+
+    ctx.fillStyle='rgba(255,255,255,.60)';
+    ctx.beginPath();
+    ctx.ellipse(0,-5,120,11,0,0,Math.PI*2);
+    ctx.fill();
+
+    ctx.restore();
+  }
+
+  function drawCherry(x,y){
+    ctx.save();
+    ctx.translate(x,y+Math.sin(t*4)*1.2);
+
+    const g=ctx.createRadialGradient(-3,-5,2,0,0,11);
+    g.addColorStop(0,'#ff879a');
+    g.addColorStop(.6,'#e6375f');
+    g.addColorStop(1,'#ad1f43');
+
+    ctx.fillStyle=g;
+    ctx.beginPath();ctx.arc(0,0,10,0,Math.PI*2);ctx.fill();
+
+    ctx.strokeStyle='#5a8e40';
+    ctx.lineWidth=2.5;
+    ctx.lineCap='round';
+    ctx.beginPath();
+    ctx.moveTo(1,-8);
+    ctx.quadraticCurveTo(2,-16,9,-19);
+    ctx.stroke();
+
+    ctx.fillStyle='#61ae43';
+    ctx.beginPath();ctx.ellipse(9,-19,5,2.5,-.35,0,Math.PI*2);ctx.fill();
+
+    ctx.fillStyle='rgba(255,255,255,.7)';
+    ctx.beginPath();ctx.arc(-3,-4,2.5,0,Math.PI*2);ctx.fill();
+
+    ctx.restore();
+  }
+
+  function drawHeader(){
+    ctx.save();
+    ctx.fillStyle='rgba(255,255,255,.58)';
+    rr(20,16,W-40,48,14);ctx.fill();
+
+    ctx.strokeStyle='rgba(246,196,79,.38)';
+    ctx.lineWidth=1;
+    rr(20,16,W-40,48,14);ctx.stroke();
+
+    txt(('0000'+score).slice(-5),45,47,23,'#ea4264','900','left');
+    txt('★',155,46,17,'#b27b42','800');
+    txt(('0000'+Math.max(Store.best(id),score)).slice(-5),185,47,23,'#b56b33','900','left');
+    txt('HI',292,46,14,'#9d7654','900','left');
+    txt('PANCAKE TOWER',W-74,47,17,'#b35e1b','900','right');
+
+    ctx.font='23px sans-serif';
+    ctx.textAlign='right';
+    ctx.fillStyle='#e7a12b';
+    ctx.fillText('🥞',W-25,48);
+    ctx.restore();
+  }
+
+  function overlay(){
+    const pulse=.55+.45*Math.sin(t*3.8);
+
+    if(st==='ready'){
+      ctx.fillStyle='rgba(255,248,234,.50)';
+      ctx.fillRect(0,0,W,H);
+
+      txt('PANCAKE TOWER',W/2,108,34,'#b65e1b','900');
+      txt('پنکیک روی ظرف → بالا → چپ و راست',W/2,142,18,'#a27d69','700');
+      txt('چپ ← راست → چپ · هر طبقه سریع‌تر',W/2,169,13,'#ba9b86','500');
+
+      ctx.globalAlpha=.95;
+      pancake(W/2,BASE_Y,214,5);
+      pancake(W/2,BASE_Y-31,178,4);
+      pancake(W/2,BASE_Y-62,144,1);
+      drawCherry(W/2,BASE_Y-92);
+      ctx.globalAlpha=1;
+
+      ctx.fillStyle='#f7a40b';
+      rr(72,518,W-144,58,17);ctx.fill();
+      ctx.fillStyle='rgba(255,255,255,.20)';
+      rr(72,518,W-144,9,17);ctx.fill();
+
+      txt('برای شروع بزن 🥞',W/2,554,20,'#fff','900');
+      txt('هرجا لمس کنی = پرتاب از بالا',W/2,610,12,'#a8836e','500');
+
+    }else if(st==='over'){
+      ctx.fillStyle='rgba(255,245,240,.72)';
+      ctx.fillRect(0,0,W,H);
+
+      txt('برجت افتاد! 🥞',W/2,195,39,'#ca5470','900');
+      txt('امتیاز: '+FA(score),W/2,250,26,'#6d5c5d','800');
+      txt('طبقه: '+FA(Math.max(0,stack.length-1)),W/2,284,18,'#8e7778','600');
+      txt('رکورد: '+FA(Store.best(id)),W/2,317,18,'#ad6b3c','700');
+
+      if(newBest)txt('✨ رکورد جدید!',W/2,355,20,'#d79729','900');
+
+      ctx.globalAlpha=pulse;
+      txt('برای بازی دوباره بزن',W/2,430,20,'#b96858','800');
+      ctx.globalAlpha=1;
+    }
+  }
+
+  function draw(){
+    ctx.save();
+
+    if(shake>0){
+      ctx.translate(
+        (Math.random()-.5)*4*shake*8,
+        (Math.random()-.5)*3*shake*8
+      );
+    }
+
+    const bg=ctx.createLinearGradient(0,0,0,H);
+    bg.addColorStop(0,'#fff8d8');
+    bg.addColorStop(.48,'#ffefd8');
+    bg.addColorStop(1,'#ffdbe4');
+    ctx.fillStyle=bg;
+    ctx.fillRect(0,0,W,H);
+
+    drawBubbles();
+    drawPlate();
+
+    for(const b of stack){
+      const sy=b.y-cam;
+      const sc=b.settle>0?1+Math.sin((1-b.settle)*Math.PI)*.035:1;
+      pancake(b.x,sy,b.w,b.ci,.98,0,0,sc);
+    }
+
+    if(active){
+      pancake(active.x,active.y-cam,active.w,active.ci,1,active.fall?active.rot:0,0,1);
+    }
+
+    const top=stack[stack.length-1];
+    if(top && st!=='over'){
+      drawCherry(top.x,top.y-cam-PH/2-8);
+    }
+
+    for(const p of parts){
+      ctx.globalAlpha=clamp(p.l,0,1);
+      ctx.fillStyle=p.c;
+      rr(p.x,p.y,p.s,p.s,2);ctx.fill();
+    }
+    ctx.globalAlpha=1;
+
+    for(const r of rings){
+      ctx.globalAlpha=r.l;
+      ctx.strokeStyle=r.c;
+      ctx.lineWidth=2;
+      ctx.beginPath();
+      ctx.arc(r.x,r.y,r.r,0,Math.PI*2);
+      ctx.stroke();
+    }
+    ctx.globalAlpha=1;
+
+    for(const f of floats){
+      ctx.globalAlpha=clamp(f.l,0,1);
+      txt(f.s,f.x,f.y-cam,14,f.c,'900');
+    }
+    ctx.globalAlpha=1;
+
+    drawHeader();
+
+    if(st==='play'){
+      txt('طبقه '+FA(Math.max(0,stack.length-1)),18,92,12,'#9d7e77','700','left');
+      if(combo>1)txt('COMBO ×'+FA(combo),W-18,92,13,'#d17858','900','right');
+    }
+
+    if(dropFlash>0){
+      ctx.globalAlpha=dropFlash*.20;
+      ctx.fillStyle='#fff';
+      ctx.fillRect(0,0,W,H);
+      ctx.globalAlpha=1;
+    }
+
+    overlay();
+    ctx.restore();
+  }
+
+  function down(){
+    if(Date.now()<lock)return;
+    if(st==='ready'||st==='over'){start();return}
+    drop();
+  }
+
+  function key(k){
+    // Keyboard also follows the same one-tap drop mechanic.
+    if(k==='Space'||k==='Enter'){drop();return true}
+    return false;
+  }
+
+  function enter(){
+    st='ready';score=0;combo=0;cam=0;camTarget=0;
+    parts=[];floats=[];rings=[];newBest=false;lock=0;
+    active=null;stack=[];round=0;dir=1;speed=118;
+  }
+
+  return{
+    id,enter,start,update,draw,down,
+    move(){},up(){},key,
+    playing:()=>st==='play',
+    idle:()=>st==='ready'||st==='over'
+  };
+})();
+
 /* ================= input ================= */
 const px=e=>{const r=cv.getBoundingClientRect();return(e.clientX-r.left)/r.width*W};
 const py=e=>{const r=cv.getBoundingClientRect();return(e.clientY-r.top)/r.height*H};
