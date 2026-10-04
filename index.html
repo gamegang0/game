@@ -30,7 +30,27 @@
 .chatSend{width:58px;border:1px solid rgba(255,61,240,.38);border-radius:12px;background:linear-gradient(135deg,rgba(255,61,240,.18),rgba(53,242,255,.14));color:#fff;font:inherit;font-size:18px;cursor:pointer;box-shadow:0 0 16px rgba(255,61,240,.09)}
 .chatSend:hover{border-color:#ff74f4;box-shadow:0 0 20px rgba(255,61,240,.18)}.chatSend:disabled,.chatInput:disabled{opacity:.5;cursor:not-allowed}
 @media(max-width:380px){.chatMsgs{height:205px}.chatBubble{max-width:80%}}
-</style></head>
+</style><style id="p2css">
+#p2ui{position:absolute;left:0;bottom:0;width:100%;aspect-ratio:3/4;display:flex;padding:12px;background:rgba(6,10,28,.88);border-radius:10px;z-index:6;overflow:auto}
+#p2ui.over{background:rgba(6,10,28,.58)}
+.p2box{width:min(100%,340px);margin:auto;display:flex;flex-direction:column;gap:10px;text-align:center}
+.p2t{font-size:22px;color:var(--accent)}
+.p2d{font-size:13px;line-height:1.8;color:var(--mute)}
+.p2b{font:inherit;font-size:15px;font-weight:800;padding:12px 10px;border-radius:12px;border:1px solid var(--line);background:rgba(10,16,40,.7);color:var(--ink);cursor:pointer}
+.p2b:hover:not(:disabled){border-color:var(--accent)}
+.p2b:focus-visible,#p2code:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.p2b:disabled{opacity:.55;cursor:default}
+.p2main{background:linear-gradient(135deg,#1aa7b8,#6a4cff);border-color:transparent;color:#fff}
+.p2sec{color:var(--mute);font-weight:600}
+.p2row{display:flex;gap:8px}
+.p2row input{flex:1;min-width:0;font:inherit;font-size:16px;text-align:center;letter-spacing:.15em;padding:10px;border-radius:12px;border:1px solid var(--line);background:rgba(4,8,24,.8);color:var(--ink);direction:ltr}
+.p2row input::placeholder{letter-spacing:0;direction:rtl}
+.p2code{font-size:40px;font-weight:900;letter-spacing:.18em;color:#fff;direction:ltr;text-shadow:0 0 18px rgba(53,242,255,.5)}
+.p2e{min-height:18px;font-size:12px;line-height:1.7;color:#ff8a9b}
+.p2s{font-size:12px;color:var(--mute)}
+.p2score{font-size:42px;font-weight:900;color:#fff}
+</style>
+</head>
 <body class="locked">
 <div id="bgfx"><i class="nebula"></i><i class="stars"></i><i class="stars s2"></i><div class="floor"><i class="grid"></i></div><div id="floaters"></div></div>
 <div id="splash" role="alertdialog" aria-modal="true" aria-labelledby="spT">
@@ -144,6 +164,31 @@
       </div>
     </div>
     <canvas id="c" width="480" height="640"></canvas>
+    <div id="p2ui" hidden>
+      <div class="p2box" id="p2menu">
+        <h3 class="p2t">🏓 پینگ‌پنگ دونفره</h3>
+        <p class="p2d">آنلاین، مقابل یه آدم واقعی. اولین نفری که ۷ امتیاز بگیره برنده‌ست.</p>
+        <button class="p2b p2main" id="p2quick">⚡ پیدا کردن حریف</button>
+        <button class="p2b" id="p2create">🆕 ساخت اتاق برای دوستم</button>
+        <div class="p2row"><input id="p2code" type="text" inputmode="numeric" autocomplete="off" maxlength="6" placeholder="کد اتاق دوستت" aria-label="کد اتاق"><button class="p2b" id="p2join">ورود</button></div>
+        <div class="p2e" id="p2err" role="alert"></div>
+        <div class="p2s" id="p2stat"></div>
+      </div>
+      <div class="p2box" id="p2wait" hidden>
+        <h3 class="p2t" id="p2wt"></h3>
+        <div class="p2code" id="p2cd" hidden></div>
+        <p class="p2d" id="p2wd"></p>
+        <button class="p2b" id="p2copy" hidden>📋 کپی کد</button>
+        <button class="p2b p2sec" id="p2cancel">لغو</button>
+      </div>
+      <div class="p2box" id="p2end" hidden>
+        <h3 class="p2t" id="p2et"></h3>
+        <div class="p2score" id="p2es"></div>
+        <p class="p2d" id="p2en"></p>
+        <button class="p2b p2main" id="p2again">🔁 بازی دوباره</button>
+        <button class="p2b p2sec" id="p2exit">خروج</button>
+      </div>
+    </div>
     <iframe id="gameFrame" title="بازی داخلی" hidden></iframe>
   </div>
 </div>
@@ -320,7 +365,7 @@ const SB_URL='https://sabxzrwdqhxfdzxonwmw.supabase.co';
 const SB_KEY='sb_publishable_vpVUe8xUxnxSgY1fiv3p9A_eQBWY3Hp';
 const Store=(()=>{
   const KEY='arcade_v1';
-  const blank=()=>({breakout:{best:0,last:0,plays:0},pong:{best:0,last:0,plays:0,wins:0,losses:0},dino:{best:0,last:0,plays:0},ninja:{best:0,last:0,plays:0},memory:{best:0,last:0,plays:0},flappy:{best:0,last:0,plays:0},snake:{best:0,last:0,plays:0},soccer:{best:0,last:0,plays:0},pancake:{best:0,last:0,plays:0},traffic:{best:0,last:0,plays:0},pacman:{best:0,last:0,plays:0},doodle:{best:0,last:0,plays:0}});
+  const blank=()=>({breakout:{best:0,last:0,plays:0},pong:{best:0,last:0,plays:0,wins:0,losses:0},pong2:{best:0,last:0,plays:0,wins:0,losses:0},dino:{best:0,last:0,plays:0},ninja:{best:0,last:0,plays:0},memory:{best:0,last:0,plays:0},flappy:{best:0,last:0,plays:0},snake:{best:0,last:0,plays:0},soccer:{best:0,last:0,plays:0},pancake:{best:0,last:0,plays:0},traffic:{best:0,last:0,plays:0},pacman:{best:0,last:0,plays:0},doodle:{best:0,last:0,plays:0}});
   let g=blank(),ok=true,dirty=false;
   const startBest={};
   try{
@@ -341,7 +386,7 @@ const Store=(()=>{
   }catch(e){}
   const saveSkins=()=>{try{localStorage.setItem(SKK,JSON.stringify(savedSkins))}catch(e){}};
   const saveSelectedSkins=()=>{try{localStorage.setItem(SELK,JSON.stringify(selectedSkins))}catch(e){}};
-  const rank={breakout:[],pong:[],dino:[],ninja:[],memory:[],flappy:[],snake:[],soccer:[],pancake:[],traffic:[],pacman:[],doodle:[]};
+  const rank={breakout:[],pong:[],pong2:[],dino:[],ninja:[],memory:[],flappy:[],snake:[],soccer:[],pancake:[],traffic:[],pacman:[],doodle:[]};
   let name='',pid='';
   try{
     name=localStorage.getItem(NK)||'';
@@ -678,6 +723,7 @@ const Shell={
 const META=[
   {id:'breakout',icon:'🧱',name:'بریک‌اوت',desc:'آجرها رو بشکن و پاورآپ بگیر',color:'#ff9f43'},
   {id:'pong',icon:'🏓',name:'پینگ‌پنگ',desc:'مقابل بات؛ هرچی سخت‌تر ببری، امتیاز بیشتر',color:'#48dbfb'},
+  {id:'pong2',icon:'🏓',name:'پینگ‌پنگ دونفره',desc:'آنلاین مقابل یه آدم واقعی؛ حریف‌یابی یا کد اتاق برای دوستت',color:'#ff7ad9',norec:true},
   {id:'dino',icon:'🦖',name:'دایناسور',desc:'از روی کاکتوس‌ها بپر',color:'#1dd1a1'},
   {id:'ninja',icon:'🍉',name:'نینجای میوه',desc:'میوه‌ها رو ببر، مراقب بمب باش',color:'#ff4d6d'},
   {id:'memory',icon:'🛸',name:'کارت فضایی',desc:'کارت‌ها رو برگردون و جفت‌های مثل هم رو پیدا کن',color:'#c77dff'},
@@ -954,8 +1000,9 @@ function renderMenu(){
     const stat=m.id==='pong'?`رکورد: <b>${FA(g.best)}</b> · برد: ${FA(g.wins)} · باخت: ${FA(g.losses)}`:`رکورد: <b>${FA(g.best)}</b> · آخرین: ${FA(g.last)} · ${FA(g.plays)} بار بازی`;
     const b=document.createElement('button');
     b.className='card arcadeCard';b.style.setProperty('--c',m.color);b.style.setProperty('--i',META.indexOf(m));
-    const badge=(m.id==='dino'?'🦖 DINO RUN':m.id==='snake'?'🐍 SNAKE LAB':m.id==='breakout'?'🧱 BRICK STORM':m.id==='pong'?'🏓 DUEL ARENA':m.id==='ninja'?'🍉 NINJA MODE':m.id==='memory'?'🛸 MEMORY LAB':m.id==='soccer'?'⚽ SOCCER STAR':m.id==='pancake'?'🥞 PANCAKE TOWER':m.id==='traffic'?'🚦 NEON TRAFFIC':'🐦 SKY RUN');
-    b.innerHTML=`<span class="arcadeScene"><span class="arcadeStars"></span><span class="arcadeBadge">${badge} · LIVE</span><span class="arcadeIcon">${m.icon}</span></span><span class="arcadeInfo"><span class="arcadeName">${m.name}</span><span class="arcadeDesc">${m.desc}</span><span class="arcadeMeta"><span>🏆 ${FA(g.best)} · ${FA(g.plays)} بازی</span><span class="arcadePlay">▶ بازی کن</span></span></span>`;
+    const badge=(m.id==='dino'?'🦖 DINO RUN':m.id==='snake'?'🐍 SNAKE LAB':m.id==='breakout'?'🧱 BRICK STORM':m.id==='pong'?'🏓 DUEL ARENA':m.id==='pong2'?'🌐 ONLINE DUEL':m.id==='ninja'?'🍉 NINJA MODE':m.id==='memory'?'🛸 MEMORY LAB':m.id==='soccer'?'⚽ SOCCER STAR':m.id==='pancake'?'🥞 PANCAKE TOWER':m.id==='traffic'?'🚦 NEON TRAFFIC':'🐦 SKY RUN');
+    const metaTxt=m.id==='pong2'?`🏆 ${FA(g.wins)} برد · ${FA(g.losses)} باخت`:`🏆 ${FA(g.best)} · ${FA(g.plays)} بازی`;
+    b.innerHTML=`<span class="arcadeScene"><span class="arcadeStars"></span><span class="arcadeBadge">${badge} · LIVE</span><span class="arcadeIcon">${m.icon}</span></span><span class="arcadeInfo"><span class="arcadeName">${m.name}</span><span class="arcadeDesc">${m.desc}</span><span class="arcadeMeta"><span>${metaTxt}</span><span class="arcadePlay">▶ بازی کن</span></span></span>`;
     b.onclick=()=>{audio();sfx.ui();openGame(m.id)};
     box.appendChild(b);
   }
@@ -967,12 +1014,13 @@ function openGame(id){
   cur=Games[id];paused=false;In.x=W/2;lastShown=-1;embedRunStarted=false;
   document.body.classList.add('playing');
   $('menu').hidden=true;$('play').hidden=false;
-  $('bs').textContent=FA(Store.best(id));$('bw').hidden=!!cur.norec;$('info').textContent='';$('bp').textContent='⏸';$('bp').hidden=!!cur.embed;
+  $('bs').textContent=FA(Store.best(id));$('bw').hidden=!!cur.norec;$('info').textContent='';$('bp').textContent='⏸';$('bp').hidden=!!(cur.embed||cur.nopause);
   if(cur.embed){cv.hidden=true;gameFrame.hidden=false;gameFrame.srcdoc=decodeEmbed(EMBED_B64[id]);return;}
   cv.hidden=false;gameFrame.hidden=true;gameFrame.srcdoc='';
   cur.enter();
 }
 function goHome(){
+  if(cur&&cur.leave)cur.leave();
   Shell.leave();cur=null;paused=false;embedRunStarted=false;
   gameFrame.hidden=true;gameFrame.srcdoc='';cv.hidden=false;$('bp').hidden=false;
   document.body.classList.remove('playing');
@@ -1436,6 +1484,537 @@ function key(c){
   setDiff(m);return true;
 }
 return{id,enter,update,draw,down,up(){},key,playing:()=>st==='play'||st==='serve',idle:()=>st==='ready'||st==='over'};
+})();
+/* ================= PONG ONLINE (دونفره آنلاین) ================= */
+/* معماری: میزبان (سازنده‌ی اتاق) فیزیک رو حساب می‌کنه و ۳۰ بار در ثانیه وضعیت رو می‌فرسته؛ مهمان فقط راکتش رو می‌فرسته.
+   ارتباط از طریق Supabase Realtime (broadcast) انجام می‌شه و برای بازی با کد اتاق به هیچ جدول SQL ای نیاز نیست. */
+Games.pong2=(()=>{
+const id='pong2',WIN=7,SID=Math.random().toString(36).slice(2,9)+Date.now().toString(36).slice(-4);
+const BASE=340,MAXS=640,RADD=24,PADW=84,PADH=12,BR=7,GM=8,NET_MS=33,DEAD_MS=10000,AWAY_MS=25000;
+const hp={x:W/2,y:H-62,w:PADW,h:PADH,vx:0},gp={x:W/2,y:48,w:PADW,h:PADH,vx:0};
+const ball={x:W/2,y:H/2,vx:0,vy:0,r:BR,trail:[]};
+let role='',ph='menu',code='',topic='',quick=false,qTries=0,queued=false,roomTs=0;
+let oppSid='',oppName='',oppAv='',oppLeft=false,oppAway=false,lastRx=0;
+let link=null,netDown=false;
+let st='serve',hs=0,gs=0,rally=0,longest=0,serveT=0,serveDir=1,t=0,msg='',msgT=0;
+let meV=W/2,meVx=0,gTarget=W/2,hTarget=W/2,seq=0,lastQ=0,rtt=0,ping=0;
+let result=null,recorded=false,myAgain=false,oppAgain=false;
+let tmNet=0,tmSlow=0,tmHello=0,tmConn=0,tmTouch=0,tmWatch=0,tmWait=0,tmJoin=0;
+let lastX=-1,lastXT=0,escUntil=0,toastT=0,toastMsg='',awaySince=0;
+const r1=v=>Math.round(v*10)/10;
+const num=(v,d)=>Number.isFinite(+v)?+v:d;
+const online=()=>navigator.onLine!==false&&Net.on;
+const myScore=()=>role==='host'?hs:gs, oppScore=()=>role==='host'?gs:hs;
+const V=x=>role==='guest'?W-x:x, VY=y=>role==='guest'?H-y:y;
+const el=k=>$(k);
+function err(s){const e=el('p2err');if(e)e.textContent=s||''}
+function toast(s,sec=2.5){toastMsg=s;toastT=sec}
+function showUI(which){
+  const ui=el('p2ui');if(!ui)return;
+  ui.hidden=!which;
+  ['menu','wait','end'].forEach(k=>{const b=el('p2'+k);if(b)b.hidden=(k!==which)});
+  ui.classList.toggle('over',which==='end');
+}
+function updateStat(){
+  const g=Store.get(id),s=el('p2stat');
+  if(s)s.textContent='برد: '+FA(g.wins)+' · باخت: '+FA(g.losses);
+}
+function showWait(title,codeText,desc,canCopy,canCancel=true){
+  el('p2wt').textContent=title;
+  el('p2cd').textContent=codeText||'';el('p2cd').hidden=!codeText;
+  el('p2wd').textContent=desc||'';
+  el('p2copy').hidden=!canCopy;
+  el('p2cancel').hidden=!canCancel;
+  showUI('wait');
+}
+/* ---------- اتصال Realtime (پروتکل Phoenix، مثل چت) ---------- */
+function Link(key,on){
+  const TOPIC='realtime:pong-r-'+key;
+  let ws=null,ref=0,hb=0,joined=false,dead=false,retry=0,rt=0,jt=0;
+  function raw(o){if(ws&&ws.readyState===1){o.ref=String(++ref);try{ws.send(JSON.stringify(o));return true}catch(e){}}return false}
+  function connect(){
+    if(dead)return;
+    let my;
+    try{my=new WebSocket(`wss://${new URL(SB_URL).host}/realtime/v1/websocket?apikey=${encodeURIComponent(SB_KEY)}&vsn=1.0.0`)}catch(e){sched();return}
+    ws=my;joined=false;
+    clearTimeout(jt);jt=setTimeout(()=>{if(!joined&&ws===my){try{my.close()}catch(e){}}},9000);
+    my.onopen=()=>{
+      if(ws!==my)return;
+      raw({topic:TOPIC,event:'phx_join',payload:{config:{broadcast:{self:false,ack:false},presence:{key:''}}}});
+      clearInterval(hb);hb=setInterval(()=>raw({topic:'phoenix',event:'heartbeat',payload:{}}),20000);
+    };
+    my.onmessage=e=>{
+      if(ws!==my)return;
+      let x=null;try{x=JSON.parse(e.data)}catch(_){return}
+      if(!x||x.topic!==TOPIC)return;
+      if(x.event==='phx_reply'){
+        if(x.payload&&x.payload.status==='ok'){if(!joined){joined=true;retry=0;clearTimeout(jt);on.status('open')}}
+        else if(!joined){try{my.close()}catch(e){}}
+        return;
+      }
+      if(x.event==='phx_error'||x.event==='phx_close'){try{my.close()}catch(e){}return}
+      if(x.event==='broadcast'){const p=x.payload;if(p&&typeof p.event==='string'&&p.payload&&typeof p.payload==='object')on.msg(p.event,p.payload)}
+    };
+    my.onclose=()=>{if(ws!==my)return;const was=joined;joined=false;clearInterval(hb);clearTimeout(jt);if(!dead){on.status('down',was);sched()}};
+    my.onerror=()=>{};
+  }
+  function sched(){if(dead)return;clearTimeout(rt);retry=Math.min(retry+1,6);rt=setTimeout(connect,Math.min(4000,400*retry))}
+  function send(ev,pl){if(!joined)return false;return raw({topic:TOPIC,event:'broadcast',payload:{type:'broadcast',event:ev,payload:pl}})}
+  function close(){
+    dead=true;clearTimeout(rt);clearTimeout(jt);clearInterval(hb);
+    const w=ws;ws=null;
+    try{if(w&&w.readyState===1){w.send(JSON.stringify({topic:TOPIC,event:'phx_leave',payload:{},ref:String(++ref)}))}}catch(e){}
+    try{if(w)w.close()}catch(e){}
+  }
+  connect();
+  return{send,close,isOpen:()=>joined};
+}
+function out(ev,pl,to){if(!link)return false;pl.f=SID;if(to)pl.to=to;return link.send(ev,pl)}
+const hello=to=>({r:role,n:String(Store.name()||'بازیکن').slice(0,14),a:String(Pref.get('av')||'👾').slice(0,4),ts:roomTs,...(to?{to}:{})});
+/* ---------- صف حریف‌یابی (فقط برای «پیدا کردن حریف»؛ نیاز به SQL) ---------- */
+function cancelQueue(){
+  try{fetch(`${SB_URL}/rest/v1/rpc/pong_cancel_match`,{method:'POST',keepalive:true,headers:{apikey:SB_KEY,'Content-Type':'application/json'},body:JSON.stringify({p_pid:SID})}).catch(()=>{})}catch(e){}
+}
+/* ---------- چرخه‌ی زندگی ---------- */
+function teardown(){
+  clearInterval(tmNet);clearInterval(tmSlow);clearInterval(tmHello);clearInterval(tmTouch);clearInterval(tmWatch);
+  clearTimeout(tmConn);clearTimeout(tmWait);clearTimeout(tmJoin);
+  tmNet=tmSlow=tmHello=tmTouch=tmWatch=tmConn=tmWait=tmJoin=0;
+  if(link){link.close();link=null}
+  if(queued){queued=false;cancelQueue()}
+  role='';ph='menu';code='';topic='';quick=false;oppSid='';oppName='';oppAv='';oppLeft=false;oppAway=false;netDown=false;
+  result=null;recorded=false;myAgain=oppAgain=false;awaySince=0;
+}
+function leave(){
+  if(link&&ph==='match'&&oppSid&&!oppLeft)out('bye',{},oppSid);
+  teardown();showUI(null);
+}
+function resetSim(){
+  hs=gs=rally=longest=0;msg='';msgT=0;result=null;recorded=false;myAgain=oppAgain=false;seq=0;lastQ=0;
+  hp.x=gp.x=W/2;hp.vx=gp.vx=0;gTarget=hTarget=W/2;
+  ball.x=W/2;ball.y=H/2;ball.vx=ball.vy=0;ball.trail=[];
+  st='serve';serveT=3;
+}
+function enter(){
+  teardown();resetSim();meV=W/2;In.x=W/2;toastT=0;
+  err('');updateStat();showUI('menu');
+  const q=el('p2quick');if(q)q.disabled=false;
+  Shell.hud(0);Shell.info('');
+}
+function fail(m){teardown();resetSim();showUI('menu');err(m);const q=el('p2quick');if(q)q.disabled=false;updateStat()}
+function cancel(){teardown();resetSim();err('');showUI('menu');const q=el('p2quick');if(q)q.disabled=false}
+function startLink(){
+  const key=(quick?'q':'c')+code;
+  ph='connecting';roomTs=Date.now();
+  showWait(role==='host'?'در حال ساخت اتاق...':'در حال ورود...','','لحظه‌ای صبر کن',false);
+  link=Link(key,{status:onStatus,msg:onMsg});
+  clearInterval(tmNet);tmNet=setInterval(tick,NET_MS);
+  clearInterval(tmSlow);tmSlow=setInterval(slow,1000);
+  clearInterval(tmWatch);tmWatch=setInterval(watch,500);
+  clearTimeout(tmConn);tmConn=setTimeout(()=>{if(ph==='connecting')fail('اتصال به سرور برقرار نشد؛ اینترنتت رو چک کن و دوباره بزن.')},14000);
+}
+function onStatus(s){
+  if(!link)return;
+  if(s==='open'){
+    netDown=false;clearTimeout(tmConn);
+    if(ph==='connecting'){
+      if(role==='host'){
+        ph='waiting';
+        if(quick){
+          showWait('در حال پیدا کردن حریف...','','به محض پیدا شدن حریف بازی شروع می‌شه',false);
+          clearInterval(tmTouch);tmTouch=setInterval(()=>{Net.rpc('pong_touch',{p_pid:SID})},8000);
+          clearTimeout(tmWait);tmWait=setTimeout(()=>{if(ph==='waiting')fail('حریفی پیدا نشد. چند لحظه بعد دوباره امتحان کن یا اتاق بساز.')},70000);
+        }else{
+          showWait('اتاق ساخته شد','کد: '+code,'این کد رو به دوستت بده تا وارد بشه',true);
+        }
+      }else{
+        ph='joining';
+        showWait('در حال ورود به اتاق...','','','',true);
+        clearTimeout(tmJoin);tmJoin=setTimeout(()=>{
+          if(ph!=='joining')return;
+          if(quick&&qTries<3){teardown();quickMatch(true);return}
+          fail(quick?'حریف قطع شد. دوباره تلاش کن.':'اتاقی با این کد پیدا نشد (کد اشتباهه یا اتاق بسته شده).');
+        },quick?7000:9000);
+      }
+      clearInterval(tmHello);tmHello=setInterval(sayHello,1000);sayHello();
+    }
+  }else if(s==='down'){
+    if(ph==='match')netDown=true;
+  }
+}
+function sayHello(){if(ph==='waiting'||ph==='joining')out('hi',hello())}
+function pair(m){
+  oppSid=String(m.f).slice(0,24);oppName=String(m.n||'بازیکن').slice(0,14);oppAv=String(m.a||'👾').slice(0,4);
+  lastRx=performance.now();oppLeft=false;oppAway=false;
+  clearInterval(tmHello);tmHello=0;clearTimeout(tmWait);clearTimeout(tmJoin);clearInterval(tmTouch);tmTouch=0;
+  queued=false;
+  ph='match';
+  if(role==='host'){out('hi',hello(oppSid),oppSid);startMatch()}
+  else{resetSim();showUI(null)}
+  sync();
+}
+function startMatch(){
+  resetSim();ph='match';st='serve';serveT=3;serveDir=Math.random()<.5?1:-1;
+  showUI(null);out('rs',{},oppSid);sfx.launch();sync();
+}
+function onHello(m){
+  if(role==='host'){
+    if(m.r==='host'){
+      if(ph==='waiting'&&!quick&&(num(m.ts,0)<roomTs||(num(m.ts,0)===roomTs&&String(m.f)<SID))){
+        teardown();createRoom(true);
+      }
+      return;
+    }
+    if(m.r!=='guest')return;
+    if(ph==='waiting'&&!oppSid)pair(m);
+    else if(ph==='match'&&oppSid===m.f){out('hi',hello(oppSid),oppSid);lastRx=performance.now()}
+    else out('full',{},m.f);
+  }else if(role==='guest'){
+    if(m.r!=='host')return;
+    if(ph==='joining')pair(m);
+    else if(ph==='match'&&oppSid===m.f)lastRx=performance.now();
+  }
+}
+function onMsg(ev,m){
+  if(!m||m.f===SID||(m.to&&m.to!==SID))return;
+  if(ev==='hi'){onHello(m);return}
+  if(ev==='full'){if(ph==='joining')fail('این اتاق پره (یه نفر دیگه قبلاً وارد شده).');return}
+  if(ph!=='match'||m.f!==oppSid)return;
+  if(oppLeft)return;
+  lastRx=performance.now();
+  if(ev==='bye'){oppGone('left');return}
+  if(ev==='s'){if(role==='guest')onSnap(m)}
+  else if(ev==='x'){if(role==='host')gTarget=W-clamp(num(m.x,W/2),PADW/2,W-PADW/2)}
+  else if(ev==='e'){if(role==='guest')onEvt(m)}
+  else if(ev==='rs'){if(role==='guest'){resetSim();ph='match';showUI(null);sync()}}
+  else if(ev==='ag'){oppAgain=true;if(st==='over'){if(role==='host'&&myAgain)startMatch();else showEnd()}}
+  else if(ev==='pg'){if(role==='host')out('pn',{c:num(m.c,0)},oppSid)}
+  else if(ev==='pn'){if(role==='guest'){const d=performance.now()-num(m.c,0);if(d>=0&&d<5000){rtt=rtt?rtt*.7+d*.3:d;ping=Math.round(rtt)}}}
+  else if(ev==='hb'){const aw=!!m.aw;if(aw&&!oppAway)awaySince=performance.now();oppAway=aw}
+  else if(ev==='ff'){forfeitLoss()}
+}
+function tick(){
+  if(ph!=='match'||!link||oppLeft)return;
+  const now=performance.now();
+  if(role==='host'){
+    out('s',{q:++seq,s:st==='serve'?0:st==='play'?1:2,a:r1(ball.x),b:r1(ball.y),c:r1(ball.vx),d:r1(ball.vy),h:r1(hp.x),p:hs,g:gs,r:rally,t:+Math.max(0,serveT).toFixed(2)},oppSid);
+  }else{
+    const x=r1(meV);
+    if(x!==lastX||now-lastXT>250){lastX=x;lastXT=now;out('x',{x},oppSid)}
+  }
+}
+function slow(){
+  if(ph!=='match'||!link||oppLeft)return;
+  out('hb',{aw:document.hidden?1:0},oppSid);
+  if(role==='guest')out('pg',{c:performance.now()},oppSid);
+  sync();
+}
+function watch(){
+  if(ph!=='match'||oppLeft)return;
+  const now=performance.now(),limit=oppAway?AWAY_MS:DEAD_MS;
+  if(now-lastRx>limit){oppGone('lost');return}
+  /* حریف وصله ولی مدت زیادی از صفحه‌ی بازی بیرونه: بازی نباید برای همیشه گیر کنه */
+  if(oppAway&&st!=='over'&&now-awaySince>AWAY_MS){out('ff',{},oppSid);forfeitWin()}
+}
+document.addEventListener('visibilitychange',()=>{
+  if(ph==='match'&&link&&!oppLeft){out('hb',{aw:document.hidden?1:0},oppSid)}
+});
+function forfeitWin(){
+  if(ph!=='match'||st==='over')return;
+  st='over';oppAway=false;result={win:true,reason:'away',forfeit:true};
+  if(!recorded){recorded=true;if(hs+gs>0)Store.add(id,'wins')}
+  sfx.clear();sync();showEnd();
+}
+function forfeitLoss(){
+  if(ph!=='match'||st==='over')return;
+  st='over';oppAway=false;result={win:false,reason:'away',forfeit:true};
+  if(!recorded){recorded=true;if(hs+gs>0)Store.add(id,'losses')}
+  sfx.over();sync();showEnd();
+}
+function oppGone(why){
+  if(ph!=='match'||oppLeft)return;
+  oppLeft=true;oppAway=false;
+  if(st!=='over'){
+    st='over';result={win:true,reason:why,forfeit:true};
+    if(!recorded){recorded=true;if(hs+gs>0)Store.add(id,'wins')}
+    sfx.clear();
+  }
+  showEnd();
+}
+/* ---------- فیزیک (فقط میزبان) ---------- */
+function launch(){
+  const a=Math.random()*.9-.45;
+  ball.vx=BASE*Math.sin(a);ball.vy=serveDir*BASE*Math.cos(a);ball.trail=[];
+}
+function evt(k,w,extra){
+  const p={k};if(w!==undefined)p.w=w;p.p=hs;p.g=gs;if(extra)Object.assign(p,extra);
+  out('e',p,oppSid);
+  playEvt(k,w);
+}
+function playEvt(k,w){
+  const hostSide=role==='host';
+  if(k==='w')sfx.wall();
+  else if(k==='h'){const mine=(w===0)===hostSide;if(mine)sfx.pHit();else sfx.bHit()}
+  else if(k==='p'){
+    const mine=(w===0)===hostSide;
+    if(mine){sfx.point();msg='امتیاز!'}else{sfx.miss();msg='امتیاز حریف'}
+    msgT=1.2;sync();
+  }
+  else if(k==='sv')sfx.launch();
+}
+function hit(p,dir,who){
+  const rel=clamp((ball.x-p.x)/(p.w/2),-1,1);
+  rally++;longest=Math.max(longest,rally);
+  const sp=Math.min(BASE+rally*RADD,MAXS);
+  ball.vx=sp*Math.sin(rel)+clamp(p.vx*.05,-30,30);
+  ball.vy=dir*sp*Math.cos(rel);
+  ball.y=dir<0?p.y-ball.r:p.y+p.h+ball.r;
+  evt('h',who,{a:r1(ball.x),b:r1(ball.y),c:r1(ball.vx),d:r1(ball.vy)});
+}
+function point(who){
+  if(who===0)hs++;else gs++;
+  evt('p',who);
+  if(hs>=WIN||gs>=WIN){
+    st='over';result={win:hs>gs,reason:'score'};
+    evt('o',hs>gs?0:1);
+    onOver();return;
+  }
+  st='serve';serveDir=who===0?-1:1;serveT=1.6;rally=0;
+  ball.x=W/2;ball.y=H/2;ball.vx=ball.vy=0;ball.trail=[];
+}
+function collide(){
+  const r=ball.r;
+  if(ball.x<r){ball.x=r;ball.vx=Math.abs(ball.vx);evt('w')}
+  else if(ball.x>W-r){ball.x=W-r;ball.vx=-Math.abs(ball.vx);evt('w')}
+  if(ball.vy>0&&ball.y+r>=hp.y&&ball.y-r<hp.y+hp.h&&Math.abs(ball.x-hp.x)<=hp.w/2+r*.6)hit(hp,-1,0);
+  else if(ball.vy<0&&ball.y-r<=gp.y+gp.h&&ball.y+r>gp.y&&Math.abs(ball.x-gp.x)<=gp.w/2+r*.6+GM)hit(gp,1,1);
+  if(ball.y<-r*2)point(0);
+  else if(ball.y>H+r*2)point(1);
+}
+function localInput(dt){
+  const kx=(keys.ArrowRight||keys.KeyD?1:0)-(keys.ArrowLeft||keys.KeyA?1:0);
+  if(kx)In.x+=kx*600*dt;
+  In.x=clamp(In.x,PADW/2,W-PADW/2);
+  const o=meV;meV+=(In.x-meV)*Math.min(1,dt*28);
+  meVx=dt>0?(meV-o)/dt:0;
+}
+function hostStep(dt){
+  hp.x=meV;hp.vx=meVx;
+  const o=gp.x;gp.x+=(gTarget-gp.x)*Math.min(1,dt*30);gp.vx=dt>0?(gp.x-o)/dt:0;
+  if(st==='serve'){
+    serveT-=dt;
+    if(serveT<=0){serveT=0;launch();st='play';evt('sv')}
+    return;
+  }
+  if(st!=='play')return;
+  const sp=Math.hypot(ball.vx,ball.vy),steps=Math.max(1,Math.ceil(sp*dt/4)),h=dt/steps;
+  for(let i=0;i<steps&&st==='play';i++){ball.x+=ball.vx*h;ball.y+=ball.vy*h;collide()}
+  if(st==='play'){ball.trail.push({x:ball.x,y:ball.y});if(ball.trail.length>10)ball.trail.shift()}
+}
+/* ---------- مهمان: دریافت وضعیت و پیش‌بینی ---------- */
+/* موقعیت و سرعت توپ از میزبان: کمی جلو می‌اندازیم (نصف پینگ) و نرم به سمتش می‌ریم؛ اگه خیلی دور بود، می‌پریم */
+function applyBall(m,playing,smooth){
+  const lead=clamp(rtt/2000,0,.15),vx=num(m.c,0),vy=num(m.d,0);
+  let tx=num(m.a,W/2),ty=num(m.b,H/2);
+  if(playing){tx+=vx*lead;ty+=vy*lead}
+  tx=clamp(tx,ball.r,W-ball.r);
+  if(!smooth||Math.hypot(tx-ball.x,ty-ball.y)>70){ball.x=tx;ball.y=ty;ball.trail=[]}
+  else{ball.x+=(tx-ball.x)*.5;ball.y+=(ty-ball.y)*.5}
+  ball.vx=vx;ball.vy=vy;
+}
+function onSnap(m){
+  if(st==='over')return;
+  const q=num(m.q,0);
+  if(q<=lastQ)return;lastQ=q;
+  const s=num(m.s,0);
+  hs=num(m.p,hs);gs=num(m.g,gs);rally=num(m.r,rally);serveT=num(m.t,0);
+  hTarget=clamp(num(m.h,W/2),PADW/2,W-PADW/2);
+  applyBall(m,s===1,s===1&&st==='play');
+  if(s===0)st='serve';
+  else if(s===1)st='play';
+  else if(s===2&&st!=='over'){st='over';result={win:gs>hs,reason:'score'};onOver()}
+  sync();
+}
+function onEvt(m){
+  hs=num(m.p,hs);gs=num(m.g,gs);
+  const w=m.w===undefined?undefined:num(m.w,0);
+  if(m.k==='o'){
+    if(st!=='over'){st='over';result={win:gs>hs,reason:'score'};onOver()}
+    return;
+  }
+  if(m.k==='h'&&m.a!==undefined&&st==='play')applyBall(m,true,true);
+  playEvt(m.k,w);
+}
+function guestStep(dt){
+  hp.x+=(hTarget-hp.x)*Math.min(1,dt*22);
+  gp.x=W-meV;
+  if(st==='serve'){serveT=Math.max(0,serveT-dt);return}
+  if(st!=='play')return;
+  ball.x+=ball.vx*dt;ball.y+=ball.vy*dt;
+  const r=ball.r;
+  if(ball.x<r){ball.x=r;ball.vx=Math.abs(ball.vx)}
+  else if(ball.x>W-r){ball.x=W-r;ball.vx=-Math.abs(ball.vx)}
+  ball.trail.push({x:ball.x,y:ball.y});if(ball.trail.length>10)ball.trail.shift();
+}
+/* ---------- پایان بازی و رابط ---------- */
+function onOver(){
+  if(!recorded){recorded=true;Store.add(id,result.win?'wins':'losses');if(result.win)sfx.clear();else sfx.over()}
+  sync();showEnd();
+}
+function showEnd(){
+  if(!result)return;
+  const w=result.win;
+  el('p2et').textContent=w?'بردی! 🎉':'باختی!';
+  el('p2et').style.color=w?'#7dffb0':'#ff6b81';
+  el('p2es').textContent=FA(myScore())+' - '+FA(oppScore());
+  let note='';
+  if(result.reason==='left')note='حریف از بازی خارج شد';
+  else if(result.reason==='lost')note='ارتباط با حریف قطع شد';
+  else if(result.reason==='away')note=w?'حریف مدت زیادی از صفحه‌ی بازی خارج بود':'چون مدت زیادی از صفحه‌ی بازی خارج بودی، بازی رو باختی';
+  else if(longest>0)note='طولانی‌ترین رالی: '+FA(longest);
+  el('p2en').textContent=note;
+  const ag=el('p2again');
+  if(oppLeft){ag.disabled=true;ag.textContent='حریف رفت'}
+  else if(myAgain){ag.disabled=true;ag.textContent='منتظر حریف...'}
+  else{ag.disabled=false;ag.textContent=oppAgain?'🔁 حریف آماده‌ست؛ بزن بریم':'🔁 بازی دوباره'}
+  showUI('end');
+}
+function sync(){
+  if(ph!=='match'){return}
+  Shell.hud(myScore());
+  Shell.info((oppName||'حریف')+' '+FA(oppScore())+(role==='guest'&&ping?' · '+FA(ping)+' ms':''));
+}
+/* ---------- شروع اتصال ---------- */
+function genCode(){
+  const a=new Uint32Array(1);
+  if(window.crypto&&crypto.getRandomValues)crypto.getRandomValues(a);else a[0]=Math.floor(Math.random()*4294967295);
+  return String(100000+a[0]%900000);
+}
+function createRoom(retry){
+  if(ph!=='menu')return;
+  if(!online()){err('اینترنت نداری.');return}
+  if(!retry)err('');
+  role='host';quick=false;code=genCode();startLink();
+}
+function joinRoom(){
+  if(ph!=='menu')return;
+  if(!online()){err('اینترنت نداری.');return}
+  let c=String(el('p2code').value||'').replace(/[۰-۹]/g,d=>'۰۱۲۳۴۵۶۷۸۹'.indexOf(d)).replace(/[٠-٩]/g,d=>'٠١٢٣٤٥٦٧٨٩'.indexOf(d)).replace(/\s+/g,'');
+  if(!/^\d{6}$/.test(c)){err('کد اتاق یه عدد ۶ رقمیه.');el('p2code').focus();return}
+  err('');role='guest';quick=false;code=c;startLink();
+}
+async function quickMatch(again){
+  if(ph!=='menu')return;
+  if(!online()){err('اینترنت نداری.');return}
+  if(!again){qTries=0;err('')}
+  qTries++;quick=true;ph='connecting';
+  el('p2quick').disabled=true;
+  showWait('در حال پیدا کردن حریف...','','لحظه‌ای صبر کن',false);
+  const r=await Net.rpc('pong_find_match',{p_pid:SID,p_name:String(Store.name()||'بازیکن').slice(0,14)});
+  if(ph!=='connecting'||!quick){if(r&&r.role==='host')cancelQueue();return}
+  if(!r||typeof r!=='object'||!r.room||(r.role!=='host'&&r.role!=='guest')){
+    fail('«پیدا کردن حریف» هنوز راه‌اندازی نشده یا اینترنت ضعیفه. فعلاً با «ساخت اتاق» بازی کن.');return;
+  }
+  role=r.role;code=String(r.room).replace(/[^A-Za-z0-9]/g,'').slice(0,12);queued=(role==='host');
+  startLink();
+}
+function copyCode(){
+  const s=code;
+  const done=()=>{const b=el('p2copy');b.textContent='✅ کپی شد';setTimeout(()=>{if(b)b.textContent='📋 کپی کد'},1500)};
+  try{if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(s).then(done,()=>{});return}}catch(e){}
+  try{const i=el('p2code');const o=i.value;i.value=s;i.select();document.execCommand('copy');i.value=o;done()}catch(e){}
+}
+function wire(){
+  el('p2quick').onclick=()=>{audio();sfx.ui();quickMatch(false)};
+  el('p2create').onclick=()=>{audio();sfx.ui();createRoom(false)};
+  el('p2join').onclick=()=>{audio();sfx.ui();joinRoom()};
+  el('p2code').onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();joinRoom()}};
+  el('p2code').oninput=e=>{
+    const v=e.target.value.replace(/[۰-۹]/g,d=>'۰۱۲۳۴۵۶۷۸۹'.indexOf(d)).replace(/[٠-٩]/g,d=>'٠١٢٣٤٥٦٧٨٩'.indexOf(d)).replace(/\D/g,'').slice(0,6);
+    if(v!==e.target.value)e.target.value=v;
+  };
+  el('p2copy').onclick=()=>{sfx.ui();copyCode()};
+  el('p2cancel').onclick=()=>{sfx.ui();cancel()};
+  el('p2again').onclick=()=>{
+    sfx.ui();
+    if(ph!=='match'||st!=='over'||oppLeft||myAgain)return;
+    myAgain=true;out('ag',{},oppSid);
+    if(role==='host'&&oppAgain){startMatch();return}
+    showEnd();
+  };
+  el('p2exit').onclick=()=>{sfx.ui();leave();enter()};
+}
+wire();
+/* ---------- حلقه‌ی بازی ---------- */
+function update(dt){
+  t+=dt;if(msgT>0)msgT-=dt;if(toastT>0)toastT-=dt;
+  if(ph!=='match'){return}
+  localInput(dt);
+  if(role==='host')hostStep(dt);else guestStep(dt);
+}
+function pad(wx,top,mine){
+  const cx=V(wx),cy=VY(top+PADH/2);
+  ctx.fillStyle=mine?'#ffcf5c':'#5fd4ff';rr(cx-PADW/2,cy-PADH/2,PADW,PADH,6);ctx.fill();
+}
+function draw(){
+  const g=ctx.createLinearGradient(0,0,0,H);g.addColorStop(0,'#0e3a43');g.addColorStop(1,'#0a1f2b');
+  ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
+  ctx.strokeStyle='rgba(255,255,255,.08)';ctx.lineWidth=3;ctx.strokeRect(6,6,W-12,H-12);
+  ctx.setLineDash([12,12]);ctx.strokeStyle='rgba(255,255,255,.18)';ctx.lineWidth=3;
+  ctx.beginPath();ctx.moveTo(10,H/2);ctx.lineTo(W-10,H/2);ctx.stroke();ctx.setLineDash([]);
+  if(ph!=='match')return;
+  txt(FA(oppScore()),W/2,H/2-36,70,'rgba(255,255,255,.09)');
+  txt(FA(myScore()),W/2,H/2+96,70,'rgba(255,255,255,.09)');
+  txt((oppAv?oppAv+' ':'')+(oppName||'حریف'),W-14,26,13,'rgba(255,255,255,.55)','400','right');
+  txt('تو',W-14,H-14,13,'rgba(255,255,255,.55)','400','right');
+  const glow=GFX.fx>0&&GFX.bloom;
+  if(glow){ctx.shadowColor='rgba(120,220,255,.9)';ctx.shadowBlur=9*GFX.fx}
+  const hostMine=role==='host';
+  pad(hp.x,hp.y,hostMine);
+  pad(gp.x,gp.y,!hostMine);
+  if(st!=='over'){
+    const n=ball.trail.length;
+    ctx.fillStyle='#fff';
+    for(let i=0;i<n;i++){ctx.globalAlpha=i/n*.3;ctx.beginPath();ctx.arc(V(ball.trail[i].x),VY(ball.trail[i].y),ball.r*(i/n),0,6.283);ctx.fill()}
+    const bx=V(ball.x),by=VY(ball.y);
+    ctx.globalAlpha=.2;ctx.beginPath();ctx.arc(bx,by,ball.r+5,0,6.283);ctx.fill();
+    ctx.globalAlpha=1;ctx.beginPath();ctx.arc(bx,by,ball.r,0,6.283);ctx.fill();
+  }
+  if(glow){ctx.shadowBlur=0;ctx.shadowColor='transparent'}
+  ctx.globalAlpha=1;
+  if(st==='play'&&rally>=3)txt('رالی ×'+FA(rally),14,H-14,14,'#ffd166','700','left');
+  const pulse=.55+.45*Math.sin(t*4);
+  if(st==='serve'){
+    ctx.globalAlpha=pulse;txt('آماده باش...',W/2,H/2-70,18,'#fff','400');ctx.globalAlpha=1;
+    if(serveT>0)txt(FA(Math.ceil(serveT)),W/2,H/2+10,64,'#fff');
+  }
+  if(msgT>0&&st==='serve'){ctx.globalAlpha=clamp(msgT*2,0,1);txt(msg,W/2,H/2+150,16,'#ffd166');ctx.globalAlpha=1}
+  if(st==='over')dim(.55);
+  if(oppAway&&st!=='over'){dim(.45);txt('حریف از صفحه‌ی بازی خارج شده',W/2,H/2,18,'#ffd166');txt('کمی صبر کن...',W/2,H/2+30,14,'#cfc4ff','400')}
+  if(netDown&&st!=='over'){dim(.55);txt('اتصال قطع شد',W/2,H/2-10,24,'#ff6b81');txt('در حال اتصال دوباره...',W/2,H/2+24,15,'#cfc4ff','400')}
+  if(toastT>0){ctx.globalAlpha=clamp(toastT*2,0,1);rr(40,H-120,W-80,44,10);ctx.fillStyle='rgba(8,14,34,.92)';ctx.fill();txt(toastMsg,W/2,H-92,14,'#fff','700');ctx.globalAlpha=1}
+}
+function down(){}
+function key(c){
+  if(c!=='Escape')return false;
+  if(ph==='match'&&st!=='over'&&!oppLeft){
+    const now=Date.now();
+    if(now<escUntil){leave();enter();return true}
+    escUntil=now+2500;toast('برای خروج دوباره Esc بزن؛ حریفت برنده حساب می‌شه');return true;
+  }
+  if(ph!=='menu'){leave();enter();return true}
+  return false;
+}
+/* قبل از رفتن به منو: وسط بازی، یه بار هشدار می‌ده و بار دوم خارج می‌شه */
+function confirmLeave(){
+  if(ph==='match'&&st!=='over'&&!oppLeft){
+    const now=Date.now();
+    if(now<escUntil)return true;
+    escUntil=now+2500;toast('برای خروج دوباره بزن؛ حریفت برنده حساب می‌شه');return false;
+  }
+  return true;
+}
+return{id,norec:true,enter,update,draw,down,up(){},key,leave,confirmLeave,nopause:true,playing:()=>false,idle:()=>ph!=='match'||st==='over'};
 })();
 /* ================= DINO ================= */
 Games.dino=(()=>{
@@ -3225,7 +3804,7 @@ function updateFsButtons(){
 }
 $('fsMenuBtn').onclick=e=>{e.currentTarget.blur();toggleFullscreen()};
 $('bf').onclick=e=>{e.currentTarget.blur();toggleFullscreen()};
-$('bh').onclick=e=>{e.currentTarget.blur();goHome()};
+$('bh').onclick=e=>{e.currentTarget.blur();if(cur&&cur.confirmLeave&&!cur.confirmLeave())return;goHome()};
 $('bp').onclick=e=>{togglePause();e.currentTarget.blur()};
 $('bm').onclick=e=>{toggleMute();e.currentTarget.blur()};
 addEventListener('fullscreenchange',updateFsButtons);
@@ -3236,8 +3815,8 @@ addEventListener('pointerdown',()=>{ensureFullscreen()},{once:true,passive:true}
 function autoPause(){if(cur&&cur.playing())setPause(true)}
 document.addEventListener('visibilitychange',()=>{if(document.hidden){autoPause();Store.flush();Presence.mark(Store.pid(),false);Net.presence(false).catch(()=>{})}else{Net.presence(true).catch(()=>{})}});
 addEventListener('blur',autoPause);
-addEventListener('pagehide',()=>{Presence.mark(Store.pid(),false);Net.presence(false).catch(()=>{});Shell.leave();Store.flush()});
-addEventListener('beforeunload',()=>{Presence.mark(Store.pid(),false);Net.presence(false).catch(()=>{});Shell.leave();Store.flush()});
+addEventListener('pagehide',()=>{Presence.mark(Store.pid(),false);Net.presence(false).catch(()=>{});if(cur&&cur.leave)cur.leave();Shell.leave();Store.flush()});
+addEventListener('beforeunload',()=>{Presence.mark(Store.pid(),false);Net.presence(false).catch(()=>{});if(cur&&cur.leave)cur.leave();Shell.leave();Store.flush()});
 /* ================= post fx (فقط در حالت بالا و پرو) ================= */
 let vig=null,scan=null;
 function postfx(){
