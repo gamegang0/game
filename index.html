@@ -397,6 +397,33 @@ body.memoryFS #memoryFsToggle{display:block}
 @media(prefers-reduced-motion:reduce){body.memoryFS *{animation:none!important;transition:none!important}}
 </style>
 
+<style id="titleFx">
+.ttl{display:inline-block;font-size:10px;font-weight:900;padding:2px 8px;border-radius:99px;margin:0 6px;white-space:nowrap;vertical-align:middle}
+.rankHero .ttl{display:block;margin:2px auto 4px;width:max-content;max-width:100%;font-size:11px}
+.ttl.t1{color:#1a0b00;background:linear-gradient(90deg,#ff3df0,#ffe77d,#35f2ff,#ff3df0);background-size:300% 100%;animation:lgFlow 2.2s linear infinite,lgPulse 1.1s ease-in-out infinite alternate;box-shadow:0 0 14px #ffd84a,0 0 28px rgba(255,61,240,.6)}
+.ttl.t2{color:#fff;background:linear-gradient(90deg,#7a5cff,#c9b8ff,#7a5cff);background-size:250% 100%;animation:lgFlow 3.2s linear infinite;box-shadow:0 0 12px rgba(150,120,255,.8)}
+.ttl.t3{color:#fff;background:linear-gradient(90deg,#c46a1c,#ffb066,#c46a1c);background-size:250% 100%;animation:lgFlow 4.5s linear infinite;box-shadow:0 0 8px rgba(205,127,50,.7)}
+@keyframes lgFlow{to{background-position:300% 0}}
+@keyframes lgPulse{to{transform:scale(1.12);filter:brightness(1.25)}}
+.rankHero>*{position:relative;z-index:1}
+.rankHero.legendCard{border-color:#ffd84a!important;box-shadow:0 0 34px rgba(255,216,74,.45),0 0 70px rgba(255,61,240,.25),inset 0 0 30px rgba(255,216,74,.12);animation:podiumIn .55s ease both,lgShake 2.4s ease-in-out .6s infinite}
+.rankHero.legendCard::before{content:"";position:absolute;inset:-60%;z-index:0;background:conic-gradient(from 0deg,transparent 0 55%,rgba(255,216,74,.5),transparent 70%,rgba(255,61,240,.4),transparent 90%);animation:spin 3s linear infinite}
+.rankHero.legendCard .heroName{background:linear-gradient(90deg,#fff,#ffe77d,#ff9df4,#8ffaff,#fff);background-size:300% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;animation:lgFlow 2.5s linear infinite;font-size:14px}
+.rankHero.legendCard .medal,.rankHero.legendCard .avatar{animation:crownFloat 1.8s ease-in-out infinite}
+.rankHero .spk{position:absolute;bottom:-6px;left:var(--x);width:5px;height:5px;border-radius:50%;background:#ffe77d;box-shadow:0 0 8px #ffd84a;z-index:2;opacity:0;animation:spkUp var(--d) ease-in infinite;animation-delay:var(--dl)}
+@keyframes spkUp{0%{opacity:0;transform:translateY(0) scale(1)}20%{opacity:1}100%{opacity:0;transform:translateY(-170px) scale(.3)}}
+@keyframes lgShake{0%,90%,100%{transform:none}93%{transform:translate(-2px,1px) rotate(-.6deg)}96%{transform:translate(2px,-1px) rotate(.6deg)}}
+.rankHero.r2{animation:podiumIn .55s ease both,gmGlow 2.4s ease-in-out infinite alternate}
+@keyframes gmGlow{from{box-shadow:0 0 8px rgba(150,120,255,.2)}to{box-shadow:0 0 26px rgba(150,120,255,.65),inset 0 0 18px rgba(150,120,255,.12)}}
+.rankHero.r3{box-shadow:0 0 14px rgba(205,127,50,.3)}
+.rk.rank-0{animation:rkGold 1.8s ease-in-out infinite alternate}
+@keyframes rkGold{from{box-shadow:0 0 6px rgba(255,216,74,.2)}to{box-shadow:0 0 22px rgba(255,216,74,.55)}}
+.rk.rank-1{box-shadow:0 0 12px rgba(150,120,255,.35)}
+textarea{user-select:text;-webkit-user-select:text}
+.bioBox{max-width:min(80vw,320px);text-align:center;font:400 14px/1.9 Vazirmatn,Tahoma,sans-serif;color:#cfe0ff;white-space:pre-wrap;word-break:break-word}
+.legBox{font-size:15px;color:#ffe77d;text-shadow:0 0 12px rgba(255,215,0,.6)}
+@media(prefers-reduced-motion:reduce){.ttl,.rankHero.legendCard,.rankHero.legendCard::before,.rankHero .spk,.rk.rank-0,.rankHero.r2{animation:none!important}}
+.pimg{width:100%;height:100%;object-fit:cover;display:block}.phPrev{width:84px;height:84px;border-radius:50%;overflow:hidden;display:grid;place-items:center;font-size:40px;border:2px solid var(--accent);background:rgba(53,242,255,.1)}.pa:has(.pimg){width:40px;height:40px;border-radius:50%;overflow:hidden;display:grid}.rankHero .avatar:has(.pimg){width:46px;height:46px;border-radius:50%;overflow:hidden;margin:0 auto}.rankHero.r1 .avatar:has(.pimg){width:58px;height:58px}</style>
 </head>
 <body class="locked">
 <div id="bgfx"><i class="nebula"></i><i class="stars"></i><i class="stars s2"></i><div class="floor"><i class="grid"></i></div><div id="floaters"></div></div>
@@ -493,6 +520,7 @@ body.memoryFS #memoryFsToggle{display:block}
         <div class="rankGodHead"><span class="rankCrown">👑</span><h2 class="rankGodTitle">GOD RANK</h2></div>
       </div>
       <p class="rankSubline">⚡ میدان افسانه‌ها · رکوردهای تجمعی · فقط اسم‌های ماندگار اینجا می‌مونن</p>
+      <p class="rankSubline" id="weekLeft" style="margin-top:-6px"></p>
       <div class="tabs rankTabs" id="tabs"></div>
       <div id="rank"></div>
     </section>
@@ -600,6 +628,10 @@ body.memoryFS #memoryFsToggle{display:block}
     <button class="ghost" id="sndBtn" style="width:100%;margin:0"></button>
     <h4>آواتار</h4>
     <div class="av" id="avBox"></div>
+    <h4>📝 بیوگرافی</h4>
+    <textarea id="bioIn" maxlength="120" rows="3" placeholder="یه چیزی درباره‌ی خودت بنویس…" style="width:100%;background:rgba(10,16,40,.8);border:2px solid var(--line);border-radius:12px;padding:10px 12px;color:var(--ink);font:inherit;font-size:14px;resize:none;outline:0"></textarea>
+    <button class="ghost" id="bioSave" style="width:100%;margin:6px 0 0">💾 ذخیره بیوگرافی</button>
+    <div id="bioMsg" class="ds" style="margin-top:6px;min-height:18px"></div>
     <div class="row2">
       <button class="ghost fix" id="setFix">🛠 رفع باگ</button>
       <button class="ghost" id="setClose">بستن</button>
@@ -669,8 +701,41 @@ const Pref=(()=>{
     set(k,v){p[k]=v;try{localStorage.setItem(K,JSON.stringify(p))}catch(e){}}
   };
 })();
+const Photo=(()=>{const K='arcade_photo',F='arcade_photo_ok';let d='',ok=false;try{d=localStorage.getItem(K)||'';ok=localStorage.getItem(F)==='1'}catch(e){}
+  return{get:()=>d,set(v,o){d=v||'';ok=!!o&&!!d;try{d?localStorage.setItem(K,d):localStorage.removeItem(K);localStorage.setItem(F,ok?'1':'0')}catch(e){}},out:()=>(d&&ok)?'img:'+d:(Pref.get('av')||'\u{1f47e}')}})();
+const isImg=a=>typeof a==='string'&&a.startsWith('img:data:image/');
+const avSl=a=>{a=String(a||'');return a.startsWith('img:')?((isImg(a)&&a.length<20000)?a:''):a.slice(0,4)};
+function avPut(el,a){el.textContent='';const i=new Image();i.className='pimg';i.src=a.slice(4);i.alt='';el.appendChild(i)}
+async function pushPhoto(d){Photo.set(d,true);let ok=false;
+  try{await Net.rpc('arcade_profile_upsert',{p_pid:Store.pid(),p_name:Store.name(),p_avatar:Photo.out()});if(Net.presence)await Net.presence(true);
+    const r=await fetchT(`${SB_URL}/rest/v1/arcade_profiles?select=avatar&pid=eq.${encodeURIComponent(Store.pid())}`,{headers:{apikey:SB_KEY}},7000);
+    if(r.ok){const j=await r.json();ok=!!(j&&j[0]&&j[0].avatar===Photo.out())}}catch(e){}
+  if(!ok){Photo.set(d,false);try{await Net.rpc('arcade_profile_upsert',{p_pid:Store.pid(),p_name:Store.name(),p_avatar:Photo.out()})}catch(e){}}
+  return ok}
+function pickPhoto(f){const say=t=>{const m=$('phMsg');if(m)m.textContent=t};if(!f)return;
+  if(!Store.name()){say('اول اسمت رو ثبت کن بعد عکس بذار');return}
+  const rd=new FileReader();rd.onerror=()=>say('عکس خونده نشد');
+  rd.onload=()=>{const im=new Image();im.onerror=()=>say('این فایل عکس نیست');
+    im.onload=async()=>{const S=72,c=document.createElement('canvas');c.width=c.height=S;const x=c.getContext('2d'),q=Math.min(im.width,im.height);
+      x.drawImage(im,(im.width-q)/2,(im.height-q)/2,q,q,0,0,S,S);const d=c.toDataURL('image/jpeg',.62);say('در حال ذخیره…');
+      const ok=await pushPhoto(d);renderSet();say(ok?'پروفایل ذخیره شد و همه می‌بینن ✔':'سرور عکس رو قبول نکرد؛ فعلاً فقط روی گوشی خودت می‌مونه')};
+    im.src=rd.result};rd.readAsDataURL(f)}
+const TTL=[['t1','👑 لجند'],['t2','💎 گرند مستر'],['t3','🔥 مستر']];
+function ttlEl(i){const e=document.createElement('span');e.className='ttl '+TTL[i][0];e.textContent=TTL[i][1];return e}
+function showPhoto(r){const mine=!!(r.pid&&r.pid===Store.pid());const a=(mine&&Photo.get())?'img:'+Photo.get():(r.av||'');const o=document.createElement('div');
+  o.style.cssText='position:fixed;inset:0;z-index:9999;background:rgba(2,4,14,.88);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;color:#fff;font:700 20px system-ui,Tahoma;padding:16px';
+  const b=document.createElement('div');b.style.cssText='width:min(60vw,260px);height:min(60vw,260px);border-radius:50%;overflow:hidden;display:grid;place-items:center;font-size:100px;border:3px solid #35f2ff;box-shadow:0 0 30px rgba(53,242,255,.5);background:rgba(53,242,255,.08)';
+  if(isImg(a)){avPut(b,a)}else b.textContent=a||'\u{1f47e}';
+  const n=document.createElement('div');n.textContent=r.n;const sc=document.createElement('div');sc.style.cssText='font-size:15px;color:#8da2d4';sc.textContent=FA(r.s)+' امتیاز';
+  const bio=document.createElement('div');bio.className='bioBox';bio.style.display='none';
+  const lg=document.createElement('div');lg.className='legBox';lg.style.display='none';
+  const setBio=t=>{t=String(t||'').trim();bio.textContent=t;bio.style.display=t?'':'none'};
+  const setLg=k=>{k=+k||0;lg.textContent=k>0?'👑 '+FA(k)+' بار لجند شده':'';lg.style.display=k>0?'':'none'};
+  if(mine)setBio(Pref.get('bio'));
+  if(Net.on&&r.pid)fetchT(`${SB_URL}/rest/v1/arcade_profiles?select=bio,legends&pid=eq.${encodeURIComponent(r.pid)}`,{headers:{apikey:SB_KEY}},6000).then(x=>x.ok?x.json():[]).then(j=>{const p=j&&j[0];if(!p)return;if(!mine)setBio(p.bio);setLg(p.legends)}).catch(()=>{});
+  o.append(b,n);if(typeof r.rk==='number'&&r.rk<3)o.append(ttlEl(r.rk));o.append(sc,lg,bio);o.onclick=()=>o.remove();document.body.appendChild(o)}
 function syncProfile(){
-  try{if(Net&&Net.on&&Store.name())Net.rpc('arcade_profile_upsert',{p_pid:Store.pid(),p_name:Store.name(),p_avatar:Pref.get('av')})}catch(e){}
+  try{if(Net&&Net.on&&Store.name())Net.rpc('arcade_profile_upsert',{p_pid:Store.pid(),p_name:Store.name(),p_avatar:Photo.out()})}catch(e){}
 }
 /* dpr: سقف وضوح بوم | p: ضریب ذرات | shake: لرزش | fx: نورپردازی و افکت (۰ تا ۲) */
 const LEVELS={low:{dpr:1,p:.35,shake:0,fx:0},med:{dpr:1.5,p:.7,shake:1,fx:.7},high:{dpr:2,p:1,shake:1,fx:1.35},pro:{dpr:3,p:1.5,shake:1,fx:2}};
@@ -880,6 +945,12 @@ const Store=(()=>{
       try{localStorage.setItem(RK,JSON.stringify(rank));localStorage.setItem('arcade_epoch',String(ep))}catch(e){ok=false}
       dirty=true;flush();
     },
+    week:()=>{try{return localStorage.getItem('arcade_week')||''}catch(e){return''}},
+    wipeWeek(wk,doWipe){
+      if(doWipe){for(const k in g)g[k].best=0;for(const k in rank)rank[k]=[];try{localStorage.setItem(RK,JSON.stringify(rank))}catch(e){ok=false}}
+      try{localStorage.setItem('arcade_week',String(wk))}catch(e){ok=false}
+      dirty=true;flush();
+    },
     repair(){
       let n=0;
       try{
@@ -965,14 +1036,14 @@ const Net={
     return a.map(x=>{
       const p=pm[x.pid]||{};
       const ls=Presence.parseTime(p.last_seen)||Presence.seen(x.pid)||0;
-      return {pid:x.pid,n:String(x.name||'').slice(0,14),s:+x.score||0,av:String(p.avatar||'').slice(0,4),online:Presence.isOnline(x.pid)||String(p.online)==='true'||p.online===true,lastSeen:ls};
+      return {pid:x.pid,n:String(x.name||'').slice(0,14),s:+x.score||0,av:avSl(p.avatar),online:Presence.isOnline(x.pid)||String(p.online)==='true'||p.online===true,lastSeen:ls};
     }).filter(x=>x.s>0);
   },
   async presence(on=true){
     if(!Net.on||!Store.name()||!navigator.onLine)return false;
     const pid=Store.pid(), now=new Date().toISOString();
     Presence.mark(pid,!!on,Date.now());
-    const body={pid:pid,name:Store.name(),avatar:Pref.get('av')||'👾',last_seen:now,online:!!on};
+    const body={pid:pid,name:Store.name(),avatar:Photo.out(),last_seen:now,online:!!on};
     try{
       let r=await fetchT(`${SB_URL}/rest/v1/arcade_profiles?on_conflict=pid`,{method:'POST',keepalive:true,headers:{apikey:SB_KEY,'Content-Type':'application/json','Prefer':'resolution=merge-duplicates,return=minimal'},body:JSON.stringify(body)},4500);
       if(r.ok)return true;
@@ -980,7 +1051,7 @@ const Net={
       if(r.ok)return true;
     }catch(e){}
     try{
-      const r=await fetchT(`${SB_URL}/rest/v1/rpc/arcade_presence_upsert`,{method:'POST',keepalive:true,headers:{apikey:SB_KEY,'Content-Type':'application/json'},body:JSON.stringify({p_pid:pid,p_name:Store.name(),p_avatar:Pref.get('av')||'👾',p_last_seen:now,p_online:!!on})},4500);
+      const r=await fetchT(`${SB_URL}/rest/v1/rpc/arcade_presence_upsert`,{method:'POST',keepalive:true,headers:{apikey:SB_KEY,'Content-Type':'application/json'},body:JSON.stringify({p_pid:pid,p_name:Store.name(),p_avatar:Photo.out(),p_last_seen:now,p_online:!!on})},4500);
       return r.ok;
     }catch(e){return false}
   },
@@ -1001,7 +1072,7 @@ const Net={
       if(!pr.ok)pr=await fetchT(`${SB_URL}/rest/v1/arcade_profiles?select=pid,avatar&limit=1000`,{headers:{apikey:SB_KEY}});
       if(pr.ok)prof=await pr.json();
     }catch(e){}
-    const av=Object.fromEntries(prof.map(x=>[x.pid,String(x.avatar||'').slice(0,4)]));
+    const av=Object.fromEntries(prof.map(x=>[x.pid,avSl(x.avatar)]));
     const pm=Object.fromEntries(prof.map(x=>{
       const parsed=Presence.parseTime(x.last_seen);
       if(x.pid&&parsed)Presence.mark(String(x.pid),String(x.online)==='true'||x.online===true,parsed);
@@ -1249,6 +1320,7 @@ const META=[
 let tab='total',rk=0,adminCode='';
 const IDS=META.filter(m=>!m.norec).map(m=>m.id);
 const TABS=[{id:'total',icon:'👑',name:'مجموع'},...META.filter(m=>!m.norec)];
+function weekLeftText(){const T=12600000,n=Date.now()+T,d=Math.floor(n/864e5),nx=((Math.floor((d-1)/7)+1)*7+1)*864e5-T,m=Math.max(0,nx-Date.now()),dd=Math.floor(m/864e5),hh=Math.floor(m%864e5/36e5);return '⏳ ریست هفتگی رتبه‌ها (جمعه): '+(dd?FA(dd)+' روز و ':'')+FA(hh)+' ساعت دیگر'}
 const TOTAL_NOTE='مجموع بهترین امتیاز هر نفر توی همه‌ی بازی‌ها';
 const GAME_CATEGORY={
   breakout:'classic',pong:'sports',dino:'runner',ninja:'action',memory:'puzzle',colorseq:'puzzle',
@@ -1278,7 +1350,7 @@ function profileCard(box,L){
   const d=document.createElement('div');d.className='pf';
   const nm=document.createElement('span');nm.className='pn';
   nm.appendChild(mk('pt',Store.name()));nm.appendChild(mk('pr',sub));
-  d.appendChild(mk('pa',Pref.get('av')));d.appendChild(nm);d.appendChild(mk('sc',val>0?FA(val):'—'));
+  {const pa=mk('pa',Photo.get()?'':Pref.get('av'));if(Photo.get())avPut(pa,'img:'+Photo.get());d.appendChild(pa)}d.appendChild(nm);d.appendChild(mk('sc',val>0?FA(val):'—'));
   box.appendChild(d);
 }
 function rankFX(){
@@ -1295,9 +1367,11 @@ function drawRank(L,note){
   order.forEach(idx=>{
     const r=top[idx],d=document.createElement('div');d.className='rankHero r'+(idx+1)+(r?'':' empty');
     if(r){
-      const av=r.av||((r.pid&&r.pid===Store.pid())?Pref.get('av'):(idx===0?'👑':idx===1?'⚡':'🔥'));
-      d.innerHTML=`<div class="medal">${['🥇','🥈','🥉'][idx]}</div><div class="avatar">${av}</div><span class="heroName"></span><b class="heroScore">${FA(r.s)}</b><div class="heroLabel">امتیاز تجمعی</div>`;
-      d.querySelector('.heroName').textContent=r.n;
+      const av=((r.pid&&r.pid===Store.pid()&&Photo.get())?'img:'+Photo.get():'')||r.av||((r.pid&&r.pid===Store.pid())?Pref.get('av'):(idx===0?'👑':idx===1?'⚡':'🔥'));
+      d.innerHTML=`<div class="medal">${['🥇','🥈','🥉'][idx]}</div><div class="avatar">${isImg(av)?'':av}</div><span class="heroName"></span><b class="heroScore">${FA(r.s)}</b><div class="heroLabel">امتیاز تجمعی</div>`;
+      if(isImg(av))avPut(d.querySelector('.avatar'),av);d.querySelector('.heroName').textContent=r.n;d.insertBefore(ttlEl(idx),d.querySelector('.heroName'));d.style.cursor='pointer';d.onclick=()=>showPhoto(Object.assign({},r,{rk:idx}));
+      if(idx===0){d.classList.add('legendCard');for(let k=0;k<7;k++){const sp=document.createElement('i');sp.className='spk';sp.style.cssText='--x:'+(6+k*14)+'%;--d:'+(1.6+k*.3)+'s;--dl:'+(k*.35)+'s';d.appendChild(sp)}}
+      
     }else d.innerHTML=`<div class="medal">${['🥇','🥈','🥉'][idx]}</div><div class="avatar">✦</div><span class="heroName">منتظر قهرمان</span><div class="heroLabel">هنوز رکوردی ثبت نشده</div>`;
     podium.appendChild(d);
   });
@@ -1313,8 +1387,8 @@ function drawRank(L,note){
   L.forEach((r,i)=>{
     const d=document.createElement('div');d.className='rk rank-'+i+(r.pid&&r.pid===Store.pid()?' me':'');
     d.innerHTML=`<span class="n">${i<3?['🥇','🥈','🥉'][i]:FA(i+1)}</span><span class="rn"></span><b class="sc">${FA(r.s)}</b>`;
-    const avatar=document.createElement('span');avatar.textContent=(r.av||((!r.pid||r.pid===Store.pid())?Pref.get('av'):'' )||'👾')+' '+r.n;
-    d.children[1].append(avatar);
+    const avatar=document.createElement('span');{const mn=r.pid&&r.pid===Store.pid(),a0=(r.av||(!r.pid||mn?Pref.get('av'):'')||'👾');avatar.textContent=((isImg(a0)||(mn&&Photo.get()))?'\u{1F4F7}':a0)+' '+r.n;avatar.style.cursor='pointer';avatar.onclick=e=>{e.stopPropagation();showPhoto(Object.assign({},r,{rk:i}))}}
+    d.children[1].append(avatar);if(i<3)d.children[1].append(ttlEl(i));
     if(adminCode&&r.pid){
       const x=document.createElement('button');x.className='del';x.textContent='🗑';x.setAttribute('aria-label','حذف');
       x.onclick=()=>arm(x,'مطمئنی؟',async()=>{
@@ -1335,6 +1409,7 @@ async function renderRank(){
     b.className='ghost'+(m.id===tab?' on':'');b.textContent=m.icon+' '+m.name;
     b.onclick=()=>{tab=m.id;sfx.ui();renderRank()};t.appendChild(b);
   }
+  {const wl=$('weekLeft');if(wl)wl.textContent=weekLeftText()}
   const me=++rk,note=tab==='total'?TOTAL_NOTE:'';
   if(!Net.on){drawRank(localRank(tab),note);return}
   $('rank').textContent='در حال دریافت...';
@@ -1343,6 +1418,9 @@ async function renderRank(){
     if(kk===true){Store.factory();return}
     if(me!==rk)return;
     if(typeof ep==='number'&&String(ep)!==Store.epoch()){Store.wipe(ep);renderMenu();return}
+    const wk=await Net.rpc('arcade_weekly_tick',{});
+    if(me!==rk)return;
+    if(typeof wk==='number'||(typeof wk==='string'&&/^\d+$/.test(wk))){const w=String(wk),old=Store.week();if(old!==w){Store.wipeWeek(w,old!=='');if(old!==''){renderMenu();return}}}
     const L=tab==='total'?await Net.total():await Net.top(tab);
     if(me!==rk)return;
     drawRank(L,note);
@@ -4061,6 +4139,7 @@ const GFXD={
 };
 function hello(){$('hi').textContent=Pref.get('av')+' سلام '+Store.name()+'! یه بازی انتخاب کن. امتیازها و رکوردها ذخیره می‌شن.'}
 function renderSet(){
+  {const bi=$('bioIn');if(bi&&document.activeElement!==bi)bi.value=Pref.get('bio')||''}
   const seg=$('gfxSeg');seg.textContent='';
   const selected=Pref.get('gfx');
   for(const [k,nm] of GFXN){
@@ -4082,9 +4161,16 @@ function renderSet(){
     const b=document.createElement('button');
     b.className='ghost'+(Pref.get('av')===e?' on':'');b.textContent=e;
     b.setAttribute('aria-label','آواتار '+e);
-    b.onclick=()=>{Pref.set('av',e);sfx.ui();hello();renderSet()};
+    b.onclick=()=>{Pref.set('av',e);Photo.set('',false);syncProfile();try{Net.presence(true)}catch(x){}sfx.ui();hello();renderSet()};
     av.appendChild(b);
   }
+  const gx=document.createElement('div');gx.style.cssText='flex-basis:100%;display:flex;flex-direction:column;align-items:center;gap:8px;margin-top:8px';
+  const ph=Photo.get(),pv=document.createElement('div');pv.className='phPrev';if(ph)avPut(pv,'img:'+ph);else pv.textContent=Pref.get('av');
+  const add=document.createElement('button');add.className='ghost';add.style.margin='0';add.textContent=ph?'🖼 تغییر عکس از گالری':'🖼 انتخاب عکس از گالری';
+  const fi=document.createElement('input');fi.type='file';fi.accept='image/*';fi.hidden=true;add.onclick=()=>{sfx.ui();fi.click()};fi.onchange=()=>pickPhoto(fi.files&&fi.files[0]);
+  gx.append(pv,add,fi);
+  if(ph){const del=document.createElement('button');del.className='ghost';del.style.margin='0';del.textContent='🗑 حذف عکس';del.onclick=()=>{Photo.set('',false);syncProfile();try{Net.presence(true)}catch(e){}renderSet()};gx.appendChild(del)}
+  const msg=document.createElement('div');msg.id='phMsg';msg.className='ds';gx.appendChild(msg);av.appendChild(gx);
 }
 const closeModals=()=>{$('setp').hidden=true;$('fixp').hidden=true;$('iosp').hidden=true;$('donatep').hidden=true};
 $('iosClose').onclick=closeModals;
@@ -4093,6 +4179,11 @@ $('donatePinnedBtn').onclick=()=>{audio();sfx.ui();$('donatep').hidden=false};
 $('setBtn').onclick=()=>{audio();sfx.ui();renderSet();$('setp').hidden=false};
 $('setClose').onclick=closeModals;
 $('sndBtn').onclick=()=>{toggleMute();sfx.ui();renderSet()};
+$('bioSave').onclick=async()=>{const v=$('bioIn').value.replace(/\s+/g,' ').trim().slice(0,120),m=$('bioMsg');
+  if(!Store.name()){m.textContent='اول اسمت رو ثبت کن';return}
+  Pref.set('bio',v);sfx.ui();m.textContent='در حال ذخیره…';let ok=false;
+  try{await Net.rpc('arcade_profile_upsert',{p_pid:Store.pid(),p_name:Store.name(),p_avatar:Photo.out()});ok=(await Net.rpc('arcade_set_bio',{p_pid:Store.pid(),p_bio:v}))===true}catch(e){}
+  m.textContent=ok?'بیوگرافی ذخیره شد و همه می‌بینن ✔':'روی گوشی خودت ذخیره شد؛ سرور قبول نکرد (فایل SQL رو توی Supabase اجرا کردی؟)'};
 $('lagBtn').onclick=()=>{Pref.set('lag',Pref.get('lag')?0:1);applyGfx();sfx.ui();renderSet()};
 for(const [id,key] of [['optBloom','bloom'],['optParticles','particles'],['optShadows','shadows'],['optScan','scan'],['optBackground','background'],['optShake','shake']])$(id).onchange=()=>{Pref.set(key,$(id).checked?1:0);applyGfx();sfx.ui();renderSet()};
 $('renderRange').oninput=()=>{Pref.set('render',Number($('renderRange').value));applyGfx();$('renderValue').textContent=Number(Pref.get('render')).toFixed(2)+'×'};
