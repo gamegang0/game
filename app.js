@@ -207,6 +207,7 @@ const Store=(()=>{
   const KEY='arcade_v1';
   const blank=()=>({breakout:{best:0,last:0,plays:0},pong:{best:0,last:0,plays:0,wins:0,losses:0},dino:{best:0,last:0,plays:0},ninja:{best:0,last:0,plays:0},memory:{best:0,last:0,plays:0},flappy:{best:0,last:0,plays:0},snake:{best:0,last:0,plays:0},soccer:{best:0,last:0,plays:0},pancake:{best:0,last:0,plays:0},traffic:{best:0,last:0,plays:0},pacman:{best:0,last:0,plays:0},doodle:{best:0,last:0,plays:0},markhor:{best:0,last:0,plays:0},amirshahi:{best:0,last:0,plays:0},cityrun:{best:0,last:0,plays:0},hokm:{best:0,last:0,plays:0},chaharbarg:{best:0,last:0,plays:0},colorseq:{best:0,last:0,plays:0}});
   let g=blank(),ok=true,dirty=false;
+  (window.EXTRA_GAMES||[]).forEach(x=>{if(x&&x.id&&!g[x.id])g[x.id]={best:0,last:0,plays:0}});
   const startBest={};
   try{
     const raw=localStorage.getItem(KEY);
@@ -227,6 +228,7 @@ const Store=(()=>{
   const saveSkins=()=>{try{localStorage.setItem(SKK,JSON.stringify(savedSkins))}catch(e){}};
   const saveSelectedSkins=()=>{try{localStorage.setItem(SELK,JSON.stringify(selectedSkins))}catch(e){}};
   const rank={breakout:[],pong:[],dino:[],ninja:[],memory:[],flappy:[],snake:[],soccer:[],pancake:[],traffic:[],pacman:[],doodle:[],markhor:[],amirshahi:[],cityrun:[],colorseq:[],hokm:[],chaharbarg:[]};
+  (window.EXTRA_GAMES||[]).forEach(x=>{if(x&&x.id&&!rank[x.id])rank[x.id]=[]});
   let name='',pid='';
   try{
     name=localStorage.getItem(NK)||'';
