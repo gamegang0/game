@@ -470,7 +470,7 @@ const Ban=(()=>{
   function lock(){
     if(banned)return;banned=true;Net.on=false;
     try{Store.flush()}catch(e){}
-    try{const gf=$('gameFrame');if(gf)gf.src='about:blank'}catch(e){}
+    try{const gf=$('gameFrame');if(gf)gf.srcdoc=''}catch(e){}
     try{document.querySelectorAll('audio,video').forEach(x=>{try{x.pause()}catch(e){}})}catch(e){}
     ['app','splash'].forEach(id=>{const el=$(id);if(el)el.style.display='none'});
     document.body.classList.remove('playing','mkfs');
@@ -763,6 +763,12 @@ const resultFX={
 
 /* ================= embedded arcade games ================= */
 const GAME_V=1; /* هر بار بازی رو آپدیت کردی این عدد رو یکی زیاد کن تا کش مرورگر پاک بشه */
+function loadEmbedGame(id){
+  const u=id+'.html?v='+GAME_V;
+  fetch(u).then(r=>{if(!r.ok)throw new Error('HTTP '+r.status);return r.text();})
+    .then(t=>{if(cur&&cur.id===id)gameFrame.srcdoc=t;})
+    .catch(e=>alert('بازی لود نشد: '+u+'\n'+e.message));
+}
 const gameFrame=$('gameFrame');
 let embedRunStarted=false;
 window.addEventListener('message',e=>{
@@ -782,7 +788,7 @@ window.addEventListener('message',e=>{
     goHome();
   }else if(d.type==='finish'){
     if(!embedRunStarted){embedRunStarted=true;Shell.begin();}
-    Shell.finish(n,(cur.id==='markhor'||cur.id==='amirshahi'||cur.id==='cityrun')?'none':(d.won===true?'win':'lose'));embedRunStarted=false;
+    Shell.finish(n,(cur.id==='markhor'||cur.id==='amirshahi'||cur.id==='cityrun'||cur.noFX)?'none':(d.won===true?'win':'lose'));embedRunStarted=false;
   }
 });
 
@@ -821,6 +827,8 @@ const META=[
   {id:'hokm',icon:'🃏',name:'پاسور',tabName:'حکم',tabIcon:'♠️',desc:'حکم و چهار برگ؛ دو نفره آنلاین با کد اتاق، بدون تأخیر',color:'#e8c26a',embed:true,pick:true},
   {id:'chaharbarg',icon:'🃏',name:'چهار برگ',desc:'چهار برگ (پاسور) دو نفره با کد اتاق؛ رکورد بردها در لیدربورد',color:'#e8c26a',embed:true,hide:true},
 ];
+/* بازی‌های جدید از games.js میان */
+(window.EXTRA_GAMES||[]).forEach(g=>{if(g&&g.id&&!META.some(m=>m.id===g.id))META.push(Object.assign({embed:true},g))});
 let tab='total',rk=0;
 const IDS=META.filter(m=>!m.norec).map(m=>m.id);
 const TABS=[{id:'total',icon:'👑',name:'مجموع'},...META.filter(m=>!m.norec).map(m=>Object.assign({},m,{name:m.tabName||m.name,icon:m.tabIcon||m.icon}))];
@@ -1139,21 +1147,21 @@ function openGame(id){
   cur=Games[id];paused=false;In.x=W/2;lastShown=-1;embedRunStarted=false;
   document.body.classList.add('playing');
   document.body.classList.toggle('memoryFS',id==='memory');
-  document.body.classList.toggle('mkfs',id==='markhor'||id==='amirshahi'||id==='cityrun');
+  document.body.classList.toggle('mkfs',id==='markhor'||id==='amirshahi'||id==='cityrun'||!!(Games[id]&&Games[id].fs));
   if(id==='memory')ensureFullscreen();
-  if(id==='markhor'||id==='amirshahi')lockPortrait();
+  if(id==='markhor'||id==='amirshahi'||(Games[id]&&Games[id].portrait))lockPortrait();
   $('menu').hidden=true;$('play').hidden=false;
   $('bs').textContent=FA(Store.best(id));$('bw').hidden=!!cur.norec;$('info').textContent='';$('bp').textContent='⏸';$('bp').hidden=!!(cur.embed||cur.nopause);
   setTouchControls(id);
-  if(cur.embed){cv.hidden=true;gameFrame.hidden=false;gameFrame.src=id+'.html?v='+GAME_V;return;}
-  cv.hidden=false;gameFrame.hidden=true;gameFrame.src='about:blank';
+  if(cur.embed){cv.hidden=true;gameFrame.hidden=false;loadEmbedGame(id);return;}
+  cv.hidden=false;gameFrame.hidden=true;gameFrame.srcdoc='';
   cur.enter();
 }
 function goHome(){
   resultFX.clear();
   if(cur&&cur.leave)cur.leave();
   Shell.leave();cur=null;paused=false;embedRunStarted=false;
-  gameFrame.hidden=true;gameFrame.src='about:blank';cv.hidden=false;$('bp').hidden=false;setTouchControls('');
+  gameFrame.hidden=true;gameFrame.srcdoc='';cv.hidden=false;$('bp').hidden=false;setTouchControls('');
   document.body.classList.remove('playing');document.body.classList.remove('mkfs');document.body.classList.remove('memoryFS');unlockPortrait();
   $('play').hidden=true;$('menu').hidden=false;renderMenu();
 }
@@ -4396,6 +4404,8 @@ Games.markhor={id:'markhor',embed:true,norec:false,enter(){},update(){},draw(){}
 Games.hokm={id:'hokm',embed:true,norec:false,enter(){},update(){},draw(){},down(){},up(){},key(){return false},playing(){return embedRunStarted},idle(){return !embedRunStarted}};
 Games.chaharbarg={id:'chaharbarg',embed:true,norec:false,enter(){},update(){},draw(){},down(){},up(){},key(){return false},playing(){return embedRunStarted},idle(){return !embedRunStarted}};
 Games.cityrun={id:'cityrun',embed:true,norec:false,enter(){},update(){},draw(){},down(){},up(){},key(){return false},playing(){return embedRunStarted},idle(){return !embedRunStarted}};
+/* ساخت خودکار بازی‌های جدید از games.js */
+META.filter(m=>m.embed&&!Games[m.id]).forEach(m=>{Games[m.id]={id:m.id,embed:true,norec:false,fs:!!m.fs,noFX:!!m.noFX,portrait:!!m.portrait,enter(){},update(){},draw(){},down(){},up(){},key(){return false},playing(){return embedRunStarted},idle(){return !embedRunStarted}};});
 /* ================= input ================= */
 const px=e=>{const r=cv.getBoundingClientRect();return(e.clientX-r.left)/r.width*W};
 const py=e=>{const r=cv.getBoundingClientRect();return(e.clientY-r.top)/r.height*H};
