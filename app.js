@@ -470,7 +470,7 @@ const Ban=(()=>{
   function lock(){
     if(banned)return;banned=true;Net.on=false;
     try{Store.flush()}catch(e){}
-    try{const gf=$('gameFrame');if(gf)gf.srcdoc=''}catch(e){}
+    try{const gf=$('gameFrame');if(gf)gf.src='about:blank'}catch(e){}
     try{document.querySelectorAll('audio,video').forEach(x=>{try{x.pause()}catch(e){}})}catch(e){}
     ['app','splash'].forEach(id=>{const el=$(id);if(el)el.style.display='none'});
     document.body.classList.remove('playing','mkfs');
@@ -762,15 +762,7 @@ const resultFX={
 };
 
 /* ================= embedded arcade games ================= */
-const EMBED_FILES={
-  chaharbarg:'games/chaharbarg.html',
-  cityrun:'games/cityrun.html',
-  amirshahi:'games/amirshahi.html',
-  markhor:'games/markhor.html',
-  doodle:'games/doodle.html',
-  pacman:'games/pacman.html',
-  hokm:'games/hokm.html',
-};
+const GAME_V=1; /* هر بار بازی رو آپدیت کردی این عدد رو یکی زیاد کن تا کش مرورگر پاک بشه */
 const gameFrame=$('gameFrame');
 let embedRunStarted=false;
 window.addEventListener('message',e=>{
@@ -1153,22 +1145,15 @@ function openGame(id){
   $('menu').hidden=true;$('play').hidden=false;
   $('bs').textContent=FA(Store.best(id));$('bw').hidden=!!cur.norec;$('info').textContent='';$('bp').textContent='⏸';$('bp').hidden=!!(cur.embed||cur.nopause);
   setTouchControls(id);
-  if(cur.embed){
-    cv.hidden=true;gameFrame.hidden=false;gameFrame.srcdoc='';
-    fetch(EMBED_FILES[id])
-      .then(r=>{if(!r.ok)throw new Error('HTTP '+r.status);return r.text()})
-      .then(html=>{if(cur&&cur.id===id&&cur.embed)gameFrame.srcdoc=html;})
-      .catch(()=>{if(cur&&cur.id===id){$('info').textContent='بازی بارگذاری نشد؛ فایل '+EMBED_FILES[id]+' را بررسی کن.';}});
-    return;
-  }
-  cv.hidden=false;gameFrame.hidden=true;gameFrame.srcdoc='';
+  if(cur.embed){cv.hidden=true;gameFrame.hidden=false;gameFrame.src=id+'.html?v='+GAME_V;return;}
+  cv.hidden=false;gameFrame.hidden=true;gameFrame.src='about:blank';
   cur.enter();
 }
 function goHome(){
   resultFX.clear();
   if(cur&&cur.leave)cur.leave();
   Shell.leave();cur=null;paused=false;embedRunStarted=false;
-  gameFrame.hidden=true;gameFrame.srcdoc='';cv.hidden=false;$('bp').hidden=false;setTouchControls('');
+  gameFrame.hidden=true;gameFrame.src='about:blank';cv.hidden=false;$('bp').hidden=false;setTouchControls('');
   document.body.classList.remove('playing');document.body.classList.remove('mkfs');document.body.classList.remove('memoryFS');unlockPortrait();
   $('play').hidden=true;$('menu').hidden=false;renderMenu();
 }
