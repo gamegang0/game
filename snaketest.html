@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>مار تستی</title>
+<meta name="game-icon" content="🐍">
+<meta name="game-name" content="مار تستی">
+<meta name="game-desc" content="بازی تستی؛ سیب بخور و بلندتر شو">
+<meta name="game-color" content="#7dffb0">
+<style>
+html,body{margin:0;height:100%;background:#07140d;overflow:hidden;touch-action:none;
+  font-family:Tahoma,system-ui,sans-serif;color:#e8fff2;-webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent}
+#wrap{position:fixed;inset:0;display:flex;align-items:center;justify-content:center}
+canvas{display:block;border-radius:10px;box-shadow:0 0 0 2px #1f5c3a,0 0 24px #7dffb033}
+#msg{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  background:#07140dcc;text-align:center;gap:10px;padding:20px}
+#msg h2{margin:0;font-size:26px;color:#7dffb0}
+#msg p{margin:0;font-size:15px;color:#bfe9d0}
+#msg button{margin-top:8px;font:inherit;font-size:18px;font-weight:700;padding:10px 28px;border:0;border-radius:12px;background:#7dffb0;color:#06210f}
+#msg.hidden{display:none}
+</style>
+</head>
+<body>
+<div id="wrap"><canvas id="c"></canvas></div>
+<div id="msg"><h2 id="mt">مار تستی 🐍</h2><p id="mp">با کشیدن انگشت جهت رو عوض کن</p><button id="go">شروع</button></div>
+<script>
+/* ---- ارتباط با صفحه اصلی (آرکید) ---- */
+const GAME_ID='snaketest'; // باید دقیقاً اسم فایل باشه
+function post(type,score,won){
+  try{if(window.parent!==window)window.parent.postMessage({source:'nova-arcade-embed',game:GAME_ID,type,score:score||0,won:!!won},'*');}catch(e){}
+}
+
+/* ---- بازی ---- */
+const N=17;
+const cv=document.getElementById('c'),ctx=cv.getContext('2d');
+let cell=20;
+function fit(){
+  const s=Math.floor(Math.min(innerWidth-16,innerHeight-16)/N);
+  cell=Math.max(10,s);
+  const dpr=Math.min(devicePixelRatio||1,2);
+  cv.style.width=cv.style.height=cell*N+'px';
+  cv.width=cv.height=cell*N*dpr;
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  draw();
+}
+addEventListener('resize',fit);
+
+let snake,dir,nextDir,apple,score,alive=false,timer=null,started=false;
+function reset(){
+  snake=[{x:8,y:8},{x:7,y:8},{x:6,y:8}];dir={x:1,y:0};nextDir=dir;score=0;placeApple();
+}
+function placeApple(){
+  while(true){
+    const a={x:Math.floor(Math.random()*N),y:Math.floor(Math.random()*N)};
+    if(!snake.some(s=>s.x===a.x&&s.y===a.y)){apple=a;return;}
+  }
+}
+function start(){
+  reset();alive=true;started=false;
+  document.getElementById('msg').classList.add('hidden');
+  clearInterval(timer);timer=setInterval(step,130);
+  post('start');draw();
+}
+function step(){
+  dir=nextDir;
+  const h={x:snake[0].x+dir.x,y:snake[0].y+dir.y};
+  if(h.x<0||h.y<0||h.x>=N||h.y>=N||snake.some(s=>s.x===h.x&&s.y===h.y))return die();
+  snake.unshift(h);
+  if(h.x===apple.x&&h.y===apple.y){score+=10;post('score',score);placeApple();}
+  else snake.pop();
+  draw();
+}
+function die(){
+  alive=false;clearInterval(timer);
+  post('finish',score,false);
+  document.getElementById('mt').textContent='باختی 💀';
+  document.getElementById('mp').textContent='امتیاز: '+score;
+  document.getElementById('go').textContent='دوباره';
+  document.getElementById('msg').classList.remove('hidden');
+}
+function setDir(x,y){
+  if(!alive)return;
+  if(x===-dir.x&&y===-dir.y)return;
+  nextDir={x,y};
+}
+function draw(){
+  if(!snake)return;
+  const W=cell*N;
+  ctx.fillStyle='#0b2316';ctx.fillRect(0,0,W,W);
+  ctx.fillStyle='#0f2c1c';
+  for(let y=0;y<N;y++)for(let x=0;x<N;x++)if((x+y)%2)ctx.fillRect(x*cell,y*cell,cell,cell);
+  ctx.fillStyle='#ff4d6d';
+  ctx.beginPath();ctx.arc(apple.x*cell+cell/2,apple.y*cell+cell/2,cell*.38,0,7);ctx.fill();
+  snake.forEach((s,i)=>{
+    ctx.fillStyle=i?'#3fd07a':'#7dffb0';
+    ctx.beginPath();ctx.roundRect(s.x*cell+1,s.y*cell+1,cell-2,cell-2,cell*.28);ctx.fill();
+  });
+  ctx.fillStyle='#e8fff2';ctx.font='bold '+Math.round(cell*.7)+'px Tahoma';ctx.textAlign='left';
+  ctx.fillText(score,6,cell*.8);
+}
+
+/* کنترل: کشیدن انگشت + کلیدهای جهت‌دار */
+let tx=0,ty=0;
+addEventListener('touchstart',e=>{const t=e.touches[0];tx=t.clientX;ty=t.clientY;},{passive:true});
+addEventListener('touchend',e=>{
+  const t=e.changedTouches[0],dx=t.clientX-tx,dy=t.clientY-ty;
+  if(Math.max(Math.abs(dx),Math.abs(dy))<20)return;
+  if(Math.abs(dx)>Math.abs(dy))setDir(dx>0?1:-1,0);else setDir(0,dy>0?1:-1);
+},{passive:true});
+addEventListener('keydown',e=>{
+  const k=e.key;
+  if(k==='ArrowLeft')setDir(-1,0);else if(k==='ArrowRight')setDir(1,0);
+  else if(k==='ArrowUp')setDir(0,-1);else if(k==='ArrowDown')setDir(0,1);
+});
+document.getElementById('go').onclick=start;
+reset();fit();
+</script>
+</body>
+</html>
