@@ -17,14 +17,55 @@
   #msg .big{font-size:68px;color:#fff;font-weight:bold;text-shadow:0 0 14px #5b7cff,0 0 40px #5b7cff}
   #msg .tap{color:#5ee6d0;text-shadow:0 0 10px #5ee6d0;animation:pulse 1.2s ease-in-out infinite}
   @keyframes pulse{50%{opacity:.35}}
+
+  #skinBtn{position:fixed;top:10px;right:10px;display:none;z-index:6;background:linear-gradient(135deg,#ffe14a33,#ff9a2e33);
+    border:1px solid #ffe14a99;color:#ffe14a;border-radius:20px;padding:6px 14px;font-size:14px;font-family:inherit;
+    box-shadow:0 0 14px #ffe14a44;animation:glowb 2s ease-in-out infinite}
+  @keyframes glowb{50%{box-shadow:0 0 22px #ffe14a99}}
+  #skins{position:fixed;inset:0;z-index:20;display:none;flex-direction:column;color:#fff;
+    background:radial-gradient(ellipse at 50% 0%,#2a1566f2 0%,#0a0620fa 70%);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
+  #skins.open{display:flex}
+  .sk-head{display:flex;align-items:center;justify-content:space-between;padding:calc(14px + env(safe-area-inset-top)) 16px 4px}
+  .sk-head h2{margin:0;font-size:26px;color:#ffe14a;text-shadow:0 0 12px #ffe14a88,0 0 30px #ff9a2e66}
+  #skClose{width:38px;height:38px;border-radius:50%;border:1px solid #ffffff44;background:#ffffff14;color:#fff;font-size:18px;font-family:inherit}
+  .sk-sub{padding:0 16px 6px;font-size:13px;color:#b9aee0}
+  .sk-grid{flex:1;overflow-y:auto;overflow-x:hidden;touch-action:pan-y;-webkit-overflow-scrolling:touch;display:grid;
+    grid-template-columns:1fr 1fr;gap:12px;padding:8px 14px 16px;align-content:start}
+  .sk-card{position:relative;border-radius:18px;padding:8px 8px 10px;text-align:center;cursor:pointer;
+    background:linear-gradient(160deg,#ffffff1c,#ffffff06);border:1.5px solid #ffffff22;
+    opacity:0;transform:translateY(16px) scale(.95);animation:skIn .5s cubic-bezier(.2,.9,.3,1.2) forwards;animation-delay:calc(var(--i)*70ms);
+    transition:border-color .2s,box-shadow .2s}
+  @keyframes skIn{to{opacity:1;transform:none}}
+  .sk-card canvas{width:100%;height:104px;border-radius:12px;display:block;background:#000}
+  .sk-card .nm{font-size:17px;font-weight:bold;margin-top:8px}
+  .sk-card .rr{font-size:11px;margin-top:2px;color:var(--rc);letter-spacing:.3px;text-shadow:0 0 8px var(--rc)}
+  .sk-card .price{font-size:12px;margin-top:7px;color:#ffe9a8}
+  .sk-card.locked{border-color:#ffffff18;background:linear-gradient(160deg,#ffffff10,#ffffff04)}
+  .sk-card.locked .nm{color:#d4cde8}
+  .sk-card .tick{position:absolute;top:14px;left:14px;width:24px;height:24px;border-radius:50%;background:var(--rc);color:#111;
+    font-size:14px;font-weight:bold;display:none;align-items:center;justify-content:center;box-shadow:0 0 12px var(--rc)}
+  .sk-card.sel{border-color:var(--rc);box-shadow:0 0 0 1px var(--rc),0 0 28px -4px var(--rc);animation:skIn .5s forwards,selp 1.8s ease-in-out .6s infinite}
+  @keyframes selp{50%{box-shadow:0 0 0 1px var(--rc),0 0 38px -2px var(--rc)}}
+  .sk-card.sel .tick{display:flex}
+  .sk-foot{padding:10px 14px calc(14px + env(safe-area-inset-bottom))}
+  #skPlay{width:100%;border:0;border-radius:16px;padding:14px;font-size:19px;font-weight:bold;font-family:inherit;color:#2a1a00;
+    background:linear-gradient(135deg,#fff3a0,#ffc400);box-shadow:0 6px 24px #ffc40066}
 </style>
 </head>
 <body>
 <canvas id="c"></canvas>
 <button id="mute">🔊 صدا</button>
+<button id="skinBtn">🎨 اسکین</button>
+<div id="skins">
+  <div class="sk-head"><h2>🎨 انتخاب اسکین</h2><button id="skClose">✕</button></div>
+  <div class="sk-sub">امتیاز ذخیره‌شده: <b id="skCoins">۰</b> · اسکین‌های قفل‌شده رو با امتیاز باز کن</div>
+  <div class="sk-grid" id="skGrid"></div>
+  <div class="sk-foot"><button id="skPlay">▶ بزن بریم</button></div>
+</div>
 <div id="msg">
   <h1>پک‌من</h1>
   <p>با کشیدن انگشت روی صفحه (بالا، پایین، چپ، راست) جهت رو عوض کن.<br>همه‌ی نقطه‌ها رو بخور، از روح‌ها فرار کن.<br>گلوله‌های بزرگ روح‌ها رو آبی می‌کنه و می‌تونی بخوریشون.</p>
+  <p style="font-size:14px;color:#ffe14a">🎨 از دکمه «اسکین» بالا سمت راست، ظاهر پک‌من رو عوض کن</p>
   <p class="tap">برای شروع لمس کن</p>
 </div>
 
@@ -88,13 +129,48 @@ function buildHome(){
 }
 buildGrid(); buildHome();
 
+/* ---------- داده اسکین‌ها ---------- */
+const SKINS = [
+  { id:'classic', name:'کلاسیک', rare:'معمولی', rc:'#c9c9d9', trail:'none', wall:['#5b7cff','#3a5bff','rgba(40,50,170,0.25)'], bg:['#1a0f3d','#070415'], dot:'#ffd9a0', pow:'#fff3c0', glow:'#ffd23a', amb:null },
+  { id:'inferno', name:'آتشین', rare:'حماسی', rc:'#ff7a1a', trail:'flame', wall:['#ff6a1a','#ff3d00','rgba(120,30,0,0.30)'], bg:['#2e0b05','#0d0302'], dot:'#ffd0a0', pow:'#ffe08a', glow:'#ff5a00', amb:'embers' },
+  { id:'frost', name:'یخی', rare:'کمیاب', rc:'#5fd0ff', trail:'snow', wall:['#7fdcff','#38b6ff','rgba(30,90,150,0.28)'], bg:['#0e2a42','#050d18'], dot:'#d8f6ff', pow:'#ffffff', glow:'#7fe0ff', amb:'snow' },
+  { id:'neon', name:'نئون', rare:'حماسی', rc:'#ff2bd6', trail:'echo', wall:['#00f0ff','#ff2bd6','rgba(60,0,100,0.30)'], bg:['#1b0733','#05030f'], dot:'#9ff8ff', pow:'#ff9df2', glow:'#00f0ff', amb:null },
+  { id:'gold', name:'طلایی', rare:'افسانه‌ای', rc:'#ffc400', trail:'star', cols:['#fff3b0','#ffd34a','#ffffff'], wall:['#ffd34a','#ff9d00','rgba(110,70,0,0.28)'], bg:['#2e2007','#0c0802'], dot:'#ffe9a8', pow:'#fff3b0', glow:'#ffc400', amb:'sparkle' },
+  { id:'galaxy', name:'کهکشان', rare:'افسانه‌ای', rc:'#b36bff', trail:'star', cols:['#ffffff','#ff8de9','#8de9ff','#c9a8ff'], wall:['#b36bff','#6a3dff','rgba(50,20,120,0.30)'], bg:['#1d0a3d','#05020f'], dot:'#e2d0ff', pow:'#ffffff', glow:'#9d6bff', amb:'stars' },
+  { id:'candy', name:'قلبی', rare:'کمیاب', rc:'#ff7eb6', trail:'heart', cols:['#ff6aa8','#ff9ac8','#ffffff','#ff3d8f'], wall:['#ff7eb6','#ff3d8f','rgba(120,20,70,0.28)'], bg:['#2e0a22','#0d0310'], dot:'#ffd0e6', pow:'#ffffff', glow:'#ff6aa8', amb:'hearts' },
+  { id:'matrix', name:'هکر', rare:'حماسی', rc:'#2bff6a', trail:'bit', wall:['#2bff6a','#00c853','rgba(0,80,30,0.30)'], bg:['#03200e','#010a04'], dot:'#b8ffc9', pow:'#eaffef', glow:'#2bff6a', amb:'rain' }
+];
+const SKIN_KEY = 'pacman_skin_v1';
+const SKIN_COINS_KEY = 'pacman_skin_coins_v1';
+const SKIN_UNLOCKS_KEY = 'pacman_skin_unlocks_v1';
+let skinId = 'classic';
+try { const s = localStorage.getItem(SKIN_KEY); if (s && SKINS.some(k => k.id === s)) skinId = s; } catch (e) {}
+let skinCoins = 0;
+const unlockedSkinIds = new Set(['classic']);
+try {
+  skinCoins = Math.max(0, Math.floor(Number(localStorage.getItem(SKIN_COINS_KEY)) || 0));
+  const savedUnlocks = localStorage.getItem(SKIN_UNLOCKS_KEY);
+  if (savedUnlocks) {
+    const ids = JSON.parse(savedUnlocks);
+    if (Array.isArray(ids)) for (const id of ids) if (SKINS.some(k => k.id === id)) unlockedSkinIds.add(id);
+  } else if (skinId !== 'classic') {
+    // Keep a skin selected in an older version unlocked after the shop is added.
+    unlockedSkinIds.add(skinId);
+  }
+  unlockedSkinIds.add('classic');
+  localStorage.setItem(SKIN_UNLOCKS_KEY, JSON.stringify(Array.from(unlockedSkinIds)));
+} catch (e) { unlockedSkinIds.add('classic'); }
+const skinPrice = index => index === 0 ? 0 : index * 1500;
+const curSkin = () => SKINS.find(k => k.id === skinId) || SKINS[0];
+const fxs = [];
+
 /* ---------- اندازه و رندر دیوارها ---------- */
 let W, H, dpr, ts, ox, oy, wallBlue, wallWhite;
 const isWallAt = (c, r) => (r < 0 || r >= ROWS || c < 0 || c >= COLS) ? true : grid[r][c] === '#';
-function renderWalls(color, glow){
+function renderWalls(color, glow, fill){
   const k = document.createElement('canvas'); k.width = COLS * ts * dpr; k.height = ROWS * ts * dpr;
   const g = k.getContext('2d'); g.scale(dpr, dpr);
-  g.fillStyle = 'rgba(40,50,170,0.25)';
+  g.fillStyle = fill || 'rgba(40,50,170,0.25)';
   for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) if (grid[r][c] === '#') g.fillRect(c * ts, r * ts, ts, ts);
   g.strokeStyle = color; g.lineWidth = Math.max(2, ts * 0.1); g.lineCap = 'round';
   g.shadowColor = glow; g.shadowBlur = ts * 0.5;
@@ -118,7 +194,11 @@ function resize(){
   cv.width = W * dpr; cv.height = H * dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ts = Math.floor(Math.min(W / COLS, (H - 110) / ROWS));
   ox = Math.floor((W - COLS * ts) / 2); oy = Math.floor((H - ROWS * ts) / 2);
-  wallBlue = renderWalls('#5b7cff', '#3a5bff'); wallWhite = renderWalls('#ffffff', '#ffffff');
+  rebuildWalls();
+}
+function rebuildWalls(){
+  const w = curSkin().wall;
+  wallBlue = renderWalls(w[0], w[1], w[2]); wallWhite = renderWalls('#ffffff', '#ffffff');
 }
 addEventListener('resize', resize); resize();
 
@@ -191,7 +271,7 @@ function resetActors(){
 }
 function newGame(){
   score = 0; lives = 3; level = 1; buildGrid(); resetActors();
-  state = 'ready'; stT = 0; msg.style.display = 'none'; sfxStart(); arcReport('start',0);
+  state = 'ready'; stT = 0; msg.style.display = 'none'; fxs.length = 0; sfxStart(); arcReport('start',0);
 }
 resetActors();
 
@@ -234,7 +314,7 @@ function pacArrive(p){
   food[p.r][p.c] = 0; dotsLeft--;
   if (f === 1) { score += 10; sfxWaka(); }
   else {
-    score += 50; sfxPower(); chain = 0;
+    score += 50; sfxPower(); chain = 0; burst(ox + (p.c + 0.5) * ts, oy + (p.r + 0.5) * ts, curSkin().glow, 22);
     frightT = Math.max(7 - level * 0.8, 2.5);
     for (const g of ghosts) if (g.mode === 'normal' || g.mode === 'fright') { if (g.mode === 'normal' && (g.dx || g.dy)) flip(g); g.mode = 'fright'; }
   }
@@ -310,6 +390,7 @@ function update(dt){
   parts = parts.filter(p => p.life > 0);
   for (const f of floats) f.life -= dt;
   floats = floats.filter(f => f.life > 0);
+  stepFx(fxs, dt);
   updateSiren();
 
   if (state === 'ready') { stT += dt; if (stT > 2.2) { state = 'play'; stT = 0; } return; }
@@ -319,6 +400,9 @@ function update(dt){
       lives--;
       arcReport('lifeLost',score);
       if (lives <= 0) {
+        skinCoins += Math.max(0, Math.floor(score));
+        try { localStorage.setItem(SKIN_COINS_KEY, String(skinCoins)); } catch (e) {}
+        updateSkinCoinLabel();
         state = 'over'; msg.style.display = 'flex';
         msg.innerHTML = '<h1 style="font-size:44px">تموم شد</h1><div class="big">' + fa(score) + '</div><p>رکورد: ' + fa(best) + '</p><p class="tap">برای شروع دوباره لمس کن</p>';
         arcReport('finish',score);
@@ -343,6 +427,10 @@ function update(dt){
   advance(pac, pacSpeed(), dt, pacArrive, pacChoose);
   if (pac.dx || pac.dy) lastAng = Math.atan2(pac.dy, pac.dx);
   if (state !== 'play') return;
+  if (pac.dx || pac.dy) {
+    const [qx, qy] = posOf(pac);
+    emitTrail(fxs, curSkin(), sx(qx), sy(qy), lastAng, ts * 0.46, dt, 0.06 + 0.3 * (0.5 + 0.5 * Math.sin(tm * 18)));
+  }
 
   for (const g of ghosts) {
     if (g.mode === 'house') {
@@ -370,13 +458,209 @@ function update(dt){
 /* ---------- گرافیک ---------- */
 const sx = x => ox + (x + 0.5) * ts, sy = y => oy + (y + 0.5) * ts;
 
-function drawPac(x, y, ang, mouth, rr){
-  const g = ctx.createRadialGradient(x - rr * 0.3, y - rr * 0.3, rr * 0.1, x, y, rr);
-  g.addColorStop(0, '#fff7b0'); g.addColorStop(0.5, '#ffe14a'); g.addColorStop(1, '#ffb300');
-  ctx.shadowColor = '#ffd23a'; ctx.shadowBlur = rr * 0.9; ctx.fillStyle = g;
-  ctx.beginPath(); ctx.moveTo(x, y); ctx.arc(x, y, rr, ang + mouth, ang + TAU - mouth); ctx.closePath(); ctx.fill();
-  ctx.shadowBlur = 0;
+/* ---------- موتور اسکین‌ها ---------- */
+function pacPath(c, x, y, ang, mouth, rr){
+  c.beginPath(); c.moveTo(x, y); c.arc(x, y, rr, ang + mouth, ang + TAU - mouth); c.closePath();
 }
+function star4(c, x, y, r){
+  c.beginPath(); c.moveTo(x, y - r);
+  c.quadraticCurveTo(x, y, x + r, y); c.quadraticCurveTo(x, y, x, y + r);
+  c.quadraticCurveTo(x, y, x - r, y); c.quadraticCurveTo(x, y, x, y - r); c.fill();
+}
+function heart(c, x, y, r){
+  c.beginPath(); c.moveTo(x, y + r * 0.9);
+  c.bezierCurveTo(x - r * 1.6, y - r * 0.1, x - r * 0.8, y - r * 1.2, x, y - r * 0.45);
+  c.bezierCurveTo(x + r * 0.8, y - r * 1.2, x + r * 1.6, y - r * 0.1, x, y + r * 0.9); c.fill();
+}
+const GSTARS = [[0.3,0.5,1.4],[1.2,0.8,1.1],[2.1,0.35,1.6],[2.9,0.7,1.0],[3.8,0.55,1.5],[4.5,0.85,1.1],[5.3,0.3,1.3],[0.8,0.2,1.0],[3.3,0.15,1.2]];
+
+function drawBody(c, sk, x, y, ang, mouth, rr, t){
+  c.save();
+  const id = sk.id;
+  if (id === 'inferno') {
+    const fl = 0.85 + 0.15 * Math.sin(t * 22);
+    const g = c.createRadialGradient(x - rr * 0.25, y - rr * 0.3, rr * 0.1, x, y, rr);
+    g.addColorStop(0, '#fff6b0'); g.addColorStop(0.4, '#ffb300'); g.addColorStop(0.75, '#ff5a00'); g.addColorStop(1, '#c81d00');
+    c.shadowColor = '#ff5a00'; c.shadowBlur = rr * 1.2 * fl; c.fillStyle = g;
+    pacPath(c, x, y, ang, mouth, rr); c.fill();
+    c.shadowBlur = 0; c.globalCompositeOperation = 'lighter';
+    for (let i = 0; i < 5; i++) {
+      const a = ang + Math.PI + (i - 2) * 0.42, len = rr * (0.32 + 0.28 * Math.sin(t * 15 + i * 1.9));
+      const bx = x + Math.cos(a) * rr * 0.92, by = y + Math.sin(a) * rr * 0.92;
+      const tx = x + Math.cos(a) * (rr + len), ty = y + Math.sin(a) * (rr + len);
+      const px = -Math.sin(a) * rr * 0.17, py = Math.cos(a) * rr * 0.17;
+      c.fillStyle = 'rgba(255,150,20,.6)';
+      c.beginPath(); c.moveTo(bx + px, by + py); c.lineTo(tx, ty); c.lineTo(bx - px, by - py); c.closePath(); c.fill();
+    }
+  } else if (id === 'frost') {
+    const g = c.createRadialGradient(x - rr * 0.25, y - rr * 0.3, rr * 0.1, x, y, rr);
+    g.addColorStop(0, '#ffffff'); g.addColorStop(0.35, '#c8f3ff'); g.addColorStop(0.75, '#5cbcff'); g.addColorStop(1, '#2f7fe0');
+    c.shadowColor = '#7fe0ff'; c.shadowBlur = rr * 0.9; c.fillStyle = g;
+    pacPath(c, x, y, ang, mouth, rr); c.fill(); c.shadowBlur = 0;
+    c.save(); pacPath(c, x, y, ang, mouth, rr); c.clip();
+    c.strokeStyle = 'rgba(255,255,255,.65)'; c.lineWidth = Math.max(1, rr * 0.05);
+    const rot = t * 0.4;
+    c.beginPath();
+    for (let i = 0; i < 6; i++) { const a = rot + i * Math.PI / 3; c.moveTo(x, y); c.lineTo(x + Math.cos(a) * rr, y + Math.sin(a) * rr); }
+    c.stroke();
+    for (const k of [0.55, 0.3]) {
+      c.beginPath();
+      for (let i = 0; i <= 6; i++) { const a = rot + i * Math.PI / 3; (i ? c.lineTo : c.moveTo).call(c, x + Math.cos(a) * rr * k, y + Math.sin(a) * rr * k); }
+      c.stroke();
+    }
+    c.restore();
+  } else if (id === 'neon') {
+    c.shadowColor = sk.glow; c.shadowBlur = rr * 1.1; c.fillStyle = 'rgba(18,6,42,.88)';
+    pacPath(c, x, y, ang, mouth, rr); c.fill();
+    const lg = c.createLinearGradient(x - rr, y, x + rr, y); lg.addColorStop(0, '#00f0ff'); lg.addColorStop(1, '#ff2bd6');
+    c.strokeStyle = lg; c.lineWidth = Math.max(2, rr * 0.16); c.lineJoin = 'round';
+    pacPath(c, x, y, ang, mouth, rr); c.stroke();
+    c.shadowBlur = 0; c.strokeStyle = 'rgba(255,255,255,.8)'; c.lineWidth = Math.max(1, rr * 0.04);
+    pacPath(c, x, y, ang, mouth, rr * 0.93); c.stroke();
+  } else if (id === 'gold') {
+    const lg = c.createLinearGradient(x - rr, y - rr, x + rr, y + rr);
+    lg.addColorStop(0, '#fff3b0'); lg.addColorStop(0.3, '#ffd34a'); lg.addColorStop(0.55, '#c98a0b'); lg.addColorStop(0.75, '#ffe27a'); lg.addColorStop(1, '#a8690a');
+    c.shadowColor = '#ffc400'; c.shadowBlur = rr * 0.9; c.fillStyle = lg;
+    pacPath(c, x, y, ang, mouth, rr); c.fill(); c.shadowBlur = 0;
+    c.save(); pacPath(c, x, y, ang, mouth, rr); c.clip();
+    c.translate(x, y); c.rotate(-0.7);
+    const sp = (((t * 0.8) % 2) - 1) * rr * 1.6;
+    const sg = c.createLinearGradient(sp - rr * 0.3, 0, sp + rr * 0.3, 0);
+    sg.addColorStop(0, 'rgba(255,255,255,0)'); sg.addColorStop(0.5, 'rgba(255,255,255,.8)'); sg.addColorStop(1, 'rgba(255,255,255,0)');
+    c.fillStyle = sg; c.fillRect(sp - rr * 0.3, -rr * 1.5, rr * 0.6, rr * 3);
+    c.restore();
+    c.strokeStyle = 'rgba(255,246,190,.9)'; c.lineWidth = Math.max(1, rr * 0.05);
+    pacPath(c, x, y, ang, mouth, rr); c.stroke();
+  } else if (id === 'galaxy') {
+    const g = c.createRadialGradient(x - rr * 0.25, y - rr * 0.3, rr * 0.1, x, y, rr);
+    g.addColorStop(0, '#8a4bff'); g.addColorStop(0.55, '#3b1a99'); g.addColorStop(1, '#12073a');
+    c.shadowColor = '#9d6bff'; c.shadowBlur = rr * 1.0; c.fillStyle = g;
+    pacPath(c, x, y, ang, mouth, rr); c.fill(); c.shadowBlur = 0;
+    c.save(); pacPath(c, x, y, ang, mouth, rr); c.clip();
+    for (const [bx, by, col] of [[-0.3, 0.25, 'rgba(255,90,209,.5)'], [0.3, -0.3, 'rgba(90,220,255,.4)']]) {
+      const ng = c.createRadialGradient(x + bx * rr, y + by * rr, 0, x + bx * rr, y + by * rr, rr * 0.7);
+      ng.addColorStop(0, col); ng.addColorStop(1, 'rgba(0,0,0,0)'); c.fillStyle = ng; c.fillRect(x - rr, y - rr, rr * 2, rr * 2);
+    }
+    c.fillStyle = '#fff';
+    for (const [a0, d, s] of GSTARS) {
+      const a = a0 + t * 0.5; c.globalAlpha = 0.5 + 0.5 * Math.sin(t * 4 + a0 * 3);
+      c.beginPath(); c.arc(x + Math.cos(a) * d * rr, y + Math.sin(a) * d * rr, Math.max(0.6, rr * 0.05 * s), 0, TAU); c.fill();
+    }
+    c.restore();
+  } else if (id === 'candy') {
+    c.shadowColor = '#ff6aa8'; c.shadowBlur = rr * 0.8; c.fillStyle = '#ffffff';
+    pacPath(c, x, y, ang, mouth, rr); c.fill(); c.shadowBlur = 0;
+    c.save(); pacPath(c, x, y, ang, mouth, rr); c.clip();
+    const n = 8; c.fillStyle = '#ff3d8f';
+    for (let i = 0; i < n; i += 2) {
+      const a0 = t * 1.4 + i * (TAU / n);
+      c.beginPath(); c.moveTo(x, y); c.arc(x, y, rr * 1.3, a0, a0 + TAU / n); c.closePath(); c.fill();
+    }
+    const gl = c.createRadialGradient(x - rr * 0.4, y - rr * 0.45, 0, x - rr * 0.4, y - rr * 0.45, rr * 0.8);
+    gl.addColorStop(0, 'rgba(255,255,255,.55)'); gl.addColorStop(1, 'rgba(255,255,255,0)');
+    c.fillStyle = gl; c.fillRect(x - rr, y - rr, rr * 2, rr * 2);
+    c.restore();
+    c.strokeStyle = '#ff9ac8'; c.lineWidth = Math.max(1, rr * 0.07);
+    pacPath(c, x, y, ang, mouth, rr); c.stroke();
+  } else if (id === 'matrix') {
+    c.shadowColor = '#2bff6a'; c.shadowBlur = rr * 0.9; c.fillStyle = '#021a0b';
+    pacPath(c, x, y, ang, mouth, rr); c.fill(); c.shadowBlur = 0;
+    c.save(); pacPath(c, x, y, ang, mouth, rr); c.clip();
+    c.font = 'bold ' + Math.max(6, Math.round(rr * 0.34)) + 'px monospace'; c.textAlign = 'center'; c.textBaseline = 'middle';
+    for (let i = 0; i < 5; i++) for (let j = 0; j < 3; j++) {
+      const yy = y - rr * 1.2 + ((t * rr * 1.6 + i * rr * 0.55 + j * rr * 0.8) % (rr * 2.4));
+      c.fillStyle = j === 2 ? '#eafff0' : '#2bff6a'; c.globalAlpha = 0.35 + 0.25 * j;
+      c.fillText(((i * 3 + j + Math.floor(t * 5 + i)) % 2) ? '1' : '0', x - rr * 0.8 + i * rr * 0.4, yy);
+    }
+    c.restore(); c.globalAlpha = 1;
+    c.shadowColor = '#2bff6a'; c.shadowBlur = rr * 0.6; c.strokeStyle = '#2bff6a'; c.lineWidth = Math.max(1.5, rr * 0.12);
+    pacPath(c, x, y, ang, mouth, rr); c.stroke();
+  } else {
+    const g = c.createRadialGradient(x - rr * 0.3, y - rr * 0.3, rr * 0.1, x, y, rr);
+    g.addColorStop(0, '#fff7b0'); g.addColorStop(0.5, '#ffe14a'); g.addColorStop(1, '#ffb300');
+    c.shadowColor = '#ffd23a'; c.shadowBlur = rr * 0.9; c.fillStyle = g;
+    pacPath(c, x, y, ang, mouth, rr); c.fill();
+  }
+  c.restore();
+}
+function drawPac(x, y, ang, mouth, rr){ drawBody(ctx, curSkin(), x, y, ang, mouth, rr, tm); }
+
+/* افکت دنباله */
+const RATE = { flame: 70, snow: 26, echo: 24, star: 34, heart: 8, bit: 28 };
+const pick = a => a[Math.random() * a.length | 0];
+function emitTrail(list, sk, x, y, ang, rr, dt, mouth){
+  const k = sk.trail; if (!k || k === 'none') return;
+  list.acc = (list.acc || 0) + dt * RATE[k];
+  const J = () => Math.random() - 0.5;
+  while (list.acc >= 1) {
+    list.acc -= 1; if (list.length > 160) break;
+    const bx = x - Math.cos(ang) * rr * 0.75, by = y - Math.sin(ang) * rr * 0.75;
+    const bk = [-Math.cos(ang), -Math.sin(ang)];
+    if (k === 'flame') list.push({ k, x: bx + J() * rr * 0.5, y: by + J() * rr * 0.5, vx: bk[0] * rr * 1.2 + J() * rr, vy: bk[1] * rr * 1.2 - rr * 1.2 * Math.random() + J() * rr * 0.6, life: 0.45, max: 0.45, r: rr * (0.22 + Math.random() * 0.2) });
+    else if (k === 'snow') list.push({ k, x: bx + J() * rr * 0.9, y: by + J() * rr * 0.9, vx: J() * rr * 0.8, vy: rr * (0.5 + Math.random() * 0.8), life: 0.9, max: 0.9, r: Math.max(1, rr * (0.07 + Math.random() * 0.07)) });
+    else if (k === 'echo') { list.push({ k, sk, x, y, ang, mouth, rr, vx: 0, vy: 0, life: 0.3, max: 0.3 }); }
+    else if (k === 'star') list.push({ k, x: bx + J() * rr * 1.2, y: by + J() * rr * 1.2, vx: J() * rr * 0.6, vy: J() * rr * 0.6, life: 0.7, max: 0.7, r: rr * (0.15 + Math.random() * 0.2), col: pick(sk.cols), ph: Math.random() * 6 });
+    else if (k === 'heart') list.push({ k, x: bx + J() * rr * 0.8, y: by + J() * rr * 0.5, vx: J() * rr * 0.5, vy: -rr * (0.8 + Math.random() * 0.6), life: 1, max: 1, r: rr * (0.16 + Math.random() * 0.12), col: pick(sk.cols) });
+    else if (k === 'bit') list.push({ k, x: bx + J() * rr * 1.1, y: by + J() * rr * 0.6, vx: 0, vy: rr * (0.8 + Math.random() * 0.8), life: 0.8, max: 0.8, r: rr * (0.2 + Math.random() * 0.1), col: Math.random() < 0.3 ? '#eafff0' : '#2bff6a', ch: Math.random() < 0.5 ? '0' : '1' });
+  }
+}
+function stepFx(list, dt){
+  for (let i = list.length - 1; i >= 0; i--) {
+    const p = list[i]; p.x += p.vx * dt; p.y += p.vy * dt; p.life -= dt;
+    if (p.life <= 0) list.splice(i, 1);
+  }
+}
+function drawFx(c, list){
+  for (const p of list) {
+    const f = Math.max(0, p.life / p.max);
+    c.save();
+    if (p.k === 'flame') {
+      c.globalCompositeOperation = 'lighter'; c.fillStyle = 'hsla(' + (12 + 38 * f) + ',100%,' + (45 + 20 * f) + '%,' + (0.55 * f) + ')';
+      c.beginPath(); c.arc(p.x, p.y, p.r * (0.4 + 0.8 * f), 0, TAU); c.fill();
+    } else if (p.k === 'snow') {
+      c.globalAlpha = f; c.fillStyle = '#fff'; c.shadowColor = '#8fe3ff'; c.shadowBlur = 6;
+      c.beginPath(); c.arc(p.x, p.y, p.r, 0, TAU); c.fill();
+    } else if (p.k === 'echo') {
+      c.globalAlpha = 0.35 * f; drawBody(c, p.sk, p.x, p.y, p.ang, p.mouth, p.rr, 0);
+    } else if (p.k === 'star') {
+      c.globalCompositeOperation = 'lighter'; c.globalAlpha = f * (0.6 + 0.4 * Math.sin(p.ph + f * 12)); c.fillStyle = p.col; star4(c, p.x, p.y, p.r);
+    } else if (p.k === 'heart') {
+      c.globalAlpha = f; c.fillStyle = p.col; heart(c, p.x, p.y, p.r);
+    } else if (p.k === 'bit') {
+      c.globalAlpha = f; c.fillStyle = p.col; c.font = 'bold ' + Math.max(6, Math.round(p.r * 2)) + 'px monospace';
+      c.textAlign = 'center'; c.textBaseline = 'middle'; c.shadowColor = p.col; c.shadowBlur = 6; c.fillText(p.ch, p.x, p.y);
+    }
+    c.restore();
+  }
+}
+
+/* پس‌زمینه زنده هر اسکین */
+const AMB = Array.from({ length: 36 }, () => ({ x: Math.random(), p: Math.random(), s: 0.4 + Math.random() * 0.8 }));
+function drawAmbient(c, kind, w, h, t){
+  if (!kind) return;
+  c.save();
+  for (let i = 0; i < AMB.length; i++) {
+    const a = AMB[i];
+    if (kind === 'embers') {
+      const y = 1 - ((a.p + t * 0.05 * a.s) % 1); c.globalAlpha = 0.45 * y; c.fillStyle = '#ff9a3a';
+      c.beginPath(); c.arc((a.x + Math.sin(t + i) * 0.02) * w, y * h, 1 + a.s * 1.6, 0, TAU); c.fill();
+    } else if (kind === 'snow') {
+      const y = (a.p + t * 0.04 * a.s) % 1; c.globalAlpha = 0.35; c.fillStyle = '#fff';
+      c.beginPath(); c.arc((a.x + Math.sin(t * 0.8 + i) * 0.02) * w, y * h, 1 + a.s * 1.4, 0, TAU); c.fill();
+    } else if (kind === 'stars' || kind === 'sparkle') {
+      c.globalAlpha = 0.15 + 0.35 * (0.5 + 0.5 * Math.sin(t * 2 + a.p * 20)); c.fillStyle = kind === 'stars' ? '#fff' : '#ffd34a';
+      star4(c, a.x * w, a.p * h, 2 + a.s * 2);
+    } else if (kind === 'hearts') {
+      const y = 1 - ((a.p + t * 0.04 * a.s) % 1); c.globalAlpha = 0.25; c.fillStyle = '#ff6aa8';
+      heart(c, (a.x + Math.sin(t * 0.7 + i) * 0.02) * w, y * h, 3 + a.s * 3);
+    } else if (kind === 'rain') {
+      const y = (a.p + t * 0.08 * a.s) % 1; c.globalAlpha = 0.22; c.fillStyle = '#2bff6a'; c.font = '12px monospace';
+      c.fillText(((Math.floor(t * 3 + a.p * 10)) % 2) ? '1' : '0', a.x * w, y * h);
+    }
+  }
+  c.restore();
+}
+
 function drawGhost(g, x, y){
   const rr = ts * 0.44;
   const flash = frightT < 2 && Math.floor(tm * 6) % 2 === 0;
@@ -411,8 +695,10 @@ function drawGhost(g, x, y){
 function draw(){
   ctx.globalCompositeOperation = 'source-over';
   const bg = ctx.createRadialGradient(W / 2, H / 2, 20, W / 2, H / 2, Math.max(W, H) * 0.7);
-  bg.addColorStop(0, '#1a0f3d'); bg.addColorStop(1, '#070415');
+  const sk = curSkin();
+  bg.addColorStop(0, sk.bg[0]); bg.addColorStop(1, sk.bg[1]);
   ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+  drawAmbient(ctx, sk.amb, W, H, tm);
 
   // دیوارها
   const flashWall = state === 'won' && Math.floor(stT * 4) % 2 === 1;
@@ -422,10 +708,10 @@ function draw(){
   for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) {
     const f = food[r][c]; if (!f) continue;
     const x = sx(c), y = sy(r);
-    if (f === 1) { ctx.fillStyle = '#ffd9a0'; ctx.beginPath(); ctx.arc(x, y, ts * 0.1, 0, TAU); ctx.fill(); }
+    if (f === 1) { ctx.fillStyle = sk.dot; ctx.beginPath(); ctx.arc(x, y, ts * 0.1, 0, TAU); ctx.fill(); }
     else {
       const p = 0.75 + 0.25 * Math.sin(tm * 8);
-      ctx.shadowColor = '#fff3c0'; ctx.shadowBlur = ts * 0.9; ctx.fillStyle = '#fff3c0';
+      ctx.shadowColor = sk.pow; ctx.shadowBlur = ts * 0.9; ctx.fillStyle = sk.pow;
       ctx.beginPath(); ctx.arc(x, y, ts * 0.27 * p, 0, TAU); ctx.fill(); ctx.shadowBlur = 0;
     }
   }
@@ -439,6 +725,9 @@ function draw(){
       drawGhost(g, sx(gx), sy(gy));
     });
   }
+
+  // دنباله اسکین
+  drawFx(ctx, fxs);
 
   // پک‌من
   const rr = ts * 0.46;
@@ -493,7 +782,7 @@ function startIfNeeded(){
 }
 let sp = null;
 addEventListener('pointerdown', e => {
-  if (e.target.closest && e.target.closest('#mute')) return;
+  if (e.target.closest && e.target.closest('#mute,#skinBtn,#skins')) return;
   e.preventDefault(); startIfNeeded(); sp = { x: e.clientX, y: e.clientY };
 });
 addEventListener('pointermove', e => {
@@ -511,9 +800,102 @@ addEventListener('keydown', e => {
   else if (e.code === 'Space') { e.preventDefault(); startIfNeeded(); }
 });
 
+/* ---------- منوی انتخاب اسکین ---------- */
+const skinBtn = document.getElementById('skinBtn'), skins = document.getElementById('skins'), skGrid = document.getElementById('skGrid');
+let menuOpen = false, previews = [], plRAF = 0, pl = 0, pt = 0, btnShown = false;
+function updateSkinCoinLabel(){
+  const label = document.getElementById('skCoins');
+  if (label) label.textContent = fa(skinCoins);
+}
+function buildSkinMenu(){
+  skGrid.innerHTML = ''; previews = [];
+  updateSkinCoinLabel();
+  SKINS.forEach((sk, i) => {
+    const d = document.createElement('div');
+    const unlocked = unlockedSkinIds.has(sk.id);
+    const price = skinPrice(i);
+    d.className = 'sk-card' + (sk.id === skinId ? ' sel' : '') + (unlocked ? '' : ' locked');
+    d.style.setProperty('--i', i); d.style.setProperty('--rc', sk.rc); d.dataset.id = sk.id;
+    const priceText = price === 0 ? 'رایگان' : (unlocked ? '✅ باز شده' : '🔒 قیمت: ' + fa(price) + ' امتیاز');
+    d.innerHTML = '<canvas></canvas><div class="tick">✓</div><div class="nm">' + sk.name + '</div><div class="rr">' + sk.rare + '</div><div class="price">' + priceText + '</div>';
+    d.addEventListener('click', () => {
+      if (!unlockedSkinIds.has(sk.id)) {
+        if (skinCoins < price) {
+          alert('امتیاز کافی نیست! برای باز کردن این اسکین ' + fa(price) + ' امتیاز لازم داری. امتیاز ذخیره‌شده: ' + fa(skinCoins));
+          return;
+        }
+        skinCoins -= price;
+        unlockedSkinIds.add(sk.id);
+        try {
+          localStorage.setItem(SKIN_COINS_KEY, String(skinCoins));
+          localStorage.setItem(SKIN_UNLOCKS_KEY, JSON.stringify(Array.from(unlockedSkinIds)));
+        } catch (e) {}
+        chooseSkin(sk.id);
+        buildSkinMenu();
+        sizePreviews();
+        return;
+      }
+      chooseSkin(sk.id);
+    });
+    skGrid.appendChild(d);
+    previews.push({ sk, cv: d.querySelector('canvas'), fx: [], c: null, w: 0, h: 0 });
+  });
+}
+function chooseSkin(id){
+  if (!unlockedSkinIds.has(id)) return;
+  skinId = id; try { localStorage.setItem(SKIN_KEY, id); } catch (e) {}
+  skGrid.querySelectorAll('.sk-card').forEach(d => d.classList.toggle('sel', d.dataset.id === id));
+  const card = skGrid.querySelector('[data-id="' + id + '"]');
+  if (card && card.animate) card.animate([{ transform: 'scale(.94)' }, { transform: 'scale(1.04)' }, { transform: 'scale(1)' }], { duration: 320, easing: 'ease-out' });
+  fxs.length = 0; rebuildWalls();
+}
+function sizePreviews(){
+  const d = Math.min(window.devicePixelRatio || 1, 2);
+  for (const pv of previews) {
+    pv.w = pv.cv.clientWidth || 140; pv.h = pv.cv.clientHeight || 104;
+    pv.cv.width = pv.w * d; pv.cv.height = pv.h * d;
+    pv.c = pv.cv.getContext('2d'); pv.c.setTransform(d, 0, 0, d, 0, 0);
+  }
+}
+function previewLoop(now){
+  if (!menuOpen) return;
+  const dt = Math.min((now - pl) / 1000, 0.05); pl = now; pt += dt;
+  for (const pv of previews) {
+    const c = pv.c, w = pv.w, h = pv.h, sk = pv.sk; if (!c) continue;
+    c.clearRect(0, 0, w, h);
+    const bg = c.createRadialGradient(w / 2, h / 2, 4, w / 2, h / 2, w * 0.7);
+    bg.addColorStop(0, sk.bg[0]); bg.addColorStop(1, sk.bg[1]); c.fillStyle = bg; c.fillRect(0, 0, w, h);
+    drawAmbient(c, sk.amb, w, h, pt);
+    const rr = h * 0.27, x = w * 0.4 + Math.sin(pt * 1.3) * w * 0.02, y = h * 0.52;
+    c.strokeStyle = sk.wall[0]; c.shadowColor = sk.wall[1]; c.shadowBlur = 8; c.lineWidth = 2; c.globalAlpha = 0.85;
+    c.beginPath(); c.moveTo(6, 8); c.lineTo(w - 6, 8); c.moveTo(6, h - 8); c.lineTo(w - 6, h - 8); c.stroke();
+    c.shadowBlur = 0; c.globalAlpha = 1;
+    c.fillStyle = sk.dot;
+    for (let i = 0; i < 4; i++) { const dx = x + rr * 1.9 + i * rr * 1.1 - ((pt * rr * 2) % (rr * 1.1)); if (dx < w - 8) { c.beginPath(); c.arc(dx, y, Math.max(1.5, rr * 0.12), 0, TAU); c.fill(); } }
+    const mouth = 0.06 + 0.3 * (0.5 + 0.5 * Math.sin(pt * 14));
+    emitTrail(pv.fx, sk, x, y, 0, rr, dt, mouth); stepFx(pv.fx, dt); drawFx(c, pv.fx);
+    drawBody(c, sk, x, y, 0, mouth, rr, pt);
+  }
+  plRAF = requestAnimationFrame(previewLoop);
+}
+function openSkins(){
+  initAudio(); menuOpen = true; skins.classList.add('open'); sizePreviews();
+  cancelAnimationFrame(plRAF); pl = performance.now(); plRAF = requestAnimationFrame(previewLoop);
+}
+function closeSkins(){ menuOpen = false; skins.classList.remove('open'); cancelAnimationFrame(plRAF); }
+function syncSkinBtn(){
+  const show = (state === 'title' || state === 'over') && !menuOpen;
+  if (show !== btnShown) { btnShown = show; skinBtn.style.display = show ? 'block' : 'none'; }
+}
+skinBtn.addEventListener('click', openSkins);
+document.getElementById('skClose').addEventListener('click', closeSkins);
+document.getElementById('skPlay').addEventListener('click', () => { closeSkins(); startIfNeeded(); });
+buildSkinMenu();
+
 let last = performance.now();
 function frame(now){
   const dt = Math.min((now - last) / 1000, 0.05); last = now;
+  syncSkinBtn();
   update(dt); draw();
   requestAnimationFrame(frame);
 }
