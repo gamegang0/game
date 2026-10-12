@@ -1,0 +1,50 @@
+name: auto-games
+on:
+  push:
+    branches: [main]
+    paths:
+      - '*.html'
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build games.js
+        run: |
+          python3 - <<'PY'
+          import glob, json, re, os, html
+          def meta(t, name):
+              m = re.search(r'<meta[^>]+name=["\']%s["\'][^>]+content=["\']([^"\']*)["\']' % name, t, re.I)
+              return html.unescape(m.group(1)) if m else None
+          games = []
+          for f in sorted(glob.glob('*.html')):
+              if f == 'index.html' or f.startswith('_'):
+                  continue
+              t = open(f, encoding='utf-8', errors='ignore').read()
+              gid = f[:-5]
+              title = re.search(r'<title>(.*?)</title>', t, re.I | re.S)
+              g = {
+                  'id': gid,
+                  'icon': meta(t, 'game-icon') or '🎮',
+                  'name': meta(t, 'game-name') or (html.unescape(title.group(1).strip()) if title else gid),
+                  'desc': meta(t, 'game-desc') or 'بازی جدید',
+                  'color': meta(t, 'game-color') or '#35f2ff',
+              }
+              if meta(t, 'game-fs'): g['fs'] = True
+              if meta(t, 'game-portrait'): g['portrait'] = True
+              if meta(t, 'game-nofx'): g['noFX'] = True
+              games.append(g)
+          out = '/* این فایل خودکار ساخته می‌شود؛ دستی ویرایشش نکن */\nwindow.EXTRA_GAMES=[\n'
+          out += ',\n'.join('  ' + json.dumps(g, ensure_ascii=False) for g in games)
+          out += '\n];\n'
+          open('games.js', 'w', encoding='utf-8').write(out)
+          PY
+      - name: Commit
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git add games.js
+          git diff --cached --quiet || (git commit -m "auto update games.js" && git push)
