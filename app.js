@@ -61,7 +61,7 @@ function showPlayer(r){document.querySelectorAll('.royalProfile').forEach(x=>x.r
   const close=()=>{if(!ready)return;clearInterval(tk);if(unsub)unsub();o.remove()};
   const tick=()=>{if(left>0){closeBtn.textContent=FA(left);hint.textContent='تا '+FA(left)+' ثانیه دیگه می‌تونی ببندی…'}else{ready=true;clearInterval(tk);closeBtn.disabled=false;closeBtn.textContent='✕';hint.textContent='برای بستن پروفایل لمس کن';hint.classList.add('ready')}};
   tick();const tk=setInterval(()=>{left--;tick()},1000);
-  o.onclick=close;closeBtn.onclick=e=>{e.stopPropagation();close()};document.body.appendChild(o)}
+  o.onclick=close;closeBtn.onclick=e=>{e.stopPropagation();close()};try{if(window.NovaHooks&&NovaHooks.profile)NovaHooks.profile(o,r)}catch(e){}document.body.appendChild(o)}
 function rankWeekKey(){const d=new Date();const days=(d.getDay()+2)%7;d.setHours(0,0,0,0);d.setDate(d.getDate()-days);return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')}
 async function recordRankMilestone(L){
   if(!Net.on||!Array.isArray(L))return;
@@ -659,6 +659,7 @@ const Chat=(()=>{
       if(x.topic===TOPIC&&x.event==='presence_state'){const st=x.payload||{};Object.entries(st).forEach(([pid,v])=>{const meta=v&&Array.isArray(v.metas)?v.metas[v.metas.length-1]||{}:{};Presence.mark(pid,true,Presence.parseTime(meta.at)||Date.now())});updatePeople();return}
       if(x.topic===TOPIC&&x.event==='presence_diff'){const joins=x.payload&&x.payload.joins||{},leaves=x.payload&&x.payload.leaves||{};Object.entries(joins).forEach(([pid,v])=>{const meta=v&&Array.isArray(v.metas)?v.metas[v.metas.length-1]||{}:{};Presence.mark(pid,true,Presence.parseTime(meta.at)||Date.now())});Object.keys(leaves).forEach(pid=>Presence.mark(pid,false,Date.now()));updatePeople();return}
       if(x.event==='broadcast'&&x.topic===TOPIC){const ev=x.payload&&x.payload.event,p=x.payload&&x.payload.payload;
+        if(ev&&ev.indexOf('dm_')===0){try{window.dispatchEvent(new CustomEvent('arcade-dm',{detail:{ev:ev,p:p}}))}catch(e){}return}
         if(ev==='ban_kick'){if(p&&p.pid===Store.pid())Ban.check();return}
         if(ev==='chat_delete'){if(p&&p.id){const m=history.find(h=>h.id===p.id);if(!m||m.pid===p.pid){deleted.add(p.id);removeMsg(p.id)}}return}
         if(p&&p.t&&p.n&&p.id&&!history.some(h=>h.id===p.id)&&!isHidden(p)){addMsg(p,true)}}
@@ -688,6 +689,7 @@ const Chat=(()=>{
   return{init,stop,notify,refresh:renderHistory,scrollEnd,enter};
 })();
 Chat.init();Ban.start();
+window.NovaApp={Store,Net,Presence,fetchT,SB_URL,SB_KEY,sfx,agoFa,Chat,AdmSet,admBadge,audio};
 setTimeout(()=>Net.presence(true).catch(()=>{}),1400);
 
 /* ================= shared result effects ================= */
@@ -4441,7 +4443,7 @@ addEventListener('pointercancel',()=>{if(cur&&!paused)cur.up()});
 addEventListener('pointermove',e=>{if(cur){In.x=px(e);if(cur.move)cur.move(e)}});
 const ACT=['Space','Enter','ArrowUp','KeyW'];
 addEventListener('keydown',e=>{
-  if(e.target.tagName==='INPUT')return;
+  if(e.target.tagName==='INPUT'||e.target.tagName==='TEXTAREA')return;
   if(document.body.classList.contains('locked'))return;
   if(!$('setp').hidden||!$('fixp').hidden||!$('iosp').hidden||!$('pasurp').hidden){if(e.code==='Escape')closeModals();return}
   if(cur&&['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Space'].includes(e.code))e.preventDefault();

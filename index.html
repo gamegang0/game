@@ -93,6 +93,9 @@
       <button class="mainAction actionChat" type="button" data-page-target="chat">
         <span class="mainActionIcon">💬</span><span class="mainActionText"><b>چت آنلاین</b><small>گفت‌وگو با بقیه‌ی بازیکن‌ها</small></span><span class="mainActionArrow">←</span>
       </button>
+      <button class="mainAction actionPv" type="button" data-page-target="pv">
+        <span class="mainActionIcon">✉️</span><span class="mainActionText"><b>پیوی</b><small>پیام خصوصی به بازیکن‌ها</small></span><span class="pvNavBadge" data-pv-badge hidden></span><span class="mainActionArrow">←</span>
+      </button>
     </div>
   </section>
 
@@ -153,6 +156,14 @@
         <button class="chatSend" id="chatSend" aria-label="ارسال پیام">➤</button>
       </div>
     </section>
+  </section>
+
+  <section id="pvPage" class="menuPage subPage" data-menu-page="pv" hidden>
+    <div class="pageHead">
+      <div><div class="pageEyebrow">PRIVATE MESSAGES</div><h2>✉️ پیوی</h2><p>پیام خصوصی به بازیکن‌ها.</p></div>
+      <button class="pageBack" type="button" data-page-target="home">← منوی اصلی</button>
+    </div>
+    <div id="pvRoot"></div>
   </section>
 
   <div id="homeTools" class="homeTools" hidden>
@@ -314,8 +325,16 @@
     </div>
   </div>
 </div>
+<nav id="bottomNav" aria-label="منوی پایین"><div class="bnWrap">
+  <button class="bnItem" type="button" data-page-target="home"><span class="bi">🏠</span>خانه</button>
+  <button class="bnItem" type="button" data-page-target="games"><span class="bi">🎮</span>بازی‌ها</button>
+  <button class="bnItem" type="button" data-page-target="rank"><span class="bi">👑</span>رتبه</button>
+  <button class="bnItem" type="button" data-page-target="chat"><span class="bi">💬</span>چت</button>
+  <button class="bnItem" type="button" data-page-target="pv"><span class="bi">✉️</span>پیوی<span class="bnBadge" data-pv-badge hidden></span></button>
+</div></nav>
 <script src="games.js"></script>
 <script src="app.js"></script>
+<script src="pv.js"></script>
 <script src="menu-pages.js"></script>
 
 <script src="chat-ui.js"></script>
