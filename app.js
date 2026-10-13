@@ -48,7 +48,7 @@ function showPlayer(r){document.querySelectorAll('.royalProfile').forEach(x=>x.r
   const bio=document.createElement('div');bio.className='royalBio';bio.hidden=true;const hint=document.createElement('div');hint.className='royalCloseHint';hint.textContent='برای بستن پروفایل لمس کن';
   if(mine&&Pref.get('bio')){bio.textContent=Pref.get('bio');bio.hidden=false}
   if(Net.on&&r.pid){Net.rpc('arcade_rank_milestone_stats',{p_pid:r.pid}).then(st=>{if(Array.isArray(st))st=st[0];if(!st||typeof st!=='object')return;const cached=rankMilestoneCache[r.pid]||(rankMilestoneCache[r.pid]={});for(const [key] of specs){cached[key]=Math.max(Number(cached[key])||0,Number(st[key])||0);countNodes[key].textContent=FA(cached[key])}}).catch(()=>{});
-    fetchT(`${SB_URL}/rest/v1/arcade_profiles?select=bio,photo,last_seen,online&pid=eq.${encodeURIComponent(r.pid)}`,{headers:{apikey:SB_KEY}},6000).then(x=>x.ok?x.json():fetchT(`${SB_URL}/rest/v1/arcade_profiles?select=bio,photo&pid=eq.${encodeURIComponent(r.pid)}`,{headers:{apikey:SB_KEY}},6000).then(y=>y.ok?y.json():[])).then(j=>{const p=j&&j[0];if(p&&p.bio&&!mine){bio.textContent=p.bio;bio.hidden=false}if(p&&p.photo)setPhoto(p.photo);if(p&&p.last_seen!==undefined){const t=Presence.parseTime(p.last_seen);Presence.mark(String(r.pid),String(p.online)==='true'||p.online===true,t||Date.now());paintStat()}}).catch(()=>{}).finally(()=>b.classList.remove('loading'));
+    fetchT(`${SB_URL}/rest/v1/arcade_profiles?select=bio,photo,last_seen,online&pid=eq.${encodeURIComponent(r.pid)}`,{headers:{apikey:SB_KEY}},6000).then(x=>x.ok?x.json():fetchT(`${SB_URL}/rest/v1/arcade_profiles?select=bio,photo&pid=eq.${encodeURIComponent(r.pid)}`,{headers:{apikey:SB_KEY}},6000).then(y=>y.ok?y.json():[])).then(j=>{const p=j&&j[0];if(p&&p.bio&&!mine){bio.textContent=p.bio;bio.hidden=false}if(p&&p.photo)setPhoto(p.photo);if(p&&p.last_seen!==undefined){const t=Presence.parseTime(p.last_seen);Presence.mark(String(r.pid),Presence.fresh(p.online,t),t||Date.now());paintStat()}}).catch(()=>{}).finally(()=>b.classList.remove('loading'));
   }else for(const [key] of specs)countNodes[key].textContent=FA(Number(rankMilestoneCache[r.pid]?.[key])||0);
   const stat=document.createElement('div');stat.className='royalStat';
   function paintStat(){stat.textContent='';
@@ -351,7 +351,8 @@ const Presence=(()=>{
   }
   function isOnline(pid){load();return !!pid && online.has(pid)}
   function seen(pid){load();return lastSeen.get(pid)||0}
-  return {online,lastSeen,mark,isOnline,seen,load,save,parseTime};
+  function fresh(on,ts){return (String(on)==='true'||on===true)&&!!ts&&(Date.now()-ts)<90000}
+  return {online,lastSeen,mark,isOnline,seen,load,save,parseTime,fresh};
 })();
 const Net={
   on:!!(SB_URL&&SB_KEY),
@@ -376,13 +377,13 @@ const Net={
     }catch(e){}
     const pm=Object.fromEntries(prof.map(x=>{
       const parsed=Presence.parseTime(x.last_seen);
-      if(x.pid&&parsed)Presence.mark(String(x.pid),String(x.online)==='true'||x.online===true,parsed);
+      if(x.pid&&parsed)Presence.mark(String(x.pid),Presence.fresh(x.online,parsed),parsed);
       return [x.pid,x];
     }));
     return a.map(x=>{
       const p=pm[x.pid]||{};
       const ls=Presence.parseTime(p.last_seen)||Presence.seen(x.pid)||0;
-      return {pid:x.pid,n:String(x.name||'').slice(0,14),s:+x.score||0,online:Presence.isOnline(x.pid)||String(p.online)==='true'||p.online===true,lastSeen:ls};
+      return {pid:x.pid,n:String(x.name||'').slice(0,14),s:+x.score||0,online:Presence.isOnline(x.pid)||Presence.fresh(p.online,Presence.parseTime(p.last_seen)),lastSeen:ls};
     }).filter(x=>x.s>0);
   },
   async presence(on=true){
@@ -420,7 +421,7 @@ const Net={
     }catch(e){}
     const pm=Object.fromEntries(prof.map(x=>{
       const parsed=Presence.parseTime(x.last_seen);
-      if(x.pid&&parsed)Presence.mark(String(x.pid),String(x.online)==='true'||x.online===true,parsed);
+      if(x.pid&&parsed)Presence.mark(String(x.pid),Presence.fresh(x.online,parsed),parsed);
       return [x.pid,x];
     }));
     for(const x of a){
@@ -432,7 +433,7 @@ const Net={
     return Object.values(m).map(o=>{
       const p=pm[o.pid]||{};
       return {pid:o.pid,n:o.n,s:Object.values(o.g).reduce((p,q)=>p+q,0),
-        online:Presence.isOnline(o.pid)||String(p.online)==='true'||p.online===true,
+        online:Presence.isOnline(o.pid)||Presence.fresh(p.online,Presence.parseTime(p.last_seen)),
         lastSeen:Presence.parseTime(p.last_seen)||Presence.seen(o.pid)||0};
     })
       .filter(x=>x.s>0).sort((p,q)=>q.s-p.s).slice(0,20);
@@ -691,6 +692,7 @@ const Chat=(()=>{
 Chat.init();Ban.start();
 window.NovaApp={Store,Net,Presence,fetchT,SB_URL,SB_KEY,sfx,agoFa,Chat,AdmSet,admBadge,audio};
 setTimeout(()=>Net.presence(true).catch(()=>{}),1400);
+setInterval(()=>{if(!document.hidden)Net.presence(true).catch(()=>{})},30000);
 
 /* ================= shared result effects ================= */
 
