@@ -1,7 +1,7 @@
 
 (function(){
   const $id=id=>document.getElementById(id);
-  const pages={home:$id('homePage'),games:$id('gamesPage'),rank:$id('rankPage'),chat:$id('chatPage')};
+  const pages={home:$id('homePage'),games:$id('gamesPage'),rank:$id('rankPage'),chat:$id('chatPage'),pv:$id('pvPage')};
   const tools=$id('homeTools'),menu=$id('menu');
   let activeCategory='all';
   function showPage(name){
@@ -12,6 +12,8 @@
     document.querySelectorAll('[data-page-target]').forEach(b=>b.setAttribute('aria-current',b.dataset.pageTarget===name?'page':'false'));
     if(name==='rank'&&typeof renderRank==='function')renderRank();
     if(name==='chat'&&typeof Chat!=='undefined'){try{Chat.enter()}catch(e){}}
+    if(name==='pv'&&window.PV){try{PV.enter()}catch(e){}}
+    if(name!=='pv'&&window.PV&&PV.leave){try{PV.leave()}catch(e){}}
     try{if(typeof sfx!=='undefined'&&sfx.ui)sfx.ui();}catch(e){}
   }
   function filterGames(category){
