@@ -1,0 +1,692 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>مار</title>
+<meta name="game-icon" content="🐍">
+<meta name="game-name" content="مار">
+<meta name="game-desc" content="سیب بخور، بلندتر شو و به خودت نخور">
+<meta name="game-color" content="#7dffb0">
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;background:#0b0820;overflow:hidden;touch-action:none;-webkit-user-select:none;user-select:none;font-family:Vazirmatn,Tahoma,"Segoe UI",sans-serif}
+body{display:flex;flex-direction:column;align-items:center;justify-content:center}
+#c{display:block;touch-action:none;flex:none}
+#pad{display:none;width:100%;flex:none;padding:8px 12px calc(8px + env(safe-area-inset-bottom,0px));justify-content:center}
+#pad.on{display:flex}
+#padBtn{width:100%;max-width:420px;height:64px;border-radius:16px;border:2px solid rgba(255,255,255,.35);background:linear-gradient(#ffffff26,#ffffff0f);color:#fff;font:inherit;font-weight:800;font-size:20px;display:flex;flex-direction:column;align-items:center;justify-content:center;touch-action:none}
+#padBtn small{font-size:12px;font-weight:400;opacity:.75}
+#padBtn:active{background:#ffffff40}
+@media (pointer:fine){#pad.on{display:none}}
+</style>
+</head>
+<body>
+<canvas id="c" width="480" height="640"></canvas>
+<div id="pad"><button id="padBtn" type="button"></button></div>
+<script>
+(()=>{
+'use strict';
+const GAME_ID='snake';
+const $=id=>document.getElementById(id);
+const cv=$('c'),ctx=cv.getContext('2d');
+const W=480,H=640;
+const FA=n=>Math.round(n).toLocaleString('fa-IR');
+const FONT='Vazirmatn,Tahoma,"Segoe UI",sans-serif';
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+
+/* ---------- ارتباط با سایت اصلی ---------- */
+const EMB=(()=>{try{return window.parent!==window}catch(e){return false}})();
+function post(type,score,won,extra){
+  if(!EMB)return;
+  try{window.parent.postMessage(Object.assign({source:'nova-arcade-embed',game:GAME_ID,type:type,score:Math.max(0,Math.floor(score||0)),won:!!won},extra||{}),'*')}catch(e){}
+}
+
+/* ---------- تنظیمات (همون کلیدهای سایت اصلی) ---------- */
+const OSR=matchMedia('(prefers-reduced-motion: reduce)').matches;
+const Pref=(()=>{
+  const K='arcade_pref',p={gfx:OSR?'low':'med',snd:1,diff:1,lag:0,bloom:1,particles:1,shadows:1,scan:0,background:1,shake:1,render:1.5,fx:1};
+  const load=()=>{
+    try{Object.assign(p,JSON.parse(localStorage.getItem(K)||'{}')||{})}catch(e){}
+    if(!['low','med','high','pro'].includes(p.gfx))p.gfx='med';
+    if(![0,1,2].includes(+p.diff))p.diff=1;
+    p.lag=p.lag?1:0;p.snd=p.snd?1:0;
+  };
+  load();
+  return{
+    get:k=>p[k],
+    set(k,v){p[k]=v;post('pref',0,false,{key:k,value:v})},
+    reload:load
+  };
+})();
+const LEVELS={low:{dpr:1,p:.35,shake:0,fx:0},med:{dpr:1.5,p:.7,shake:1,fx:.7},high:{dpr:2,p:1,shake:1,fx:1.35},pro:{dpr:3,p:1.5,shake:1,fx:2}};
+const GFX={k:'med',dpr:1.5,p:.7,shake:1,fx:.7,bloom:1,particles:1,shadows:1,scan:0,background:1};
+let reduce=OSR,DPR=1;
+function applyGfx(){
+  const base=Pref.get('gfx');
+  const k=Pref.get('lag')?'low':base;
+  Object.assign(GFX,LEVELS[k]);GFX.k=k;GFX.base=base;GFX.lag=!!Pref.get('lag');
+  GFX.bloom=!!Pref.get('bloom')&&!GFX.lag;
+  GFX.particles=!!Pref.get('particles')&&!GFX.lag;
+  GFX.shadows=!!Pref.get('shadows')&&!GFX.lag;
+  GFX.scan=!!Pref.get('scan')&&!GFX.lag;
+  GFX.background=!!Pref.get('background')&&!GFX.lag;
+  GFX.shake=!!Pref.get('shake')&&!GFX.lag;
+  GFX.dpr=Math.min(GFX.dpr,Number(Pref.get('render'))||GFX.dpr);
+  GFX.fx=Math.min(GFX.fx,Number(Pref.get('fx'))||0);
+  reduce=OSR||!GFX.shake;
+  fit();
+}
+const padEl=$('pad');
+function fit(){
+  const padH=padEl.classList.contains('on')&&getComputedStyle(padEl).display!=='none'?padEl.offsetHeight:0;
+  const sc=Math.max(.1,Math.min(innerWidth/W,(innerHeight-padH)/H));
+  cv.style.width=Math.floor(W*sc)+'px';cv.style.height=Math.floor(H*sc)+'px';
+  DPR=Math.min(window.devicePixelRatio||1,GFX.dpr);
+  const w=Math.round(W*DPR),h=Math.round(H*DPR);
+  if(cv.width!==w||cv.height!==h){cv.width=w;cv.height=h}
+}
+
+/* ---------- ابزارهای کمکی ---------- */
+function rr(x,y,w,h,r){ctx.beginPath();if(ctx.roundRect)ctx.roundRect(x,y,w,h,r);else ctx.rect(x,y,w,h)}
+function txt(s,x,y,size,color,weight='700',align='center'){
+  ctx.font=`${weight} ${size}px ${FONT}`;ctx.textAlign=align;ctx.fillStyle=color;ctx.fillText(s,x,y);
+}
+function dim(a){ctx.fillStyle=`rgba(18,12,34,${a})`;ctx.fillRect(0,0,W,H)}
+const hex=h=>[1,3,5].map(i=>parseInt(h.substr(i,2),16));
+const mix=(a,b,t)=>{const A=hex(a),B=hex(b);return `rgb(${A.map((v,i)=>Math.round(v+(B[i]-v)*t)).join(',')})`};
+const rot=(x,y,a)=>[x*Math.cos(a)-y*Math.sin(a),x*Math.sin(a)+y*Math.cos(a)];
+
+const In={x:W/2};
+const keys={};
+
+/* ---------- صدا ---------- */
+let AC=null,muted=!Pref.get('snd'),noiseBuf=null;
+function audio(){
+  if(!AC){try{AC=new(window.AudioContext||window.webkitAudioContext)()}catch(e){}}
+  if(AC&&AC.state==='suspended')AC.resume();
+  return AC;
+}
+function tone(f,d,type='square',vol=.1,slide=0,delay=0){
+  if(muted)return;const a=audio();if(!a)return;
+  const t0=a.currentTime+delay,o=a.createOscillator(),g=a.createGain();
+  o.type=type;o.frequency.setValueAtTime(f,t0);
+  if(slide)o.frequency.exponentialRampToValueAtTime(Math.max(30,f+slide),t0+d);
+  g.gain.setValueAtTime(vol,t0);g.gain.exponentialRampToValueAtTime(.0001,t0+d);
+  o.connect(g);g.connect(a.destination);o.start(t0);o.stop(t0+d+.02);
+}
+function noise(d,vol,freq=2500){
+  if(muted)return;const a=audio();if(!a)return;
+  if(!noiseBuf){noiseBuf=a.createBuffer(1,a.sampleRate*.3,a.sampleRate);const c=noiseBuf.getChannelData(0);for(let i=0;i<c.length;i++)c[i]=Math.random()*2-1}
+  const s=a.createBufferSource(),f=a.createBiquadFilter(),g=a.createGain(),t0=a.currentTime;
+  s.buffer=noiseBuf;f.type='lowpass';f.frequency.value=freq;
+  g.gain.setValueAtTime(vol,t0);g.gain.exponentialRampToValueAtTime(.0001,t0+d);
+  s.connect(f);f.connect(g);g.connect(a.destination);s.start(t0);s.stop(t0+d);
+}
+const sfx={
+  ui(){tone(620,.05,'square',.04)},
+  wall(){tone(300,.05,'square',.04)},
+  paddle(){tone(190,.09,'triangle',.22,70)},
+  hit(r){tone(260+r*18,.06,'square',.06)},
+  metal(){tone(1100,.07,'sawtooth',.035,-500)},
+  pop(r,c){tone(420+r*38+Math.min(c,14)*22,.12,'square',.08,260);noise(.06,.05,3200)},
+  power(){[523,659,784,1047].forEach((f,i)=>tone(f,.09,'square',.06,0,i*.06))},
+  lose(){tone(320,.5,'sawtooth',.1,-260);noise(.25,.09,700)},
+  clear(){[523,659,784,1047,1319].forEach((f,i)=>tone(f,.15,'triangle',.12,0,i*.09))},
+  over(){[392,330,262,196].forEach((f,i)=>tone(f,.25,'sawtooth',.09,-20,i*.2))},
+  laser(){tone(1000,.09,'sawtooth',.03,-700)},
+  launch(){tone(260,.12,'sine',.12,360)},
+  pHit(){tone(330,.07,'triangle',.2,120)},
+  bHit(){tone(250,.07,'triangle',.15,80)},
+  point(){tone(523,.08,'square',.07);tone(784,.12,'square',.07,0,.08)},
+  miss(){tone(220,.35,'sawtooth',.09,-150)},
+  jump(){tone(360,.14,'square',.06,320)},
+  die(){tone(260,.35,'square',.09,-200);noise(.2,.09,900)},
+  mile(){tone(880,.06,'square',.05);tone(1175,.09,'square',.05,0,.07)},
+  land(){noise(.05,.03,1200)},
+  slice(){noise(.09,.1,6000);tone(1100,.08,'sawtooth',.03,-700)},
+  bomb(){noise(.6,.22,700);tone(140,.55,'sawtooth',.14,-100)},
+  whoosh(){tone(220,.18,'sine',.025,240)},
+  flip(){tone(700,.05,'square',.04,260)},
+  nope(){tone(210,.14,'sawtooth',.06,-90)},
+  seq0(){tone(262,.16,'sine',.09,55)},
+  seq1(){tone(330,.16,'triangle',.09,70)},
+  seq2(){tone(392,.16,'square',.075,90)},
+  seq3(){tone(523,.16,'sine',.09,110)},
+  seqStart(){[262,330,392,523].forEach((f,i)=>tone(f,.09,'triangle',.055,35,i*.065))},
+  seqGood(){[523,659,784].forEach((f,i)=>tone(f,.085,'sine',.06,55,i*.055))},
+  seqBad(){tone(170,.22,'sawtooth',.09,-90);tone(110,.28,'triangle',.05,-40,.08)},
+  godWin(){[523,659,784,1047,1319].forEach((f,i)=>tone(f,.13,'triangle',.075,45,i*.075));tone(1568,.34,'sine',.045,-260,.38)},
+  godLose(){tone(180,.34,'sawtooth',.11,-100);tone(120,.45,'triangle',.07,-45,.09);noise(.22,.10,850)}
+};
+
+
+addEventListener('storage',e=>{
+  if(e.key==='arcade_pref'){Pref.reload();muted=!Pref.get('snd');applyGfx()}
+  else if(e.key==='arcade_v1')Store.reload();
+});
+
+/* ---------- ذخیره‌سازی (خوندن از همون localStorage سایت اصلی) ---------- */
+const Store=(()=>{
+  const KEY='arcade_v1',SKK='arcade_skins_v1',SELK='arcade_skin_selected_v1';
+  let g={};
+  const rd=k=>{try{return JSON.parse(localStorage.getItem(k)||'{}')||{}}catch(e){return{}}};
+  const wr=(k,o)=>{try{localStorage.setItem(k,JSON.stringify(o))}catch(e){}};
+  const ent=id=>g[id]||(g[id]={best:0,last:0,plays:0,wins:0,losses:0});
+  function reload(){
+    const p=rd(KEY);
+    for(const k in p){
+      const o=ent(k);
+      for(const f in p[k]){const v=+p[k][f]||0;o[f]=f==='best'?Math.max(o[f]||0,v):v}
+    }
+  }
+  reload();
+  const idx=(o,id)=>Math.max(0,Math.floor(Number(o[id])||0));
+  return{
+    reload,
+    get:id=>ent(id),
+    best:id=>ent(id).best,
+    add(id,f){const o=ent(id);o[f]=(o[f]||0)+1;post('stat',0,false,{field:f})},
+    record(id,n){const o=ent(id),add=Math.max(0,Math.floor(Number(n)||0));o.last=add;o.plays++;if(add>0)o.best+=add;return add>0},
+    name:()=>{try{return localStorage.getItem('arcade_name')||''}catch(e){return''}},
+    pid:()=>{try{return localStorage.getItem('arcade_pid')||'anon'}catch(e){return'anon'}},
+    skinIndex:id=>idx(rd(SKK),id),
+    skinUnlocked(id,i){return i===0||i<=this.skinIndex(id)},
+    unlockSkin(id,i){
+      i=Math.max(0,Math.floor(Number(i)||0));
+      const sv=rd(SKK);
+      if(i>idx(sv,id)){sv[id]=i;wr(SKK,sv);const se=rd(SELK);if(idx(se,id)>i){se[id]=i;wr(SELK,se)}return true}
+      return false;
+    },
+    selectedSkin(id){return Math.min(idx(rd(SELK),id),idx(rd(SKK),id))},
+    setSkin(id,i){
+      i=Math.max(0,Math.floor(Number(i)||0));
+      if(!this.skinUnlocked(id,i))return false;
+      const se=rd(SELK);se[id]=i;wr(SELK,se);return true;
+    }
+  };
+})();
+
+/* ---------- پوسته: پیام به سایت اصلی ---------- */
+let lastSc=-1,lastHud=-1,lastInfo=null;
+const Shell={
+  begin(){lastSc=-1;lastHud=-1;post('start',0)},
+  score(n){n=Math.floor(n);if(n!==lastSc){lastSc=n;post('score',n)}},
+  hud(n){n=Math.floor(n);if(n!==lastHud){lastHud=n;post('hud',n)}},
+  info(t){t=String(t==null?'':t);if(t!==lastInfo){lastInfo=t;post('info',0,false,{text:t})}},
+  finish(n,kind){
+    kind=kind||'lose';
+    const r=Store.record(GAME_ID,n);
+    post('finish',n,kind==='win',{fx:kind});
+    return r;
+  }
+};
+const lifeFX={show(){post('lifeLost',0)},clear(){}};
+const resultFX={show(k){post('fx',0,false,{fx:k||'lose'})},clear(){}};
+
+const Games={};
+let cur=null,paused=false;
+
+/* ================= SNAKE (مار) ================= */
+Games.snake=(()=>{
+  const id='snake';
+  const COLS=24,ROWS=32,CELL=20,OX=(W-COLS*CELL)/2,OY=0;
+  const BOARD_W=COLS*CELL,BOARD_H=ROWS*CELL;
+  let st='ready',score=0,t=0,stepT=0,newBest=false,lock=0,skin=0,skinPulse=0;
+  let dir={x:1,y:0},next={x:1,y:0},snake=[],prevSnake=[],apple={x:12,y:15};
+  let speed=7.5,swipe=null;
+  // اسکین‌های مار: هر ۵۰ امتیاز یک اسکین جدید باز می‌شود.
+  const SKINS=[
+    {name:'کلاسیک',need:0,a:'#38b96f',b:'#62dc88',fx:'none'},
+    {name:'آتیشی 🔥',need:50,a:'#ff5a36',b:'#ffd34d',fx:'fire'},
+    {name:'یخی ❄️',need:100,a:'#4ddcff',b:'#dfffff',fx:'ice'},
+    {name:'برقی ⚡',need:150,a:'#8b7cff',b:'#fff36b',fx:'electric'},
+    {name:'سمی ☣️',need:200,a:'#56d43f',b:'#c8ff48',fx:'toxic'},
+    {name:'سایه 🌑',need:250,a:'#3b3b55',b:'#a68cff',fx:'shadow'},
+    {name:'لاوا 🌋',need:300,a:'#ff3d2e',b:'#ff8a24',fx:'lava'},
+    {name:'کهکشانی 🌌',need:350,a:'#7b5cff',b:'#ff5eea',fx:'galaxy'},
+    {name:'طلایی 👑',need:400,a:'#d99b19',b:'#fff0a0',fx:'gold'},
+    {name:'نئونی 💚',need:450,a:'#00e5a8',b:'#00fff0',fx:'neon'},
+    {name:'رنگین‌کمانی 🌈',need:500,a:'#ff4d9d',b:'#6bffcf',fx:'rainbow'}
+  ];
+  const skinForScore=v=>Math.min(SKINS.length-1,Math.floor(v/50));
+  const currentSkin=()=>SKINS[skin];
+  const same=(a,b)=>a.x===b.x&&a.y===b.y;
+  const center=s=>({x:OX+s.x*CELL+CELL/2,y:OY+s.y*CELL+CELL/2});
+  function placeApple(){
+    let tries=0;
+    do{
+      apple={x:1+Math.floor(Math.random()*(COLS-2)),y:1+Math.floor(Math.random()*(ROWS-2))};
+      tries++;
+    }while(snake.some(s=>same(s,apple))&&tries<500);
+  }
+  function reset(){
+    snake=[{x:7,y:15},{x:6,y:15},{x:5,y:15},{x:4,y:15}];
+    prevSnake=snake.map(s=>({...s}));
+    dir={x:1,y:0};next={x:1,y:0};score=0;stepT=0;speed=7.5;swipe=null;
+    const best=Store.best(id);
+    for(let i=0;i<SKINS.length;i++)if(best>=SKINS[i].need)Store.unlockSkin(id,i);
+    skin=Math.min(SKINS.length-1,Store.selectedSkin(id));
+    if(!Store.skinUnlocked(id,skin))skin=0;
+    Store.setSkin(id,skin);skinPulse=0;
+    placeApple();sync();
+  }
+  function sync(){
+    Shell.score(score);
+    Shell.info('🍎 طول مار: '+FA(snake.length)+' · '+currentSkin().name);
+  }
+  function enter(){
+    st='ready';newBest=false;reset();
+  }
+  function start(){
+    reset();newBest=false;Shell.begin();st='play';sfx.launch();
+  }
+  function setDir(x,y){
+    if(st==='ready')return;
+    if(st==='over')start();
+    if(st!=='play')return;
+    // جلوگیری از برگشت مستقیم داخل بدن
+    if(x===-dir.x&&y===-dir.y)return;
+    next={x,y};
+  }
+  function down(e){
+    if(Date.now()<lock)return;
+    if(st==='ready'){
+      if(e&&e.clientX!==undefined){
+        const r=cv.getBoundingClientRect();
+        const x=(e.clientX-r.left)/r.width*W;
+        const y=(e.clientY-r.top)/r.height*H;
+        const col=x>=30&&x<=228?0:(x>=236&&x<=434?1:-1),row=Math.floor((y-215)/48);
+        const idx=row*2+col;
+        if(col>=0&&row>=0&&idx>=0&&idx<SKINS.length){if(Store.skinUnlocked(id,idx)){skin=idx;Store.setSkin(id,idx);sync();}return}
+        if(x>=70&&x<=410&&y>=545&&y<=615){start();return}
+      }else{start();return}
+      return;
+    }
+    if(st==='over')start();
+    if(st!=='play')return;
+    if(e&&e.clientX!==undefined){
+      swipe={x:e.clientX,y:e.clientY};
+      const r=cv.getBoundingClientRect();
+      const tx=(e.clientX-r.left)/r.width*W;
+      const ty=(e.clientY-r.top)/r.height*H;
+      const h=center(snake[0]);
+      const dx=tx-h.x,dy=ty-h.y;
+      if(Math.abs(dx)+Math.abs(dy)>18){
+        if(Math.abs(dx)>Math.abs(dy))setDir(dx>0?1:-1,0);
+        else setDir(0,dy>0?1:-1);
+      }
+      return;
+    }
+    setDir(0,-1);
+  }
+  function move(e){
+    if(st!=='play'||e.clientX===undefined)return;
+    if(!swipe)return;
+    const dx=e.clientX-swipe.x,dy=e.clientY-swipe.y;
+    if(Math.abs(dx)+Math.abs(dy)<22)return;
+    if(Math.abs(dx)>Math.abs(dy))setDir(dx>0?1:-1,0);
+    else setDir(0,dy>0?1:-1);
+    swipe=null;
+  }
+  function key(k){
+    const m={
+      ArrowUp:[0,-1],KeyW:[0,-1],
+      ArrowDown:[0,1],KeyS:[0,1],
+      ArrowLeft:[-1,0],KeyA:[-1,0],
+      ArrowRight:[1,0],KeyD:[1,0]
+    };
+    if(!m[k])return false;
+    setDir(m[k][0],m[k][1]);
+    return true;
+  }
+  function die(){
+    st='over';swipe=null;
+    newBest=Shell.finish(score,'lose');lock=Date.now()+800;sfx.die();
+  }
+  function update(dt){
+    t+=dt;
+    if(skinPulse>0)skinPulse=Math.max(0,skinPulse-dt);
+    if(st!=='play')return;
+    stepT+=dt;
+    // سرعت با امتیاز بالا می‌رود، اما سقف کنترل‌شده دارد تا بازی قابل بازی بماند.
+    const movesPerSec=Math.min(16, speed+Math.floor(score/30)*0.45);
+    const interval=1/movesPerSec;
+    if(stepT<interval)return;
+    stepT-=interval;
+    dir=next;
+    prevSnake=snake.map(s=>({...s}));
+    const head={x:snake[0].x+dir.x,y:snake[0].y+dir.y};
+    if(head.x<0||head.x>=COLS||head.y<0||head.y>=ROWS){die();return}
+    const eating=same(head,apple);
+    // اگر سیب نخورده‌ایم، خانه‌ی دم در همین حرکت آزاد می‌شود.
+    const bodyCount=snake.length-(eating?0:1);
+    for(let i=0;i<bodyCount;i++){
+      if(same(head,snake[i])){die();return}
+    }
+    snake.unshift(head);
+    if(eating){
+      score+=10;
+      speed=Math.min(13,speed+.18);
+      const ns=skinForScore(score);
+      if(ns>Store.skinIndex(id)){Store.unlockSkin(id,ns);skinPulse=1.2;sfx.power();}
+      placeApple();
+      sync();
+      sfx.point();
+    }else{
+      snake.pop();
+    }
+  }
+  function roundRect(x,y,w,h,r){
+    ctx.beginPath();
+    ctx.roundRect(x,y,w,h,r);
+    ctx.fill();
+  }
+  function drawApple(){
+    const c=center(apple);
+    // سیب گرد با ساقه و برگ، بدون افکت سنگین.
+    ctx.fillStyle='#e93f55';
+    ctx.beginPath();ctx.arc(c.x,c.y+1,7.6,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='#ff6d7d';
+    ctx.beginPath();ctx.arc(c.x-2.5,c.y-2,2.1,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='#5a3a20';
+    ctx.fillRect(c.x-1,c.y-9,2.5,4.5);
+    ctx.fillStyle='#72d66f';
+    ctx.beginPath();ctx.ellipse(c.x+4,c.y-8,4.2,2.2,-.35,0,Math.PI*2);ctx.fill();
+  }
+  function drawSkinFx(renderSnake){
+    const sk=currentSkin(),f=sk.fx;
+    if(f==='none'||!renderSnake.length)return;
+    ctx.save();
+    const n=Math.min(renderSnake.length,22);
+    for(let i=0;i<n;i++){
+      const p=center(renderSnake[i]);
+      const q=(t*5+i*1.7)%6.28;
+      let alpha=.24;
+      if(f==='fire'){
+        ctx.fillStyle=i%2?'#ff4b24':'#ffd34d';
+        ctx.globalAlpha=.22+.12*Math.sin(t*12+i);
+        ctx.beginPath();ctx.arc(p.x+Math.sin(q)*7,p.y+Math.cos(q)*5,3+Math.random()*2,0,6.283);ctx.fill();
+      }else if(f==='ice'){
+        ctx.fillStyle='#cfffff';ctx.globalAlpha=.35;
+        ctx.beginPath();ctx.arc(p.x+Math.cos(q)*9,p.y+Math.sin(q)*7,2.2,0,6.283);ctx.fill();
+      }else if(f==='electric'){
+        ctx.strokeStyle='#fff36b';ctx.lineWidth=1.5;ctx.globalAlpha=.55;
+        ctx.beginPath();ctx.moveTo(p.x-5,p.y+Math.sin(q)*5);ctx.lineTo(p.x,p.y-5);ctx.lineTo(p.x+4,p.y+2);ctx.stroke();
+      }else if(f==='toxic'){
+        ctx.fillStyle='#c8ff48';ctx.globalAlpha=.28;
+        ctx.beginPath();ctx.arc(p.x+Math.sin(q)*8,p.y+Math.cos(q)*8,2.5,0,6.283);ctx.fill();
+      }else if(f==='shadow'){
+        ctx.fillStyle='#9c82ff';ctx.globalAlpha=.16;
+        ctx.beginPath();ctx.arc(p.x,p.y,13+Math.sin(q)*2,0,6.283);ctx.fill();
+      }else if(f==='lava'){
+        ctx.fillStyle=i%2?'#ff3d2e':'#ffb02e';ctx.globalAlpha=.3;
+        ctx.beginPath();ctx.arc(p.x+Math.sin(q)*6,p.y+Math.cos(q)*6,2.5,0,6.283);ctx.fill();
+      }else if(f==='galaxy'){
+        ctx.fillStyle=i%2?'#ff5eea':'#6b7cff';ctx.globalAlpha=.35;
+        ctx.beginPath();ctx.arc(p.x+Math.sin(q)*8,p.y+Math.cos(q)*8,2,0,6.283);ctx.fill();
+      }else if(f==='gold'){
+        ctx.fillStyle='#fff0a0';ctx.globalAlpha=.38;
+        ctx.beginPath();ctx.arc(p.x+Math.cos(q)*8,p.y+Math.sin(q)*8,2.3,0,6.283);ctx.fill();
+      }else if(f==='neon'){
+        ctx.strokeStyle='#00fff0';ctx.lineWidth=1.5;ctx.globalAlpha=.4;
+        ctx.beginPath();ctx.arc(p.x,p.y,11+Math.sin(q)*2,0,6.283);ctx.stroke();
+      }else if(f==='rainbow'){
+        ctx.fillStyle=`hsl(${(t*180+i*32)%360},100%,65%)`;ctx.globalAlpha=.42;
+        ctx.beginPath();ctx.arc(p.x+Math.sin(q)*8,p.y+Math.cos(q)*8,2.5,0,6.283);ctx.fill();
+      }
+    }
+    ctx.restore();
+  }
+  function drawSnake(){
+    if(!snake.length)return;
+    // بدن یکپارچه است: اول یک نوار پیوسته می‌کشیم و بعد قطعه‌ها را روی آن می‌نشانیم.
+    // این باعث می‌شود بین خانه‌ها هیچ شکاف مربعی یا فاصله‌ای دیده نشود.
+    ctx.save();
+    const interval=1/Math.min(16,speed+Math.floor(score/30)*0.45);
+    const a=Math.max(0,Math.min(1,stepT/interval));
+    const renderSnake=snake.map((cur,i)=>{
+      const old=prevSnake[i]||cur;
+      return {x:old.x+(cur.x-old.x)*a,y:old.y+(cur.y-old.y)*a};
+    });
+    drawSkinFx(renderSnake);
+    ctx.lineCap='round';ctx.lineJoin='round';ctx.lineWidth=15.5;
+    ctx.strokeStyle=currentSkin().a;
+    ctx.beginPath();
+    const tail=center(renderSnake[renderSnake.length-1]);ctx.moveTo(tail.x,tail.y);
+    for(let i=renderSnake.length-2;i>=0;i--){const p=center(renderSnake[i]);ctx.lineTo(p.x,p.y)}
+    ctx.stroke();
+    ctx.lineWidth=11.5;
+    ctx.strokeStyle=currentSkin().b;
+    ctx.beginPath();ctx.moveTo(tail.x,tail.y);
+    for(let i=renderSnake.length-2;i>=1;i--){const p=center(renderSnake[i]);ctx.lineTo(p.x,p.y)}
+    ctx.stroke();
+    // لکه‌های ظریف روی بدن برای اینکه مار از یک نوار ساده هم طبیعی‌تر دیده شود.
+    for(let i=renderSnake.length-1;i>=1;i--){
+      const p=center(renderSnake[i]);
+      ctx.fillStyle=i%2?currentSkin().a:currentSkin().b;
+      ctx.beginPath();ctx.arc(p.x,p.y,7.1,0,Math.PI*2);ctx.fill();
+    }
+    ctx.restore();
+    // سر بزرگ‌تر و گردتر.
+    const h=center(renderSnake[0]);
+    ctx.save();
+    ctx.translate(h.x,h.y);
+    const ang=Math.atan2(dir.y,dir.x);
+    ctx.rotate(ang);
+    ctx.fillStyle=currentSkin().b;
+    ctx.beginPath();ctx.ellipse(0,0,10.2,9,0,0,Math.PI*2);ctx.fill();
+    // چشم‌ها
+    ctx.fillStyle='#fff';
+    ctx.beginPath();ctx.arc(4.8,-4.1,3,0,Math.PI*2);ctx.arc(4.8,4.1,3,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='#14231b';
+    ctx.beginPath();ctx.arc(5.7,-4.1,1.35,0,Math.PI*2);ctx.arc(5.7,4.1,1.35,0,Math.PI*2);ctx.fill();
+    // بینی و زبان کوچک برای ظاهر زنده‌تر
+    ctx.fillStyle='#d72e48';
+    ctx.beginPath();ctx.arc(10,0,1.5,0,Math.PI*2);ctx.fill();
+    ctx.strokeStyle='#ef5366';ctx.lineWidth=1.2;ctx.beginPath();ctx.moveTo(10,0);ctx.lineTo(14,0);ctx.moveTo(14,0);ctx.lineTo(16,-2);ctx.moveTo(14,0);ctx.lineTo(16,2);ctx.stroke();
+    ctx.restore();
+  }
+  function draw(){
+    if(st==='ready'){
+      drawSnakeStartMenu();
+      return;
+    }
+    ctx.fillStyle='#06110d';ctx.fillRect(0,0,W,H);
+    // زمین بازی سبک و واضح
+    ctx.fillStyle='#0b2418';ctx.fillRect(OX,OY,BOARD_W,BOARD_H);
+    ctx.strokeStyle='rgba(125,255,176,.16)';ctx.lineWidth=2;ctx.strokeRect(OX+1,OY+1,BOARD_W-2,BOARD_H-2);
+    drawApple();
+    drawSnake();
+    if(skinPulse>0){
+      ctx.save();
+      ctx.globalAlpha=Math.min(.45,skinPulse*.38);
+      ctx.fillStyle=currentSkin().b;
+      ctx.fillRect(OX,OY,BOARD_W,BOARD_H);
+      ctx.globalAlpha=Math.min(1,skinPulse);
+      txt('اسکین جدید: '+currentSkin().name,W/2,120,24,'#fff');
+      ctx.restore();
+    }
+    overlay();
+  }
+  function drawHex(x,y,r,rot=0){
+    ctx.beginPath();
+    for(let i=0;i<6;i++){
+      const a=rot+i*Math.PI/3,px=x+Math.cos(a)*r,py=y+Math.sin(a)*r;
+      if(i===0)ctx.moveTo(px,py);else ctx.lineTo(px,py);
+    }
+    ctx.closePath();
+  }
+  function drawMiniSkin(sk,x,y,unlocked,current){
+    ctx.save();
+    ctx.globalAlpha=unlocked?.95:.42;
+    ctx.shadowBlur=current?14:8;ctx.shadowColor=sk.b;
+    ctx.strokeStyle=sk.a;ctx.lineWidth=7;ctx.lineCap='round';
+    ctx.beginPath();ctx.moveTo(x-28,y+5);ctx.lineTo(x-10,y+5);ctx.lineTo(x+7,y-4);ctx.lineTo(x+18,y-4);ctx.stroke();
+    ctx.shadowBlur=0;
+    ctx.fillStyle=sk.b;ctx.beginPath();ctx.arc(x+20,y-4,8,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(x+23,y-7,2.1,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='#06110d';ctx.beginPath();ctx.arc(x+23.5,y-7,0.9,0,Math.PI*2);ctx.fill();
+    ctx.restore();
+  }
+  function drawSnakeStartMenu(){
+    const pulse=.72+.28*Math.sin(t*4.2);
+    const best=Store.best(id);
+    ctx.save();
+    // پس‌زمینه‌ی علمی‌تخیلی
+    const g=ctx.createLinearGradient(0,0,0,H);
+    g.addColorStop(0,'#05081b');g.addColorStop(.55,'#09102c');g.addColorStop(1,'#02040e');
+    ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
+    for(let i=0;i<34;i++){
+      const x=(i*83+37)%W,y=(i*137+23)%H;
+      ctx.fillStyle=i%3===0?'rgba(83,236,255,.55)':'rgba(255,255,255,.33)';
+      ctx.fillRect(x,y,1.4,1.4);
+    }
+    ctx.strokeStyle='rgba(53,242,255,.08)';ctx.lineWidth=1;
+    for(let x=0;x<=W;x+=40){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H);ctx.stroke()}
+    for(let y=0;y<=H;y+=40){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke()}
+    // حلقه‌ی انرژی پشت عنوان
+    ctx.translate(W/2,85);ctx.rotate(t*.12);
+    ctx.strokeStyle='rgba(53,242,255,.34)';ctx.lineWidth=2;drawHex(0,0,74,Math.PI/6);ctx.stroke();
+    ctx.rotate(-t*.24);ctx.strokeStyle='rgba(255,61,240,.23)';drawHex(0,0,62,0);ctx.stroke();
+    ctx.restore();
+    txt('S N A K E',W/2,64,25,'#71f4ff','900');
+    txt('NEO ARCADE // SKIN LAB',W/2,91,11,'#6f82c8','700');
+    txt('🐍',W/2,142,52,'#fff');
+    txt('آزمایشگاه اسکین‌های مار',W/2,171,19,'#eafcff','800');
+    txt('هر ۵۰ امتیاز یک پوسته‌ی جدید آزاد می‌شود · روی اسکین بازشده بزن',W/2,194,12,'#91a6d8','400');
+    const cardW=198,cardH=40,gap=8,left=30,top=215;
+    SKINS.forEach((sk,i)=>{
+      const col=i%2,row=Math.floor(i/2);
+      const x=left+col*(cardW+gap),y=top+row*(cardH+gap);
+      const unlocked=Store.skinUnlocked(id,i);
+      const current=i===skin;
+      ctx.save();
+      ctx.shadowBlur=current?15:0;ctx.shadowColor=sk.b;
+      rr(x,y,cardW,cardH,11);
+      ctx.fillStyle=current?'rgba(41,92,116,.34)':(unlocked?'rgba(15,29,61,.82)':'rgba(8,13,31,.74)');ctx.fill();
+      ctx.strokeStyle=current?sk.b:(unlocked?'rgba(70,117,183,.68)':'rgba(46,57,91,.62)');ctx.lineWidth=current?1.8:1;ctx.stroke();
+      drawMiniSkin(sk,x+40,y+21,unlocked,current);
+      txt(sk.name,x+118,y+18,11,unlocked?'#ecfaff':'#7785ad','800');
+      txt(unlocked?'✓ باز':'🔒 '+FA(sk.need)+' امتیاز',x+118,y+34,10,unlocked?'#7dffb0':'#69779f','600');
+      ctx.restore();
+    });
+    // کارت رکورد
+    ctx.save();rr(30,492,420,32,9);ctx.fillStyle='rgba(8,15,38,.86)';ctx.fill();ctx.strokeStyle='rgba(86,126,209,.46)';ctx.stroke();ctx.restore();
+    txt('رکورد فعلی',120,513,11,'#7b8fc4','700');
+    txt(FA(best),355,513,15,'#fff36b','900');
+    // دکمه‌ی START پایین صفحه
+    ctx.save();
+    ctx.globalAlpha=.95;rr(70,552,340,60,18);
+    const sg=ctx.createLinearGradient(70,552,410,612);sg.addColorStop(0,'#22d9ff');sg.addColorStop(1,'#7dffb0');
+    ctx.fillStyle=sg;ctx.fill();
+    ctx.strokeStyle='#d5ffff';ctx.lineWidth=2;ctx.stroke();
+    ctx.shadowBlur=22*GFX.fx?22:14;ctx.shadowColor='#35f2ff';
+    ctx.globalAlpha=pulse;txt('▶  START',W/2,590,24,'#04101b','900');
+    ctx.restore();
+    txt('برای شروع روی START بزن',W/2,632,11,'#7184b8','500');
+  }
+  function overlay(){
+    const pulse=.65+.35*Math.sin(t*4);
+    if(st==='ready'){
+      return;
+    }else if(st==='over'){
+      dim(.62);
+      txt('باختی! 🐍',W/2,200,46,'#ff6b81');
+      txt('امتیاز: '+FA(score),W/2,250,25,'#fff');
+      txt('طول مار: '+FA(snake.length),W/2,285,17,'#cfe0ff','400');
+      txt('اسکین: '+currentSkin().name,W/2,310,16,'#cfe0ff','400');
+      txt('رکورد: '+FA(Store.best(id)),W/2,340,18,'#fff36b');
+      if(newBest)txt('🎉 رکورد جدید!',W/2,380,21,'#7dffb0');
+      ctx.globalAlpha=pulse;txt('برای بازی دوباره لمس کن',W/2,425,20,'#fff');ctx.globalAlpha=1;
+    }else if(st==='play'){
+      txt(FA(score),W/2,62,30,'rgba(255,255,255,.9)','700');
+    }
+  }
+  return{id,enter,update,draw,down,move,up(){swipe=null},key,playing:()=>st==='play',idle:()=>st==='ready'||st==='over',menu:()=>st==='ready'};
+})();
+
+
+/* ---------- ورودی ---------- */
+const px=e=>{const r=cv.getBoundingClientRect();return(e.clientX-r.left)/r.width*W};
+const py=e=>{const r=cv.getBoundingClientRect();return(e.clientY-r.top)/r.height*H};
+function setPause(p){paused=p}
+function togglePause(){if(paused)setPause(false);else if(cur.playing())setPause(true)}
+cv.addEventListener('pointerdown',e=>{
+  audio();In.x=px(e);
+  if(cur.menu&&cur.menu()){cur.down(e);return}
+  if(paused){setPause(false);return}
+  cur.down(e);
+});
+if(GAME_ID==='snake'){
+  document.addEventListener('pointerdown',e=>{
+    if(e.target===cv||(e.target.closest&&e.target.closest('button')))return;
+    audio();cur.down(e);
+  });
+}
+addEventListener('pointerup',()=>{if(!paused)cur.up()});
+addEventListener('pointercancel',()=>{if(!paused)cur.up()});
+addEventListener('pointermove',e=>{In.x=px(e);if(cur.move)cur.move(e)});
+const ACT=['Space','Enter','ArrowUp','KeyW'];
+addEventListener('keydown',e=>{
+  if(['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Space'].includes(e.code))e.preventDefault();
+  keys[e.code]=true;
+  if(e.repeat)return;
+  if(!paused&&cur.key&&cur.key(e.code))return;
+  if(ACT.includes(e.code)){audio();if(paused)setPause(false);else cur.down()}
+  else if(e.code==='Escape'&&!paused&&!cur.playing())post('home',0);
+  else if(e.code==='KeyP'||e.code==='Escape')togglePause();
+});
+addEventListener('keyup',e=>{
+  keys[e.code]=false;
+  if(!paused&&ACT.includes(e.code))cur.up();
+});
+function autoPause(){if(cur&&cur.playing())setPause(true)}
+document.addEventListener('visibilitychange',()=>{if(document.hidden)autoPause()});
+addEventListener('blur',autoPause);
+addEventListener('resize',fit);
+
+/* ---------- دکمه‌ی لمسی (دایناسور و پنکیک) ---------- */
+(()=>{
+  const PADS={dino:['⬆️ پرش','لمس و نگه‌دار'],pancake:['🥞 انداختن','برای انداختن لمس کن']};
+  const d=PADS[GAME_ID];if(!d)return;
+  const b=$('padBtn');b.innerHTML=d[0]+'<small>'+d[1]+'</small>';
+  padEl.classList.add('on');
+  b.addEventListener('pointerdown',e=>{e.preventDefault();if(paused){setPause(false);return}audio();cur.down()},{passive:false});
+})();
+
+/* ---------- حلقه ---------- */
+let vig=null,scan=null;
+function postfx(){
+  if(GAME_ID==='memory')return;
+  if(GFX.fx<1&&!GFX.scan)return;
+  if(!vig){
+    vig=ctx.createRadialGradient(W/2,H/2,H*.38,W/2,H/2,H*.78);
+    vig.addColorStop(0,'rgba(0,0,12,0)');vig.addColorStop(1,'rgba(0,0,12,.5)');
+    const c=document.createElement('canvas');c.width=4;c.height=3;
+    const x=c.getContext('2d');x.fillStyle='rgba(0,0,0,.22)';x.fillRect(0,0,4,1);
+    scan=ctx.createPattern(c,'repeat');
+  }
+  ctx.fillStyle=vig;ctx.fillRect(0,0,W,H);
+  if(GFX.scan&&scan){ctx.fillStyle=scan;ctx.fillRect(0,0,W,H)}
+}
+
+let last=0;
+function frame(ts){
+  const dt=Math.min(.033,(ts-last)/1000||0);last=ts;
+  if(!paused)cur.update(dt);
+  ctx.setTransform(DPR,0,0,DPR,0,0);ctx.direction='rtl';ctx.globalAlpha=1;
+  cur.draw();postfx();
+  if(paused){dim(.6);txt('توقف',W/2,300,46,'#fff');txt('برای ادامه بزن',W/2,345,18,'#cfc4ff','400')}
+  requestAnimationFrame(frame);
+}
+applyGfx();
+cur=Games[GAME_ID];
+In.x=W/2;
+cur.enter();
+try{window.focus()}catch(e){}
+requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
