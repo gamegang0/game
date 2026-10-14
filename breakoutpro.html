@@ -104,7 +104,7 @@ h2{font-size:1.6em;color:#ffe2a8;text-shadow:0 .08em 0 #7a4412,0 .15em .2em #000
   <div class="scr" id="sPause">
     <h2>⏸ مکث</h2>
     <button class="btn" id="pResume">▶ ادامه</button>
-    <button class="btn alt" id="pRestart">🔁 شروع مجدد مرحله</button>
+    <button class="btn alt" id="pRestart">🔁 تلاش دوباره (همین مرحله) مرحله</button>
     <div class="row"><button class="btn sm alt" id="pSound">🔊 صدا</button><button class="btn sm alt" id="pMusic">🎵 موسیقی</button><button class="btn sm" id="pFs">⛶</button></div>
     <button class="btn alt" id="pMenu">🏠 بازگشت به منو</button>
     <button class="btn alt" id="pHome" style="display:none">↩ خروج به آرکید</button>
@@ -120,7 +120,7 @@ h2{font-size:1.6em;color:#ffe2a8;text-shadow:0 .08em 0 #7a4412,0 .15em .2em #000
   <div class="scr" id="sOver">
     <div class="big" id="oTitle">پایان بازی</div>
     <div class="panel" id="oInfo" style="text-align:center"></div>
-    <button class="btn" id="oAgain">🔁 شروع مجدد</button>
+    <button class="btn" id="oAgain">🔁 تلاش دوباره (همین مرحله)</button>
     <button class="btn alt" id="oMenu">🏠 بازگشت به منو</button>
     <button class="btn alt" id="oHome" style="display:none">↩ خروج به آرکید</button>
   </div>
@@ -907,7 +907,7 @@ click('bPause',pause);click('pResume',resume);
 click('pRestart',()=>{G.score=G.lvStartScore;G.mode='x';startLevel(G.level)});
 click('pMenu',toMenu);
 click('wNext',()=>{if(G.mode==='win'){G.mode='x';nextLevel()}});
-click('oAgain',()=>newRun(1));click('oMenu',toMenu);
+click('oAgain',()=>{if(G.mode==='over'&&G.level>=1&&G.level<MAXL+1&&G.lives<=0){audioInit();musStart();G.lives=3;G.score=G.lvStartScore||0;runPosted=false;startLevel(G.level)}else newRun(1)});click('oMenu',toMenu);
 $('bLaunch').addEventListener('pointerdown',e=>{e.preventDefault();e.stopPropagation();audioInit();launch()});
 
 /* ================= حلقه ================= */
