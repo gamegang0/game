@@ -906,13 +906,157 @@ function drawRank(L,note){
   });
   rankFX();
 }
-async function renderRank(){
-  const t=$('tabs');t.textContent='';
-  for(const m of TABS){
-    const b=document.createElement('button');
-    b.className='ghost'+(m.id===tab?' on':'');b.textContent=m.icon+' '+m.name;
-    b.onclick=()=>{tab=m.id;sfx.ui();renderRank()};t.appendChild(b);
+/* ================= لیدربورد هر بازی ================= */
+(()=>{
+  const st=document.createElement('style');st.id='gameLbCss';
+  st.textContent=`
+.royalProfile{z-index:2147483000!important}
+.arcadeCard{position:relative}
+.gLb{position:absolute;top:10px;left:10px;z-index:5;display:flex;align-items:center;gap:4px;padding:5px 10px;border-radius:999px;background:rgba(10,8,30,.72);border:1px solid rgba(255,214,102,.55);color:#ffe08a;font:700 12px/1 inherit;cursor:pointer;backdrop-filter:blur(6px);box-shadow:0 0 12px rgba(255,200,80,.35);transition:transform .15s}
+.gLb:active{transform:scale(.92)}
+.glb{position:fixed;inset:0;z-index:1200;display:flex;align-items:flex-end;justify-content:center;background:rgba(4,3,16,.78);backdrop-filter:blur(8px);animation:glbFade .25s both;direction:rtl}
+.glb.out{animation:glbFadeOut .2s both}
+.glbSheet{--c:#7a6fd0;position:relative;width:100%;max-width:520px;max-height:94vh;overflow-y:auto;border-radius:26px 26px 0 0;background:linear-gradient(180deg,color-mix(in srgb,var(--c) 38%,#0d0a24) 0,#0d0a24 260px,#0b0920 100%);border:1px solid color-mix(in srgb,var(--c) 70%,#fff 10%);border-bottom:0;box-shadow:0 -10px 50px color-mix(in srgb,var(--c) 55%,transparent);animation:glbUp .4s cubic-bezier(.2,.9,.3,1.1) both;color:#fff;padding-bottom:max(20px,env(safe-area-inset-bottom))}
+.glb.out .glbSheet{animation:glbDown .2s both}
+.glbX{position:absolute;top:12px;right:12px;z-index:6;width:36px;height:36px;border-radius:50%;border:1px solid #ffffff44;background:#ffffff18;color:#fff;font-size:18px;cursor:pointer}
+.glbHero{position:relative;text-align:center;padding:28px 18px 10px;overflow:hidden}
+.glbHero:before{content:"";position:absolute;inset:-40% -20% auto;height:260px;background:radial-gradient(circle,color-mix(in srgb,var(--c) 75%,#fff 10%) 0,transparent 62%);opacity:.55;animation:glbPulse 3.4s ease-in-out infinite}
+.glbStars{position:absolute;inset:0;pointer-events:none}
+.glbStars i{position:absolute;top:100%;width:4px;height:4px;border-radius:50%;background:#fff;opacity:0;animation:glbRise var(--d) linear infinite;animation-delay:var(--dl);left:var(--x)}
+.glbIcon{position:relative;font-size:64px;line-height:1;filter:drop-shadow(0 0 18px var(--c));animation:glbFloat 3s ease-in-out infinite}
+.glbName{position:relative;margin:8px 0 2px;font-size:23px;font-weight:900;letter-spacing:.3px}
+.glbDesc{position:relative;font-size:12.5px;opacity:.78}
+.glbStats{position:relative;display:grid;grid-template-columns:repeat(3,1fr);gap:8px;padding:14px 16px 4px}
+.glbStat{padding:9px 4px;border-radius:14px;background:#ffffff12;border:1px solid #ffffff1f;text-align:center;animation:glbPop .5s both}
+.glbStat b{display:block;font-size:17px;color:#ffe08a}
+.glbStat small{font-size:10.5px;opacity:.7}
+.glbPodium{display:flex;align-items:flex-end;justify-content:center;gap:8px;padding:18px 12px 6px}
+.glbHero3{flex:1;max-width:150px;text-align:center;padding:10px 6px 12px;border-radius:18px;background:linear-gradient(#ffffff1c,#ffffff08);border:1px solid #ffffff30;cursor:pointer;position:relative;overflow:hidden;animation:glbPop .55s both;animation-delay:calc(var(--k)*.12s)}
+.glbHero3.p1{order:2;padding-top:20px;background:linear-gradient(#ffd45a55,#ffffff0a);border-color:#ffd45a;box-shadow:0 0 26px #ffcc4466}
+.glbHero3.p2{order:1;border-color:#c9d6ff88}
+.glbHero3.p3{order:3;border-color:#ffb27a88}
+.glbHero3.p1:after{content:"";position:absolute;inset:0;background:linear-gradient(115deg,transparent 40%,#ffffff55 50%,transparent 60%);transform:translateX(-120%);animation:glbShine 3.2s infinite}
+.glbMedal{font-size:26px}
+.glbAv{width:54px;height:54px;margin:4px auto;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:26px;background:radial-gradient(circle,#ffffff33,#ffffff0a);border:2px solid #ffffff55}
+.glbHero3.p1 .glbAv{width:64px;height:64px;font-size:32px;border-color:#ffd45a;animation:glbFloat 2.6s ease-in-out infinite}
+.glbHero3 .nm{font-size:13px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.glbHero3 .sc{display:block;margin-top:3px;font-size:15px;font-weight:900;color:#ffe08a}
+.glbHero3.empty{opacity:.45;cursor:default}
+.glbHero3 .ttl{display:inline-block;margin-bottom:2px}
+.glbMe{margin:10px 16px 2px;padding:10px 14px;border-radius:14px;display:flex;justify-content:space-between;align-items:center;background:linear-gradient(90deg,#ffd45a33,#ffffff0d);border:1px solid #ffd45a77;font-size:13px}
+.glbMe b{font-size:18px;color:#ffe08a}
+.glbList{padding:6px 12px}
+.glbRow{--k:0;position:relative;display:flex;align-items:center;gap:10px;margin:6px 0;padding:9px 12px;border-radius:14px;background:#ffffff10;border:1px solid #ffffff18;cursor:pointer;overflow:hidden;animation:glbRowIn .45s both;animation-delay:calc(var(--k)*.045s)}
+.glbRow.me{background:#ffd45a26;border-color:#ffd45a99;box-shadow:0 0 14px #ffd45a44}
+.glbRow .bar{position:absolute;inset:0 auto 0 0;width:var(--w);background:linear-gradient(90deg,transparent,color-mix(in srgb,var(--c) 55%,transparent));opacity:.55;pointer-events:none;transform-origin:left;animation:glbBar .9s both;animation-delay:calc(var(--k)*.045s + .2s)}
+.glbRow>*{position:relative}
+.glbRow .n{width:28px;text-align:center;font-weight:900;opacity:.85}
+.glbRow .on{width:8px;height:8px;border-radius:50%;background:#46e88a;box-shadow:0 0 8px #46e88a}
+.glbRow .rn{flex:1;font-weight:700;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.glbRow .sc{font-weight:900;color:#ffe08a}
+.glbRow .del{border:0;background:#ffffff1c;border-radius:8px;padding:4px 7px;color:#fff;cursor:pointer}
+.glbRow .del.arm{background:#d33}
+.glbEmpty{padding:26px 18px;text-align:center;opacity:.8;font-size:14px;line-height:2}
+.glbNote{padding:2px 18px;font-size:12px;opacity:.7;text-align:center}
+.glbPlay{display:block;width:calc(100% - 32px);margin:14px 16px 0;padding:14px;border:0;border-radius:16px;font:800 16px inherit;color:#fff;cursor:pointer;background:linear-gradient(90deg,var(--c),color-mix(in srgb,var(--c) 60%,#fff));box-shadow:0 6px 22px color-mix(in srgb,var(--c) 60%,transparent)}
+.glbSk{height:44px;margin:6px 12px;border-radius:14px;background:linear-gradient(90deg,#ffffff0d,#ffffff22,#ffffff0d);background-size:200% 100%;animation:glbSkel 1.1s linear infinite}
+@keyframes glbFade{from{opacity:0}to{opacity:1}}@keyframes glbFadeOut{to{opacity:0}}
+@keyframes glbUp{from{transform:translateY(100%)}to{transform:none}}@keyframes glbDown{to{transform:translateY(100%)}}
+@keyframes glbPulse{50%{transform:scale(1.12);opacity:.8}}
+@keyframes glbFloat{50%{transform:translateY(-6px)}}
+@keyframes glbPop{from{opacity:0;transform:translateY(16px) scale(.9)}to{opacity:1;transform:none}}
+@keyframes glbRowIn{from{opacity:0;transform:translateX(26px)}to{opacity:1;transform:none}}
+@keyframes glbBar{from{transform:scaleX(0)}to{transform:scaleX(1)}}
+@keyframes glbShine{60%,100%{transform:translateX(120%)}}
+@keyframes glbRise{0%{transform:translateY(0);opacity:0}15%{opacity:.9}100%{transform:translateY(-300px);opacity:0}}
+@keyframes glbSkel{to{background-position:-200% 0}}
+@media (prefers-reduced-motion:reduce){.glb *{animation-duration:.01s!important;animation-iteration-count:1!important}}
+`;
+  document.head.appendChild(st);
+})();
+let glbSeq=0;
+function closeGameRank(){
+  const o=document.querySelector('.glb');if(!o)return;glbSeq++;
+  o.classList.add('out');setTimeout(()=>o.remove(),200);
+}
+async function openGameRank(m){
+  document.querySelectorAll('.glb').forEach(x=>x.remove());
+  const me=++glbSeq;sfx.ui();
+  const o=document.createElement('div');o.className='glb';o.setAttribute('role','dialog');o.setAttribute('aria-label','لیدربورد '+m.name);
+  const sh=document.createElement('div');sh.className='glbSheet';sh.style.setProperty('--c',m.color||'#7a6fd0');
+  const stars=Array.from({length:9},(_,k)=>`<i style="--x:${6+k*11}%;--d:${3+k%3}s;--dl:${k*.5}s"></i>`).join('');
+  sh.innerHTML=`<button class="glbX" type="button" aria-label="بستن">✕</button>
+<div class="glbHero"><div class="glbStars">${stars}</div><div class="glbIcon"></div><h2 class="glbName"></h2><div class="glbDesc"></div></div>
+<div class="glbBody"><div class="glbSk"></div><div class="glbSk"></div><div class="glbSk"></div><div class="glbSk"></div></div>
+<button class="glbPlay" type="button">▶ بازی کن</button>`;
+  sh.querySelector('.glbIcon').textContent=m.icon;sh.querySelector('.glbName').textContent=m.name;sh.querySelector('.glbDesc').textContent=m.desc||'';
+  o.appendChild(sh);document.body.appendChild(o);
+  const close=()=>closeGameRank();
+  o.onclick=e=>{if(e.target===o)close()};
+  sh.querySelector('.glbX').onclick=close;
+  sh.querySelector('.glbPlay').onclick=()=>{close();audio();sfx.ui();if(m.pick)openPasurMenu();else openGame(m.id)};
+  const onKey=e=>{if(e.key==='Escape'){close();document.removeEventListener('keydown',onKey)}};document.addEventListener('keydown',onKey);
+  const body=sh.querySelector('.glbBody');
+  let L,note='';
+  async function load(){
+    if(!Net.on){L=Store.rank(m.id);note='آفلاین؛ رکوردهای همین دستگاه'}
+    else{try{await loadAdmins()}catch(e){}try{L=await Net.top(m.id)}catch(e){L=Store.rank(m.id);note='اتصال برقرار نشد؛ رکوردهای همین دستگاه'}}
+    if(me!==glbSeq)return;
+    draw();
+    const mine=L.find(x=>x.pid===Store.pid()),b=Store.best(m.id);
+    if(Net.on&&!note&&b>0&&(!mine||mine.s<b)&&(L.length<20||b>L[L.length-1].s)){
+      if(await Net.put(m.id,b)&&me===glbSeq)load();
+    }
   }
+  function draw(){
+    body.textContent='';
+    const idx=L.findIndex(x=>x.pid&&x.pid===Store.pid()),best=Math.max(Store.best(m.id),idx>=0?L[idx].s:0),topS=L.length?L[0].s:0;
+    const stats=document.createElement('div');stats.className='glbStats';
+    [['🏆',best>0?FA(best):'—','رکورد تو'],['🎖️',idx>=0?FA(idx+1):'—','رتبه‌ی تو'],['👥',FA(L.length),'بازیکن']].forEach((a,k)=>{
+      const d=document.createElement('div');d.className='glbStat';d.style.animationDelay=k*.08+'s';
+      d.innerHTML=`<b>${a[1]}</b><small>${a[0]} ${a[2]}</small>`;stats.appendChild(d);
+    });
+    body.appendChild(stats);
+    const pod=document.createElement('div');pod.className='glbPodium';
+    [0,1,2].forEach(i=>{
+      const r=L[i],d=document.createElement('div');d.className='glbHero3 p'+(i+1)+(r?'':' empty');d.style.setProperty('--k',i);
+      if(r){
+        d.innerHTML=`<div class="glbMedal">${['🥇','🥈','🥉'][i]}</div><div class="glbAv">${['👑','💎','🔥'][i]}</div><span class="nm"></span><b class="sc">${FA(r.s)}</b>`;
+        d.querySelector('.nm').textContent=r.n;d.insertBefore(ttlEl(i),d.querySelector('.nm'));
+        if(AdmSet.has(String(r.pid||'')))d.querySelector('.nm').after(admBadge());
+        d.onclick=()=>showPlayer(Object.assign({},r,{rk:i}));
+      }else d.innerHTML=`<div class="glbMedal">${['🥇','🥈','🥉'][i]}</div><div class="glbAv">✦</div><span class="nm">منتظر قهرمان</span>`;
+      pod.appendChild(d);
+    });
+    body.appendChild(pod);
+    const your=document.createElement('div');your.className='glbMe';
+    your.innerHTML=`<span>⚡ ${best>0?(idx>=0?'رتبه '+FA(idx+1)+' تو':'هنوز وارد ۲۰ نفر برتر نشدی'):'هنوز رکوردی نداری'}</span><b>${best>0?FA(best):'—'}</b>`;
+    body.appendChild(your);
+    if(note){const p=document.createElement('div');p.className='glbNote';p.textContent=note;body.appendChild(p)}
+    if(!L.length){const e=document.createElement('div');e.className='glbEmpty';e.textContent='هنوز کسی رکوردی ثبت نکرده. اولین نفر باش و تاج رو بگیر 👑';body.appendChild(e);return}
+    const list=document.createElement('div');list.className='glbList';
+    L.forEach((r,i)=>{
+      const row=document.createElement('div');row.className='glbRow'+(r.pid&&r.pid===Store.pid()?' me':'');row.style.setProperty('--k',i);
+      row.innerHTML=`<i class="bar" style="--w:${topS>0?Math.max(6,Math.round(r.s/topS*100)):6}%"></i><span class="n">${i<3?['🥇','🥈','🥉'][i]:FA(i+1)}</span>${r.online?'<span class="on" title="آنلاین"></span>':''}<span class="rn"></span><b class="sc">${FA(r.s)}</b>`;
+      const rn=row.querySelector('.rn');rn.textContent=r.n;
+      if(i<3)rn.append(' ',ttlEl(i));if(AdmSet.has(String(r.pid||'')))rn.append(' ',admBadge());
+      row.onclick=()=>showPlayer(Object.assign({},r,{rk:i}));
+      if(adminCode&&r.pid){
+        const x=document.createElement('button');x.className='del';x.textContent='🗑';x.setAttribute('aria-label','حذف');
+        x.onclick=e=>{e.stopPropagation();arm(x,'مطمئنی؟',async()=>{const ok=await Net.rpc('arcade_admin_delete',{p_code:adminCode,p_pid:r.pid,p_kick:$('admKick').checked});admErr(ok===true?'':'حذف انجام نشد.');load()})};
+        row.appendChild(x);
+        const bb=document.createElement('button');bb.className='del';bb.textContent='🚫';bb.setAttribute('aria-label','بن');
+        bb.onclick=e=>{e.stopPropagation();arm(bb,'بن؟',()=>admBan(r.pid,r.n,true))};row.appendChild(bb);
+      }
+      list.appendChild(row);
+    });
+    body.appendChild(list);
+  }
+  load();
+}
+async function renderRank(){
+  tab='total';
+  const t=$('tabs');t.textContent='';t.style.display='none';
   {const wl=$('weekLeft');if(wl)wl.textContent=weekLeftText()}
   const me=++rk,note=tab==='total'?TOTAL_NOTE:'';
   if(!Net.on){drawRank(localRank(tab),note);return}
@@ -1115,6 +1259,12 @@ function renderMenu(){
     const metaTxt=m.id==='hokm'?'🌐 آنلاین · لیدربورد':`🏆 ${FA(g.best)} · ${FA(g.plays)} بازی`;
     b.innerHTML=`<span class="arcadeScene"><span class="arcadeStars"></span><span class="arcadeBadge">${badge} · LIVE</span><span class="arcadeIcon">${m.icon}</span></span><span class="arcadeInfo"><span class="arcadeName">${m.name}</span><span class="arcadeDesc">${m.desc}</span><span class="arcadeMeta"><span>${metaTxt}</span><span class="arcadePlay">▶ بازی کن</span></span></span>`;
     b.onclick=()=>{audio();sfx.ui();if(m.pick)openPasurMenu();else openGame(m.id)};
+    if(!m.norec){
+      const t=document.createElement('span');t.className='gLb';t.setAttribute('role','button');t.setAttribute('tabindex','0');t.setAttribute('aria-label','لیدربورد '+m.name);t.textContent='🏆 رتبه‌ها';
+      t.onclick=e=>{e.stopPropagation();e.preventDefault();openGameRank(m)};
+      t.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.stopPropagation();e.preventDefault();openGameRank(m)}};
+      b.appendChild(t);
+    }
     box.appendChild(b);
   }
   hello();
