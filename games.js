@@ -1,7 +1,6 @@
 /* این فایل خودکار ساخته می‌شود؛ دستی ویرایشش نکن */
 window.EXTRA_GAMES=[
   {"id": "amirshahi", "icon": "🎮", "name": "امیر شاهی", "desc": "بازی جدید", "color": "#35f2ff"},
-  {"id": "breakout", "icon": "🧱", "name": "BREAKOUT", "desc": "۵۰ مرحله، ۵ باس و ۲۱ جایزه؛ آجرها رو بشکن", "color": "#e8943a", "portrait": true},
   {"id": "chaharbarg", "icon": "🎮", "name": "چهار برگ دو نفره آنلاین", "desc": "بازی جدید", "color": "#35f2ff"},
   {"id": "cityrun", "icon": "🎮", "name": "City Run", "desc": "بازی جدید", "color": "#35f2ff"},
   {"id": "colorseq", "icon": "🎨", "name": "حافظه رنگی", "desc": "رنگ‌ها رو حفظ کن و دقیقاً به همون ترتیب بزن", "color": "#ff6bcb"},
