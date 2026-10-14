@@ -10,6 +10,22 @@ body{background:var(--bg);color:var(--fg);font-family:Vazirmatn,Tahoma,system-ui
 #hud{display:flex;justify-content:space-between;align-items:center;padding:5px 10px;font-weight:700;gap:6px}
 #hud b{color:var(--acc)}.sc{font-size:20px}.sc b{font-size:24px}.cnb{font-size:14px;min-width:70px}
 .t0{color:#6aa5ff}.t1{color:#ff7681}
+#sbar{flex:none;display:flex;justify-content:flex-start;direction:ltr;padding:2px 10px calc(6px + 0px)}
+#sb{direction:rtl;display:flex;align-items:stretch;border-radius:18px;overflow:hidden;background:linear-gradient(180deg,#1d2b44,#0a101c);border:1.5px solid #ffd23f99;box-shadow:0 6px 18px #000b,0 0 18px #ffd23f2e,inset 0 1px 0 #ffffff26;font-weight:900}
+.sbT{position:relative;min-width:68px;padding:5px 10px 7px;display:flex;flex-direction:column;align-items:center;gap:3px;transition:background .3s,box-shadow .3s}
+.sbT.sb0{background:linear-gradient(180deg,#3a78ff66,#3a78ff12);--tc:#6aa5ff}
+.sbT.sb1{background:linear-gradient(180deg,#ff465866,#ff465812);--tc:#ff7681}
+.sbT .nm{font-size:11px;font-weight:800;color:var(--tc);opacity:.95;max-width:74px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;letter-spacing:.2px}
+.sbN{font-size:32px;line-height:1;color:#fff;text-shadow:0 0 12px var(--tc),0 2px 0 #000a;font-variant-numeric:tabular-nums;display:block}
+.sbN.pop{animation:sbpop .5s cubic-bezier(.2,1.6,.4,1)}
+.pips{display:flex;gap:3px}
+.pips i{width:7px;height:7px;border-radius:50%;background:#ffffff26;box-shadow:inset 0 1px 1px #0008;transition:background .3s,box-shadow .3s}
+.pips i.on{background:var(--tc);box-shadow:0 0 7px var(--tc)}
+.sbM{display:flex;align-items:center;justify-content:center;width:28px;background:linear-gradient(180deg,#0b1220,#05080f);border-inline:1px solid #ffd23f55;font-size:15px}
+.sbT.act{box-shadow:inset 0 0 0 2px #ffd23f,0 0 14px #ffd23f66;animation:sbact 1.3s ease-in-out infinite}
+@keyframes sbpop{0%{transform:scale(1)}40%{transform:scale(1.55)}100%{transform:scale(1)}}
+@keyframes sbact{50%{box-shadow:inset 0 0 0 2px #ffd23f,0 0 4px #ffd23f33}}
+@media (prefers-reduced-motion:reduce){.sbT.act,.sbN.pop{animation:none}}
 #tr{text-align:center;font-size:13px;font-weight:700;height:18px}
 #wrap{flex:1;min-height:0;display:flex;align-items:center;justify-content:center}
 canvas{display:block}
@@ -46,9 +62,14 @@ button.b3.on{background:var(--acc);color:#222}
 
 #ov input{font:inherit;font-size:18px;padding:11px 14px;border-radius:14px;border:2px solid #ffffff44;background:#0007;color:#fff;text-align:center;width:min(100%,280px);outline:none;-webkit-user-select:text;user-select:text}#ov input:focus{border-color:var(--acc)}
 </style></head><body>
-<div id="hud"><span class="cnb">🪙 <b id="cn">0</b></span><span class="sc"><span class="t0">🔵 <b id="s0">0</b></span> : <span class="t1"><b id="s1">0</b> 🔴</span></span><span><button id="pb" onclick="setPause(true)" hidden>⏸</button> <button id="hb" onclick="exitGame()" hidden>🏠</button> <button id="mb" onclick="toggleMute()">🔊</button></span></div>
+<div id="hud"><span class="cnb">🪙 <b id="cn">0</b></span><span><button id="pb" onclick="setPause(true)" hidden>⏸</button> <button id="hb" onclick="exitGame()" hidden>🏠</button> <button id="mb" onclick="toggleMute()">🔊</button></span></div>
 <div id="tr"></div>
 <div id="wrap"><canvas id="c"></canvas></div>
+<div id="sbar"><div id="sb">
+<div class="sbT sb0" id="sc0"><span class="nm" id="nm0">آبی</span><b id="s0" class="sbN">۰</b><span class="pips" id="pp0"><i></i><i></i><i></i><i></i><i></i></span></div>
+<div class="sbM"><span>⚽</span></div>
+<div class="sbT sb1" id="sc1"><span class="nm" id="nm1">قرمز</span><b id="s1" class="sbN">۰</b><span class="pips" id="pp1"><i></i><i></i><i></i><i></i><i></i></span></div>
+</div></div>
 <div id="eb" hidden><span style="font-size:13px;width:100%;text-align:center">مهره‌ها رو بکش و جاشون رو عوض کن</span><button class="b3" onclick="saveEdit()">✅ ذخیره</button><button class="b3" onclick="resetEdit()">↺ ریست</button><button class="b3" onclick="cancelEdit()">✖ لغو</button></div>
 <div id="ov"></div><div id="toast"></div>
 <div id="rap"><canvas id="rc"></canvas><div id="rt">🎤 کابوس 🎤</div>
@@ -137,6 +158,10 @@ const SK=[
 {id:'royal',n:'سلطنتی 👑',p:6000,c1:'#c08cff',c2:'#4a14a8',rim:'#ffd23f',mc:'#ffd23f',m:'crown'}];
 const OPP={id:'red',c1:'#ff9aa2',c2:'#c1121f',rim:'#ffe0e3',mc:'#fff',m:'star'};
 const BL=[{id:'b0',n:'کلاسیک',p:0,a:'#fff',b:'#cfcfcf',d:'#222'},{id:'b2',n:'نئون',p:900,a:'#efffb0',b:'#7bd100',d:'#1e3d00'},{id:'b1',n:'طلایی',p:1800,a:'#fff3b0',b:'#d79a00',d:'#5a3a00'},{id:'b3',n:'آتش',p:2600,a:'#ffd9a0',b:'#e8431a',d:'#4a0d00'}];
+let ADMF=false;
+const isAdm=()=>{if(ADMF)return true;try{return !!parent.NovaApp.Store.skinUnlocked('amirshahi',999)}catch(e){return false}};
+const owns=id=>isAdm()||SV.own.includes(id);
+addEventListener('message',e=>{const d=e&&e.data;if(d&&d.source==='nova-arcade-shell'&&d.type==='admin'&&e.source===parent)ADMF=!!d.unlockAllSkins});
 const mySk=()=>SK.find(s=>s.id===SV.skin)||SK[0],myBall=()=>BL.find(s=>s.id===SV.ball)||BL[0];
 const PRE={bal:{n:'متعادل',p:0,f:[[.5,.93],[.25,.68],[.75,.68],[.3,.38],[.7,.38]]},def:{n:'دفاعی',p:700,f:[[.5,.93],[.2,.72],[.5,.64],[.8,.72],[.5,.34]]},att:{n:'تهاجمی',p:900,f:[[.5,.93],[.5,.7],[.2,.36],[.5,.28],[.8,.36]]},dia:{n:'لوزی',p:1200,f:[[.5,.93],[.5,.72],[.22,.52],[.78,.52],[.5,.3]]},wid:{n:'پهن',p:1500,f:[[.5,.93],[.14,.6],[.86,.6],[.34,.34],[.66,.34]]}};
 const myForm=()=>SV.preset==='custom'&&SV.custom?SV.custom:PRE[SV.preset].f;
@@ -222,7 +247,19 @@ function setPause(p){if(mode==='online'&&p)return;if(p===paused)return;if(p&&!['
  if(p){wasRap=rapping&&!au.paused;if(wasRap)au.pause();ov.innerHTML=`<h2>⏸ توقف</h2><div class="cn">${FA(score[0])} - ${FA(score[1])}</div><button onclick="setPause(false)">▶ ادامه</button><button class="b2" onclick="start(mode)">🔁 شروع دوباره</button><button class="b3" onclick="toMenu()">🏠 بازگشت به منو</button>${emb?'<button class="b3" onclick="post(\'home\',0)">🕹 بازگشت به آرکید</button>':''}`;ov.style.display='flex'}
  else{ov.style.display='none';if(wasRap){au.play().catch(()=>{});wasRap=false}}updHud()}
 function toMenu(){paused=false;stopRap();sel=aim=sp=drag=null;showMenu()}
-function updHud(){$('cn').textContent=FA(SV.coins);$('s0').textContent=FA(score[0]);$('s1').textContent=FA(score[1]);const t=$('tr');t.className=turn?'t1':'t0';$('pb').hidden=!(['aim','moving','goal','nogoal'].includes(state)&&!paused);t.textContent=state==='over'?'پایان بازی':state==='edit'?'چیدن ترکیب':state==='menu'?'':(turn===0?(mode==='bot'?'نوبت شما':'نوبت آبی'):(mode==='bot'?'نوبت ربات':'نوبت قرمز'))}
+function sbSet(id,n){const e=$(id),t=FA(n);if(e.textContent!==t){e.textContent=t;e.classList.remove('pop');void e.offsetWidth;e.classList.add('pop')}}
+function sbUpd(){try{
+ sbSet('s0',score[0]);sbSet('s1',score[1]);
+ for(let k=0;k<2;k++){const p=$('pp'+k).children;for(let i=0;i<p.length;i++)p[i].classList.toggle('on',i<score[k])}
+ const pl=['aim','moving','goal','nogoal'].includes(state);
+ $('sc0').classList.toggle('act',pl&&turn===0);$('sc1').classList.toggle('act',pl&&turn===1);
+ let a='آبی',b='قرمز';
+ if(mode==='bot'){a='شما';b='ربات'}
+ else if(mode==='online'){const op=String(oppName||'حریف').slice(0,9);a=myTeam===0?'تو':op;b=myTeam===1?'تو':op}
+ $('nm0').textContent=a;$('nm1').textContent=b;
+ $('sbar').style.visibility=state==='edit'?'hidden':'visible';
+}catch(e){}}
+function updHud(){$('cn').textContent=FA(SV.coins);sbUpd();const t=$('tr');t.className=turn?'t1':'t0';$('pb').hidden=!(['aim','moving','goal','nogoal'].includes(state)&&!paused);t.textContent=state==='over'?'پایان بازی':state==='edit'?'چیدن ترکیب':state==='menu'?'':(turn===0?(mode==='bot'?'نوبت شما':'نوبت آبی'):(mode==='bot'?'نوبت ربات':'نوبت قرمز'))}
 function reset(k){obj=[];const f0=mode==='online'?FORMS[0]:myForm(),f1=mode==='online'?FORMS[1]:(mode==='bot'?PRE[botPre].f:f0);
  let cn_=0;for(let t=0;t<2;t++)(t?f1:f0).forEach((f,i)=>{let x=PL+f[0]*PW,y=CY+f[1]*PH/2;if(t){x=PL+PW-(x-PL);y=2*CY-y}obj.push({x,y,vx:0,vy:0,r:PRAD,m:3,t,n:i,rot:0,pop:0,sp:1+(cn_++)*.1})});
  ball={x:CX,y:CY,vx:0,vy:0,r:BRAD,m:1,t:-1,rot:0,pop:0,sp:1.6};obj.push(ball);trail=[];first=true;turn=k;state='aim';sel=aim=sp=plan=null;drag=null;if(isBot())botT=BOTT();updHud();aimEnter()}
@@ -307,10 +344,10 @@ function giftTxt(){const left=864e5-(Date.now()-SV.gift);return left<=0?'جای�
 function setDiff(d){SV.diff=d;save();showMenu()}
 function showMenu(){recordRun();paused=false;state='menu';updHud();ov.innerHTML=`${CR}<h1>امیر شاهی</h1><p>⚽ ساکر استار · اول به ۵ گل</p><div class="cn">🪙 <b>${FA(SV.coins)}</b></div><p class="hn" style="margin-top:4px">سطح ربات</p><div class="rw">${[['easy','😊 آسان'],['med','😐 متوسط'],['hard','😈 سخت']].map(([k,t])=>`<button class="b3 ${(SV.diff||'med')===k?'on':''}" onclick="setDiff('${k}')">${t}</button>`).join('')}</div><button onclick="start('bot')">🤖 بازی با ربات</button><button class="b2" onclick="start('two')">👥 دو نفره (یک گوشی)</button><button style="background:#19b86b;color:#fff;box-shadow:0 4px 0 #0b6b3c" onclick="showOnline(0)">🌐 آنلاین با کد اتاق</button><button style="background:#ff8a00;color:#fff;box-shadow:0 4px 0 #8a4a00" onclick="showOnline(25)">🪙 آنلاین سکه‌ای (۲۵ تا ۱۰۰)</button><div class="rw"><button class="b3" onclick="showShop('p')">🛒 فروشگاه</button><button class="b3" onclick="showForm()">📋 ترکیب تیم</button>${emb||STAND?'':'<button class="b3" onclick="fsBtn()">⛶ تمام‌صفحه</button>'}</div><button class="b3" onclick="gift()">🎁 ${giftTxt()}</button><p class="hn">مهره رو لمس کن، بعد با هر انگشتی (حتی دست دیگه) هرجای صفحه بکش عقب و رها کن</p>`;ov.style.display='flex'}
 function gift(){if(Date.now()-SV.gift>864e5){SV.gift=Date.now();earn(40)}else toast('هنوز زوده ⏳');showMenu()}
-function showShop(t){const L=t==='p'?SK:BL;state='menu';ov.innerHTML=`<h2>🛒 فروشگاه</h2><div class="cn">🪙 <b>${FA(SV.coins)}</b></div><div class="rw"><button class="b3 ${t==='p'?'on':''}" onclick="showShop('p')">مهره‌ها</button><button class="b3 ${t==='b'?'on':''}" onclick="showShop('b')">توپ‌ها</button></div><div class="gr">${L.map(s=>{const own=SV.own.includes(s.id),eq=(t==='p'?SV.skin:SV.ball)===s.id;return`<div class="it ${eq?'eq':''}"><canvas width="96" height="96" data-t="${t}" data-i="${s.id}"></canvas><b>${s.n}</b><button class="b3" onclick="buy('${t}','${s.id}')">${eq?'✓ فعال':own?'انتخاب':'🪙 '+FA(s.p)}</button></div>`}).join('')}</div><button class="b3" onclick="showMenu()">⬅ بازگشت</button>`;
+function showShop(t){const L=t==='p'?SK:BL;state='menu';ov.innerHTML=`<h2>🛒 فروشگاه</h2><div class="cn">🪙 <b>${FA(SV.coins)}</b></div><div class="rw"><button class="b3 ${t==='p'?'on':''}" onclick="showShop('p')">مهره‌ها</button><button class="b3 ${t==='b'?'on':''}" onclick="showShop('b')">توپ‌ها</button></div><div class="gr">${L.map(s=>{const own=owns(s.id),eq=(t==='p'?SV.skin:SV.ball)===s.id;return`<div class="it ${eq?'eq':''}"><canvas width="96" height="96" data-t="${t}" data-i="${s.id}"></canvas><b>${s.n}</b><button class="b3" onclick="buy('${t}','${s.id}')">${eq?'✓ فعال':own?'انتخاب':'🪙 '+FA(s.p)}</button></div>`}).join('')}</div><button class="b3" onclick="showMenu()">⬅ بازگشت</button>`;
  ov.querySelectorAll('canvas[data-i]').forEach(c=>{const g=c.getContext('2d');g.scale(2,2);if(c.dataset.t==='p')drawPiece(g,24,24,20,SK.find(s=>s.id===c.dataset.i),.3,true);else drawBall(g,24,24,18,BL.find(s=>s.id===c.dataset.i),.3,true)});ov.style.display='flex'}
 function buy(t,id){const L=t==='p'?SK:BL,s=L.find(x=>x.id===id);
- if(!SV.own.includes(id)){if(SV.coins<s.p){toast('سکه‌ات کافی نیست 🪙');sfx('wall');return}SV.coins-=s.p;SV.own.push(id);sfx('coin');toast('خریدی! 🎉')}
+ if(!owns(id)){if(SV.coins<s.p){toast('سکه‌ات کافی نیست 🪙');sfx('wall');return}SV.coins-=s.p;SV.own.push(id);sfx('coin');toast('خریدی! 🎉')}
  if(t==='p')SV.skin=id;else SV.ball=id;save();showShop(t)}
 let pv='bal';const CUP=3000,fpr=k=>k==='custom'?CUP:PRE[k].p,fpf=()=>pv==='custom'?(SV.custom||PRE.bal.f):PRE[pv].f;
 function showForm(k){if(k)pv=k;else pv=SV.preset;state='menu';const own=x=>SV.ownF.includes(x);let act='';
