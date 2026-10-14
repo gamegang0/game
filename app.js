@@ -206,11 +206,15 @@ const Store=(()=>{
   const savedSkins={dino:0,snake:0},selectedSkins={dino:0,snake:0};
   try{
     const sr=JSON.parse(localStorage.getItem(SKK)||'{}')||{};
-    for(const k of Object.keys(savedSkins))savedSkins[k]=Math.max(0,Math.floor(Number(sr[k])||0));
+    for(const k of Object.keys(sr))savedSkins[k]=Math.max(0,Math.floor(Number(sr[k])||0));
     const ss=JSON.parse(localStorage.getItem(SELK)||'{}')||{};
-    for(const k of Object.keys(selectedSkins))selectedSkins[k]=Math.max(0,Math.floor(Number(ss[k])||0));
-    for(const k of Object.keys(selectedSkins))if(selectedSkins[k]>savedSkins[k])selectedSkins[k]=savedSkins[k];
+    for(const k of Object.keys(ss))selectedSkins[k]=Math.max(0,Math.floor(Number(ss[k])||0));
   }catch(e){}
+  /* ادمین: همه‌ی اسکین‌های همه‌ی بازی‌ها باز است (برای بازی‌های جدید هم خودکار) */
+  const ADMK='arcade_is_admin_v1';
+  const ADMIN_SKIN_GAMES=['amirshahi']; /* فقط این بازی‌ها برای ادمین همه‌ی اسکین‌هاشون باز می‌شه */
+  const adminSkins=id=>ADMIN_SKIN_GAMES.includes(id)&&isAdm();
+  const isAdm=()=>{try{const me=String(localStorage.getItem('arcade_pid')||'');if(!me)return false;if(typeof AdmSet!=='undefined'&&AdmSet.has(me))return true;return localStorage.getItem(ADMK)===me}catch(e){try{return AdmSet.has(String(pid))}catch(_){return false}}};
   const saveSkins=()=>{try{localStorage.setItem(SKK,JSON.stringify(savedSkins))}catch(e){}};
   const saveSelectedSkins=()=>{try{localStorage.setItem(SELK,JSON.stringify(selectedSkins))}catch(e){}};
   const rank={pong:[],dino:[],ninja:[],memory:[],flappy:[],snake:[],soccer:[],pancake:[],traffic:[],pacman:[],doodle:[],markhor:[],amirshahi:[],cityrun:[],colorseq:[],hokm:[],chaharbarg:[]};
@@ -252,13 +256,15 @@ const Store=(()=>{
     setName(n){name=n;try{localStorage.setItem(NK,n)}catch(e){ok=false};setTimeout(syncProfile,0)},
     rank:id=>rank[id],
     skinIndex:id=>savedSkins[id]||0,
-    skinUnlocked(id,i){return i===0||i<=(savedSkins[id]||0)},
+    isAdmin:isAdm,
+    adminSkinGames:ADMIN_SKIN_GAMES,
+    skinUnlocked(id,i){return i===0||adminSkins(id)||i<=(savedSkins[id]||0)},
     unlockSkin(id,i){
       i=Math.max(0,Math.floor(Number(i)||0));
       if(i>(savedSkins[id]||0)){savedSkins[id]=i;saveSkins();if((selectedSkins[id]||0)>i){selectedSkins[id]=i;saveSelectedSkins()}return true}
       return false;
     },
-    selectedSkin:id=>selectedSkins[id]||0,
+    selectedSkin:id=>{const s=selectedSkins[id]||0,sv=savedSkins[id]||0;return(s===0||adminSkins(id)||s<=sv)?s:sv},
     setSkin(id,i){
       i=Math.max(0,Math.floor(Number(i)||0));
       if(!this.skinUnlocked(id,i))return false;
@@ -267,7 +273,7 @@ const Store=(()=>{
     factory(){
       dirty=false;
       try{['arcade_v1','arcade_name','arcade_rank','arcade_pid','arcade_epoch','arcade_pref','arcade_skins_v1','arcade_skin_selected_v1'].forEach(k=>localStorage.removeItem(k))}catch(e){}
-      savedSkins.dino=0;savedSkins.snake=0;selectedSkins.dino=0;selectedSkins.snake=0;
+      for(const k in savedSkins)savedSkins[k]=0;for(const k in selectedSkins)selectedSkins[k]=0;
       location.reload();
     },
     epoch:()=>{try{return localStorage.getItem('arcade_epoch')||'0'}catch(e){return'0'}},
@@ -436,6 +442,10 @@ function decorateChat(){
     if(is&&!has)nm.after(admBadge());else if(!is&&has)has.remove();
   })}catch(e){}
 }
+function adminStateChanged(){
+  try{const me=String(Store.pid());if(AdmSet.has(me))localStorage.setItem('arcade_is_admin_v1',me);else localStorage.removeItem('arcade_is_admin_v1')}catch(e){}
+  try{if(!cur||!Store.adminSkinGames.includes(cur.id))return;const w=gameFrame&&gameFrame.contentWindow;if(w)w.postMessage({source:'nova-arcade-shell',type:'admin',admin:Store.isAdmin(),unlockAllSkins:Store.isAdmin()},'*')}catch(e){}
+}
 async function loadAdmins(force){
   if(!Net.on)return;
   if(!force&&Date.now()-admLoadedAt<8000)return;
@@ -445,6 +455,7 @@ async function loadAdmins(force){
     if(!r.ok)return;
     const a=await r.json();
     AdmSet.clear();a.forEach(x=>x&&x.pid&&AdmSet.add(String(x.pid)));
+    adminStateChanged();
     decorateChat();
   }catch(e){}
 }
@@ -676,7 +687,7 @@ const Chat=(()=>{
   return{init,stop,notify,refresh:renderHistory,scrollEnd,enter};
 })();
 Chat.init();Ban.start();
-window.NovaApp={Store,Net,Presence,fetchT,SB_URL,SB_KEY,sfx,agoFa,Chat,AdmSet,admBadge,audio};
+window.NovaApp={isAdmin:()=>Store.isAdmin(),Store,Net,Presence,fetchT,SB_URL,SB_KEY,sfx,agoFa,Chat,AdmSet,admBadge,audio};
 setTimeout(()=>Net.presence(true).catch(()=>{}),1400);
 setInterval(()=>{if(!document.hidden)Net.presence(true).catch(()=>{})},30000);
 
@@ -762,6 +773,7 @@ function loadEmbedGame(id){
     .catch(e=>alert('بازی لود نشد: '+u+'\n'+e.message));
 }
 const gameFrame=$('gameFrame');
+gameFrame.addEventListener('load',()=>adminStateChanged());
 let embedRunStarted=false;
 window.addEventListener('message',e=>{
   const d=e&&e.data;
@@ -912,8 +924,6 @@ function drawRank(L,note){
   st.textContent=`
 .royalProfile{z-index:2147483000!important}
 .arcadeCard{position:relative}
-.gLb{position:absolute;top:10px;left:10px;z-index:5;display:flex;align-items:center;gap:4px;padding:5px 10px;border-radius:999px;background:rgba(10,8,30,.72);border:1px solid rgba(255,214,102,.55);color:#ffe08a;font:700 12px/1 inherit;cursor:pointer;backdrop-filter:blur(6px);box-shadow:0 0 12px rgba(255,200,80,.35);transition:transform .15s}
-.gLb:active{transform:scale(.92)}
 .glb{position:fixed;inset:0;z-index:1200;display:flex;align-items:flex-end;justify-content:center;background:rgba(4,3,16,.78);backdrop-filter:blur(8px);animation:glbFade .25s both;direction:rtl}
 .glb.out{animation:glbFadeOut .2s both}
 .glbSheet{--c:#7a6fd0;position:relative;width:100%;max-width:520px;max-height:94vh;overflow-y:auto;border-radius:26px 26px 0 0;background:linear-gradient(180deg,color-mix(in srgb,var(--c) 38%,#0d0a24) 0,#0d0a24 260px,#0b0920 100%);border:1px solid color-mix(in srgb,var(--c) 70%,#fff 10%);border-bottom:0;box-shadow:0 -10px 50px color-mix(in srgb,var(--c) 55%,transparent);animation:glbUp .4s cubic-bezier(.2,.9,.3,1.1) both;color:#fff;padding-bottom:max(20px,env(safe-area-inset-bottom))}
@@ -1181,6 +1191,7 @@ async function admSetAdmin(pid,on,after){
   const ok=await Net.rpc('arcade_admin_set_admin',{p_code:adminCode,p_pid:pid,p_on:!!on});
   if(ok===true){
     if(on)AdmSet.add(pid);else AdmSet.delete(pid);
+    adminStateChanged();
     admErr(on?'⭐ ادمین شد':'ادمین برداشته شد');
     decorateChat();renderRank();if(after)after();
   }else admErr('انجام نشد؛ SQL ادمین‌سازی رو توی Supabase اجرا کن.');
@@ -1258,13 +1269,7 @@ function renderMenu(){
     const badge=(m.id==='dino'?'🦖 DINO RUN':m.id==='snake'?'🐍 SNAKE LAB':m.id==='breakoutpro'?'🧱 BRICK STORM':m.id==='pong'?'🏓 DUEL ARENA':m.id==='ninja'?'🍉 NINJA MODE':m.id==='memory'?'🃏 MEMORY LAB':m.id==='colorseq'?'🎨 COLOR MEMORY':m.id==='soccer'?'⚽ SOCCER STAR':m.id==='pancake'?'🥞 PANCAKE TOWER':m.id==='traffic'?'🚦 NEON TRAFFIC':m.id==='markhor'?'🩸 MARKHOR':m.id==='amirshahi'?'👑 AMIR SHAHI':m.id==='cityrun'?'🏙️ CITY RUN':m.id==='hokm'?'🃏 PASUR':'🐦 SKY RUN');
     const metaTxt=m.id==='hokm'?'🌐 آنلاین · لیدربورد':`🏆 ${FA(g.best)} · ${FA(g.plays)} بازی`;
     b.innerHTML=`<span class="arcadeScene"><span class="arcadeStars"></span><span class="arcadeBadge">${badge} · LIVE</span><span class="arcadeIcon">${m.icon}</span></span><span class="arcadeInfo"><span class="arcadeName">${m.name}</span><span class="arcadeDesc">${m.desc}</span><span class="arcadeMeta"><span>${metaTxt}</span><span class="arcadePlay">▶ بازی کن</span></span></span>`;
-    b.onclick=()=>{audio();sfx.ui();if(m.pick)openPasurMenu();else openGame(m.id)};
-    if(!m.norec){
-      const t=document.createElement('span');t.className='gLb';t.setAttribute('role','button');t.setAttribute('tabindex','0');t.setAttribute('aria-label','لیدربورد '+m.name);t.textContent='🏆 رتبه‌ها';
-      t.onclick=e=>{e.stopPropagation();e.preventDefault();openGameRank(m)};
-      t.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.stopPropagation();e.preventDefault();openGameRank(m)}};
-      b.appendChild(t);
-    }
+    b.onclick=()=>{audio();if(m.norec){sfx.ui();if(m.pick)openPasurMenu();else openGame(m.id)}else openGameRank(m)};
     box.appendChild(b);
   }
   hello();
