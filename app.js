@@ -191,7 +191,7 @@ const SB_URL='https://sabxzrwdqhxfdzxonwmw.supabase.co';
 const SB_KEY='sb_publishable_vpVUe8xUxnxSgY1fiv3p9A_eQBWY3Hp';
 const Store=(()=>{
   const KEY='arcade_v1';
-  const blank=()=>({pong:{best:0,last:0,plays:0,wins:0,losses:0},dino:{best:0,last:0,plays:0},ninja:{best:0,last:0,plays:0},memory:{best:0,last:0,plays:0},flappy:{best:0,last:0,plays:0},snake:{best:0,last:0,plays:0},soccer:{best:0,last:0,plays:0},pancake:{best:0,last:0,plays:0},traffic:{best:0,last:0,plays:0},pacman:{best:0,last:0,plays:0},doodle:{best:0,last:0,plays:0},markhor:{best:0,last:0,plays:0},amirshahi:{best:0,last:0,plays:0},cityrun:{best:0,last:0,plays:0},hokm:{best:0,last:0,plays:0},chaharbarg:{best:0,last:0,plays:0},colorseq:{best:0,last:0,plays:0}});
+  const blank=()=>({pong:{best:0,last:0,plays:0,wins:0,losses:0},dino:{best:0,last:0,plays:0},ninja:{best:0,last:0,plays:0},memory:{best:0,last:0,plays:0},flappy:{best:0,last:0,plays:0},snake:{best:0,last:0,plays:0},soccer:{best:0,last:0,plays:0},pancake:{best:0,last:0,plays:0},traffic:{best:0,last:0,plays:0},pacman:{best:0,last:0,plays:0},doodle:{best:0,last:0,plays:0},markhor:{best:0,last:0,plays:0},amirshahi:{best:0,last:0,plays:0},cityrun:{best:0,last:0,plays:0},laserheist:{best:0,last:0,plays:0},skyball:{best:0,last:0,plays:0},subway:{best:0,last:0,plays:0},hokm:{best:0,last:0,plays:0},chaharbarg:{best:0,last:0,plays:0},colorseq:{best:0,last:0,plays:0}});
   let g=blank(),ok=true,dirty=false;
   (window.EXTRA_GAMES||[]).forEach(x=>{if(x&&x.id&&!g[x.id])g[x.id]={best:0,last:0,plays:0}});
   const startBest={};
@@ -217,7 +217,7 @@ const Store=(()=>{
   const isAdm=()=>{try{const me=String(localStorage.getItem('arcade_pid')||'');if(!me)return false;if(typeof AdmSet!=='undefined'&&AdmSet.has(me))return true;return localStorage.getItem(ADMK)===me}catch(e){try{return AdmSet.has(String(pid))}catch(_){return false}}};
   const saveSkins=()=>{try{localStorage.setItem(SKK,JSON.stringify(savedSkins))}catch(e){}};
   const saveSelectedSkins=()=>{try{localStorage.setItem(SELK,JSON.stringify(selectedSkins))}catch(e){}};
-  const rank={pong:[],dino:[],ninja:[],memory:[],flappy:[],snake:[],soccer:[],pancake:[],traffic:[],pacman:[],doodle:[],markhor:[],amirshahi:[],cityrun:[],colorseq:[],hokm:[],chaharbarg:[]};
+  const rank={pong:[],dino:[],ninja:[],memory:[],flappy:[],snake:[],soccer:[],pancake:[],traffic:[],pacman:[],doodle:[],markhor:[],amirshahi:[],cityrun:[],laserheist:[],skyball:[],subway:[],colorseq:[],hokm:[],chaharbarg:[]};
   (window.EXTRA_GAMES||[]).forEach(x=>{if(x&&x.id&&!rank[x.id])rank[x.id]=[]});
   let name='',pid='';
   try{
@@ -765,7 +765,7 @@ const resultFX={
 };
 
 /* ================= embedded arcade games ================= */
-const GAME_V=3; /* هر بار بازی رو آپدیت کردی این عدد رو یکی زیاد کن تا کش مرورگر پاک بشه */
+const GAME_V=4; /* هر بار بازی رو آپدیت کردی این عدد رو یکی زیاد کن تا کش مرورگر پاک بشه */
 function loadEmbedGame(id){
   const u=id+'.html?v='+GAME_V;
   fetch(u).then(r=>{if(!r.ok)throw new Error('HTTP '+r.status);return r.text();})
@@ -827,6 +827,9 @@ const META=[
   {id:'amirshahi',icon:'👑',name:'امیر شاهی',desc:'ساکر استار با فروشگاه، دو نفره، آنلاین با کد اتاق و شرط سکه‌ای',color:'#ffd23f',embed:true},
   {id:'markhor',icon:'🩸',name:'مارخور',desc:'مار بخور، بزرگ شو و با اسکین‌های اسطوره‌ای خون به پا کن',color:'#ff4d6d',embed:true},
   {id:'cityrun',icon:'🏙️',name:'سیتی ران',desc:'دونده‌ی بی‌پایان در بیش از ۱۰۰ شهر؛ با سکه اسکین بخر',color:'#ff9f43',embed:true},
+  {id:'laserheist',icon:'🕵️',name:'نفوذگر لیزری',desc:'از اتاق‌های لیزری رد شو، معما حل کن و فرار کن؛ هر مرحله ۱۰۰۰۰ امتیاز',color:'#ff3b4a',embed:true,fs:true,noFX:true},
+  {id:'skyball',icon:'🔮',name:'اسکای بال',desc:'توپ رو روی سکوهای شناور هدایت کن؛ ۱۰۰ مرحله و باس‌فایت',color:'#7df9ff',embed:true,fs:true,noFX:true},
+  {id:'subway',icon:'🚇',name:'مترو رانر',desc:'دونده‌ی سه‌بعدی مترو؛ سکه جمع کن و اسکین بخر',color:'#ff9f1c',embed:true,fs:true,noFX:true},
   {id:'hokm',icon:'🃏',name:'پاسور',tabName:'حکم',tabIcon:'♠️',desc:'حکم و چهار برگ؛ دو نفره آنلاین با کد اتاق، بدون تأخیر',color:'#e8c26a',embed:true,pick:true},
   {id:'chaharbarg',icon:'🃏',name:'چهار برگ',desc:'چهار برگ (پاسور) دو نفره با کد اتاق؛ رکورد بردها در لیدربورد',color:'#e8c26a',embed:true,hide:true},
 ];
@@ -840,7 +843,7 @@ const TOTAL_NOTE='مجموع بهترین امتیاز هر نفر توی همه
 const GAME_CATEGORY={
   breakoutpro:'classic',pong:'sports',dino:'runner',ninja:'action',memory:'puzzle',colorseq:'puzzle',
   flappy:'runner',snake:'classic',soccer:'sports',pancake:'runner',traffic:'runner',pacman:'action',
-  doodle:'runner',amirshahi:'sports',markhor:'action',cityrun:'runner',hokm:'classic',chaharbarg:'classic'
+  doodle:'runner',amirshahi:'sports',markhor:'action',cityrun:'runner',laserheist:'puzzle',skyball:'action',subway:'runner',hokm:'classic',chaharbarg:'classic'
 };
 function localTotal(){
   const v=IDS.reduce((a,k)=>a+Store.best(k),0);
@@ -1266,7 +1269,7 @@ function renderMenu(){
     const stat=m.id==='pong'?`رکورد: <b>${FA(g.best)}</b> · برد: ${FA(g.wins)} · باخت: ${FA(g.losses)}`:`رکورد: <b>${FA(g.best)}</b> · آخرین: ${FA(g.last)} · ${FA(g.plays)} بار بازی`;
     const b=document.createElement('button');
     b.className='card arcadeCard';b.dataset.gameId=m.id;b.dataset.category=GAME_CATEGORY[m.id]||'classic';b.style.setProperty('--c',m.color);b.style.setProperty('--i',META.indexOf(m));
-    const badge=(m.id==='dino'?'🦖 DINO RUN':m.id==='snake'?'🐍 SNAKE LAB':m.id==='breakoutpro'?'🧱 BRICK STORM':m.id==='pong'?'🏓 DUEL ARENA':m.id==='ninja'?'🍉 NINJA MODE':m.id==='memory'?'🃏 MEMORY LAB':m.id==='colorseq'?'🎨 COLOR MEMORY':m.id==='soccer'?'⚽ SOCCER STAR':m.id==='pancake'?'🥞 PANCAKE TOWER':m.id==='traffic'?'🚦 NEON TRAFFIC':m.id==='markhor'?'🩸 MARKHOR':m.id==='amirshahi'?'👑 AMIR SHAHI':m.id==='cityrun'?'🏙️ CITY RUN':m.id==='hokm'?'🃏 PASUR':'🐦 SKY RUN');
+    const badge=(m.id==='dino'?'🦖 DINO RUN':m.id==='snake'?'🐍 SNAKE LAB':m.id==='breakoutpro'?'🧱 BRICK STORM':m.id==='pong'?'🏓 DUEL ARENA':m.id==='ninja'?'🍉 NINJA MODE':m.id==='memory'?'🃏 MEMORY LAB':m.id==='colorseq'?'🎨 COLOR MEMORY':m.id==='soccer'?'⚽ SOCCER STAR':m.id==='pancake'?'🥞 PANCAKE TOWER':m.id==='traffic'?'🚦 NEON TRAFFIC':m.id==='markhor'?'🩸 MARKHOR':m.id==='amirshahi'?'👑 AMIR SHAHI':m.id==='cityrun'?'🏙️ CITY RUN':m.id==='hokm'?'🃏 PASUR':m.id==='laserheist'?'🕵️ LASER HEIST':m.id==='skyball'?'🔮 SKY BALL':m.id==='subway'?'🚇 SUBWAY RUN':'🐦 SKY RUN');
     const metaTxt=m.id==='hokm'?'🌐 آنلاین · لیدربورد':`🏆 ${FA(g.best)} · ${FA(g.plays)} بازی`;
     b.innerHTML=`<span class="arcadeScene"><span class="arcadeStars"></span><span class="arcadeBadge">${badge} · LIVE</span><span class="arcadeIcon">${m.icon}</span></span><span class="arcadeInfo"><span class="arcadeName">${m.name}</span><span class="arcadeDesc">${m.desc}</span><span class="arcadeMeta"><span>${metaTxt}</span><span class="arcadePlay">▶ بازی کن</span></span></span>`;
     b.onclick=()=>{audio();if(m.norec){sfx.ui();if(m.pick)openPasurMenu();else openGame(m.id)}else openGameRank(m)};

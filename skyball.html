@@ -34,12 +34,15 @@ button:focus-visible{outline:3px solid #fff;outline-offset:3px}
 #flash{position:fixed;inset:0;background:var(--am);opacity:0;pointer-events:none;transition:opacity .35s}
 @media (prefers-reduced-motion:reduce){#flash{transition:none}}
 #mb{position:fixed;top:calc(env(safe-area-inset-top,0px) + 48px);right:12px;display:flex;flex-direction:column;gap:8px;z-index:8}.mb{width:38px;height:38px;padding:0;font-size:18px;border-radius:50%;background:var(--glass);border:1px solid rgba(125,249,255,.4);box-shadow:none;color:var(--ink);display:flex;align-items:center;justify-content:center;backdrop-filter:blur(6px)}.mb.off{opacity:.45}
+#ov{overflow-y:auto;justify-content:safe center;touch-action:pan-y}
+.gq{font-size:14px;padding:6px 14px;margin:3px;box-shadow:none;background:rgba(255,255,255,.12);color:var(--ink);border:1px solid rgba(255,255,255,.35);border-radius:12px}
+#vgn{position:fixed;inset:0;pointer-events:none;display:none;background:radial-gradient(ellipse at center,#0000 55%,#000b 100%)}
 </style>
 </head>
 <body>
 <div id="hud"><span class="chip" id="hl"></span><span class="chip" id="hp"></span><div id="bar"><i></i></div><span class="chip" id="hg"></span><span class="chip" id="hv"></span></div>
-<div id="pad"></div><div id="nub"><b></b></div><div id="jb">پرش</div><div id="tt"></div><div id="bb"><b id="bn"></b><div><i id="bf"></i></div></div><div id="flash"></div><div id="mb"><button class="mb" id="mus" aria-label="موسیقی">🎵</button><button class="mb" id="snd" aria-label="صدا">🔊</button></div>
-<div id="ov"><h1>SKY BALL</h1><p id="msg">توپ رو روی سکوهای شناور هدایت کن. از تله‌ها بپر و بدون سقوط به پایان مسیر برس. ۱۰۰ مرحله، با سکوهای ناپدیدشونده از مرحله ۸.</p><div id="lv"></div><button id="go">شروع بازی</button><button id="shopb" style="background:#ffd24a;box-shadow:0 0 22px rgba(255,210,74,.5)"></button><p style="font-size:13px;opacity:.65">کامپیوتر: فلش‌ها یا WASD و فاصله برای پرش<br>موبایل: انگشتت رو روی سمت چپ بکش</p></div>
+<div id="pad"></div><div id="nub"><b></b></div><div id="jb">پرش</div><div id="tt"></div><div id="bb"><b id="bn"></b><div><i id="bf"></i></div></div><div id="flash"></div><div id="vgn"></div><div id="mb"><button class="mb" id="mus" aria-label="موسیقی">🎵</button><button class="mb" id="snd" aria-label="صدا">🔊</button></div>
+<div id="ov"><h1>SKY BALL</h1><p id="msg">توپ رو روی سکوهای شناور هدایت کن. از تله‌ها بپر و بدون سقوط به پایان مسیر برس. ۱۰۰ مرحله، با سکوهای ناپدیدشونده از مرحله ۸.</p><div id="lv"></div><button id="go">شروع بازی</button><div id="gfxr"></div><button id="shopb" style="background:#ffd24a;box-shadow:0 0 22px rgba(255,210,74,.5)"></button><p style="font-size:13px;opacity:.65">کامپیوتر: فلش‌ها یا WASD و فاصله برای پرش<br>موبایل: انگشتت رو روی سمت چپ بکش</p></div>
 <div id="shop"><div id="shh"><b>فروشگاه اسکین</b><span id="shw"></span><button id="shx">بستن</button></div><div id="shbody"></div></div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
@@ -203,7 +206,7 @@ function setup(n){sc.remove(world);world=new THREE.Group();sc.add(world);
  }
  for(let i=0;i<26;i++){const t=tiles[(Math.random()*tiles.length)|0],a=Math.random()*6.28,d=22+Math.random()*30,s=2+Math.random()*3;
   const o=new THREE.Mesh(new THREE.IcosahedronGeometry(s,0),mc);o.position.set(t.x+Math.cos(a)*d,-4+Math.random()*14,t.z+Math.sin(a)*d);o.rotation.set(Math.random()*3,Math.random()*3,0);world.add(o)}
- SFX.reset(n);lives=3;got=0;mx=0;s0=score;tl=tiles.length*1.7;spawn(tiles[0]);yaw=0;safeT=tiles[0];last=tiles[0];hud()}
+ decorate();SFX.reset(n);lives=3;got=0;mx=0;s0=score;tl=tiles.length*1.7;spawn(tiles[0]);yaw=0;safeT=tiles[0];last=tiles[0];hud()}
 const gZ=new THREE.CircleGeometry(1,28),gRg=new THREE.TorusGeometry(1,.05,6,64),gBar=new THREE.BoxGeometry(26,.5,.9),gWl=new THREE.BoxGeometry(7,1.2,1.4);
 const BN=['غول کوبنده','جاروی برنده','موج‌ساز','فروریز','بارش شهاب','گرانش‌کش','دیوارهای لغزان','یخ‌زده','ویرانگر','امپراتور آسمان'],BD=['دایره‌های قرمز رو می‌کوبه؛ ازشون دور شو','میله‌ی غول‌پیکر می‌چرخه؛ بپر روش','موج‌ها از مرکز میان؛ ازشون بپر','سکوها فرو می‌ریزن','شهاب‌ها از آسمان میان','می‌کشه تو رو سمت خودش','دیوارها رد میشن','زمین یخه و می‌کوبه','سکوها فرو می‌ریزن و موج میاد','همه‌ی حمله‌ها با هم'],FL=['Z','B','W','C','M','PM','L','IZ','CW','ZBWC'];
 /* اسکین‌ها */
@@ -214,13 +217,13 @@ NM.forEach((ns,r)=>ns.forEach((n,i)=>SKINS.push({n,r,c:CL[r][i],p:(r||i)?Math.ro
 let wal=0,own=[0],cur=0;
 function sv(){try{localStorage.setItem('sbg',wal);localStorage.setItem('sbk',JSON.stringify(own));localStorage.setItem('sbc',cur)}catch(e){}}
 function wl(){$('shopb').textContent='فروشگاه اسکین ('+wal+' الماس)'}
-function applySkin(){const s=SKINS[cur],r=s.r;bm.color.setHex(s.c);bm.metalness=[.35,.95,.7,.9,.8][r];bm.roughness=[.35,.2,.25,.15,.1][r];bm.emissive.setHex(s.c);bm.emissive.multiplyScalar([.1,.1,.45,.35,.3][r]);bm.emissiveIntensity=1;bl.color.setHex(s.c);bl.intensity=[1.3,1.3,2.2,2.6,3][r];rm.color.setHex(0xffffff)}
+function applySkin(){const s=SKINS[cur],r=s.r;bm.color.setHex(s.c);bm.metalness=[.35,.95,.7,.9,.8][r];bm.roughness=[.35,.2,.25,.15,.1][r];bm.emissive.setHex(s.c);bm.emissive.multiplyScalar([.1,.1,.45,.35,.3][r]);bm.emissiveIntensity=1;bl.color.setHex(s.c);bl.intensity=[1.3,1.3,2.2,2.6,3][r];glow.material.color.setHex(s.c);rm.color.setHex(0xffffff)}
 const trl=[],tg=new THREE.SphereGeometry(.2,6,5);for(let i=0;i<28;i++){const m=new THREE.Mesh(tg,new THREE.MeshBasicMaterial({color:0xffffff,transparent:true,opacity:.7}));m.visible=false;m.userData={a:0};sc.add(m);trl.push(m)}
 let ti=0,tt=0;
 function skFx(dt){const s=SKINS[cur];let col=null;
  if(s.fx==='rb'){const h=(tm*.25+s.h)%1;bm.color.setHSL(h,.8,.6);bm.emissive.setHSL(h,.9,.3);bl.color.setHSL(h,1,.6);rm.color.setHSL((h+.5)%1,.9,.85);col=h}
  else if(s.fx==='pu')bm.emissiveIntensity=.7+.6*Math.sin(tm*4);
- tt-=dt;if(s.tr&&st==='play'&&tt<=0){tt=.03;const m=trl[ti++%28];m.position.set(B.x,B.y,B.z);m.userData.a=.6;if(col===null)m.material.color.setHex(s.c);else m.material.color.setHSL(col,.9,.6)}
+ tt-=dt;if((s.tr||GQ[gfx].trl)&&st==='play'&&tt<=0){tt=.03;const m=trl[ti++%28];m.position.set(B.x,B.y,B.z);m.userData.a=.6;if(col===null)m.material.color.setHex(s.c);else m.material.color.setHSL(col,.9,.6)}
  for(const m of trl)if(m.userData.a>0){m.userData.a-=dt;m.visible=m.userData.a>0;m.scale.setScalar(Math.max(.01,m.userData.a/.6))}}
 function shop(){let h='';for(let r=0;r<5;r++){h+='<h3 style="color:'+RC[r]+'">'+RN[r]+'</h3><div class="sg">';SKINS.forEach((s,i)=>{if(s.r!==r)return;const o=own.includes(i),sw=r===4?'conic-gradient(#f55,#fd5,#5f8,#5df,#58f,#f5d,#f55)':'radial-gradient(circle at 35% 30%,#fff,#'+s.c.toString(16).padStart(6,'0')+' 55%,#000 140%)';h+='<button class="sk'+(cur===i?' on':'')+'" data-i="'+i+'" style="border-color:'+RC[r]+'"><i class="sw" style="background:'+sw+'"></i><span>'+s.n+'</span><b>'+(cur===i?'فعال':o?'انتخاب':'💎 '+s.p)+'</b></button>'});h+='</div>'}$('shbody').innerHTML=h;$('shw').textContent='💎 '+wal}
 $('shopb').onclick=()=>{shop();$('shop').style.display='flex'};$('shx').onclick=()=>{$('shop').style.display='none';wl()};
@@ -276,7 +279,7 @@ function over(win){const sf=score;if(win)SFX.win(!!BS);if(!win)score=s0;hs=Math.
 function grid(){wl();const g=$('lv');g.innerHTML='';for(let i=1;i<=MAXL;i++){const b=document.createElement('button');b.className='lb'+(i===lvl?' cur':'');b.textContent=i;b.disabled=i!==best;b.textContent=i<best?'✓':i;g.appendChild(b)}}
 const INT=['شکاف بین سکوها: بپر!','بلوک‌های نارنجیِ لغزنده','سکوی صورتی: پرش بلند','سکوی یخی: لیز میخوری','میله‌ی چرخان','نوار نقاله‌ی زرد: تو رو به کنار می‌کشه','سکوی ناپدیدشونده','میله‌ی چرخانِ ضربدری','سکوی فروریزنده: زود رد شو','خارهای متناوب'],MT=['جاذبه‌ی کم','شب: دید کم','همه‌جا لیز','وزش باد','سرعت زیاد','توپ سنگین: پرش کوتاه','زمان‌دار: تا تموم نشده برس','تله‌ی زیاد','کنترل چپ و راست برعکس','دوربین تکون‌دار'];
 function ban(n){const e=$('tt');e.innerHTML='مرحله '+n+'<br><span style="color:var(--cy);font-size:16px">'+(n%10===0?'باس '+n/10+': '+BN[n/10-1]+' — '+BD[n/10-1]+' | گوی‌های طلایی رو بگیر تا باس ضعیف بشه':n<=10?'جدید: '+INT[n-1]:(n===11?'جدید: '+INT[9]+' | ':'')+'ویژگی: '+MT[MOD(n)])+'</span>';e.style.opacity=1;clearTimeout(ban.h);ban.h=setTimeout(()=>e.style.opacity=0,4200)}
-$('go').onclick=()=>{lastNA=-1;NA('start',0);SFX.unlock();SFX.start(lvl%10===0);$('ov').style.display='none';setup(lvl);st='play';ban(lvl)};
+$('go').onclick=()=>{goFS();lastNA=-1;NA('start',0);SFX.unlock();SFX.start(lvl%10===0);$('ov').style.display='none';setup(lvl);st='play';ban(lvl)};
 function step(dt){
  hurtCd-=dt;jbuf-=dt;coy-=dt;
  for(const q of tiles){if(q.c==='P'){const pv=q.on;q.on=Math.sin(tm*1.8+q.ph)>-.3;q.g.forEach(o=>o.visible=q.on);if(pv!==q.on)SFX.phase(q.on,q.x,q.z)}else if(q.c==='D'&&q.fl>0){q.fl-=dt;if(q.fl<=0){q.on=false;q.g.forEach(o=>o.visible=false);SFX.drop(q.x,q.z)}}else if(q.c==='O'){const uv=q.up;q.up=((tm+q.ph)%2.4)<1.2;q.sp.position.y=q.up?0:-.9;if(q.up&&uv===false)SFX.spike(q.x,q.z)}else if(q.off>0){q.off-=dt;if(q.off<=0){q.on=true;q.g.forEach(o=>o.visible=true)}}}
@@ -309,12 +312,42 @@ function anim(dt){
  if(tiles){ball.position.set(B.x,B.y,B.z)}
  const fx=Math.sin(yaw),fz=Math.cos(yaw);
  cam.position.set(B.x-fx*9,(BS?7.5:5.2)+Math.max(B.y,-2),B.z-fz*9);cam.lookAt(B.x+fx*2.5,Math.max(B.y,-2)+(BS?2.5:.4),B.z+fz*2.5);
- if(MOD(lvl)===9)cam.rotateZ(Math.sin(tm*1.3)*.1);stars.position.copy(cam.position);skFx(dt);
+ if(MOD(lvl)===9)cam.rotateZ(Math.sin(tm*1.3)*.1);stars.position.copy(cam.position);skFx(dt);gfxStep(dt);
  gems&&gems.forEach(g=>{g.rotation.y+=dt*2.5;g.position.y=1.4+Math.sin(tm*3+g.position.x)*.15});
  if(endT&&endT.ring){endT.ring.rotation.y+=dt*1.5;endT.ring.rotation.x=Math.sin(tm)*.4}}
 let lt=0;function loop(t){requestAnimationFrame(loop);const dt=Math.min(.033,(t-lt)/1000||0);lt=t;tm+=dt;if(st==='play')step(dt);else SFX.idle(dt);anim(dt);rd.render(sc,cam)}
+function goFS(){if(!fsOn||document.fullscreenElement||document.webkitFullscreenElement)return;const e=document.documentElement,f=e.requestFullscreen||e.webkitRequestFullscreen;try{const p=f&&f.call(e);if(p&&p.catch)p.catch(()=>{})}catch(x){}}
+function exitFS(){try{if(document.fullscreenElement||document.webkitFullscreenElement)(document.exitFullscreen||document.webkitExitFullscreen).call(document)}catch(x){}}
+/* ===== گرافیک (مثل نفوذگر لیزری) ===== */
+const GQ={low:{dpr:1,sh:0,tm:0,glow:0,dust:0,env:0,vg:0,trl:0,txt:'ساده: بدون سایه و افکت (سبک‌ترین)'},
+ med:{dpr:1.5,sh:1024,type:THREE.PCFShadowMap,tm:0,glow:1,dust:0,env:0,vg:0,trl:0,txt:'سایه‌ی ساده + درخشش توپ و زیر سکوها'},
+ high:{dpr:2,sh:2048,type:THREE.PCFSoftShadowMap,tm:1.3,glow:2,dust:140,env:0,vg:1,trl:1,txt:'سایه‌ی نرم، رنگ‌بندی سینمایی، ذرات شناور، دنباله‌ی توپ'},
+ pro:{dpr:2.5,sh:4096,type:THREE.PCFSoftShadowMap,tm:1.5,glow:3,dust:300,env:1,vg:1,trl:1,txt:'حرفه‌ای: بازتاب محیط، سایه‌ی دقیق، ۳۰۰ ذره، درخشش قوی (سنگین)'}};
+let gfx='med',fsOn=true;try{gfx=localStorage.getItem('sb_gfx')||'med';fsOn=localStorage.getItem('sb_fs')!=='0'}catch(e){}if(!GQ[gfx])gfx='med';
+const rtx=(()=>{const c=document.createElement('canvas');c.width=c.height=128;const x=c.getContext('2d'),g=x.createRadialGradient(64,64,0,64,64,64);g.addColorStop(0,'rgba(255,255,255,1)');g.addColorStop(.35,'rgba(255,255,255,.35)');g.addColorStop(1,'rgba(255,255,255,0)');x.fillStyle=g;x.fillRect(0,0,128,128);return new THREE.CanvasTexture(c)})();
+const glow=new THREE.Sprite(new THREE.SpriteMaterial({map:rtx,transparent:true,blending:THREE.AdditiveBlending,depthWrite:false,opacity:.6,fog:false}));glow.scale.set(4,4,1);ball.add(glow);ball.castShadow=true;
+const mGlow=new THREE.MeshBasicMaterial({color:0x4fd8ff,transparent:true,opacity:0,blending:THREE.AdditiveBlending,depthWrite:false}),gPl=new THREE.PlaneGeometry(T+1.2,T+1.2);
+const DN=300,dp=new Float32Array(DN*3);for(let i=0;i<DN;i++){dp[i*3]=(Math.random()-.5)*40;dp[i*3+1]=Math.random()*18-4;dp[i*3+2]=(Math.random()-.5)*40}
+const dgm=new THREE.BufferGeometry();dgm.setAttribute('position',new THREE.BufferAttribute(dp,3));const dust=new THREE.Points(dgm,new THREE.PointsMaterial({color:0xbfefff,size:.12,transparent:true,opacity:.6,blending:THREE.AdditiveBlending,depthWrite:false}));dust.frustumCulled=false;dust.visible=false;sc.add(dust);
+Object.assign(sun.shadow.camera,{left:-45,right:45,top:45,bottom:-45,near:5,far:170});sun.shadow.camera.updateProjectionMatrix();sun.shadow.bias=-.0004;sun.shadow.normalBias=.03;sc.add(sun.target);
+let ENV=null;function mkEnv(){if(ENV)return ENV;try{const c=document.createElement('canvas');c.width=256;c.height=128;const x=c.getContext('2d'),g=x.createLinearGradient(0,0,0,128);g.addColorStop(0,'#6a8cff');g.addColorStop(.5,'#2a2060');g.addColorStop(1,'#080818');x.fillStyle=g;x.fillRect(0,0,256,128);for(let i=0;i<10;i++){x.fillStyle=i%2?'#7df9ff':'#ff7ad9';x.fillRect(i*26,30,8,50)}x.fillStyle='#fff';x.fillRect(0,56,256,4);const t=new THREE.CanvasTexture(c);t.mapping=THREE.EquirectangularReflectionMapping;const pm=new THREE.PMREMGenerator(rd);ENV=pm.fromEquirectangular(t).texture;pm.dispose()}catch(e){}return ENV}
+function decorate(){world.traverse(o=>{if(o.isMesh){o.castShadow=true;o.receiveShadow=true}});tiles.forEach(t=>{const g=new THREE.Mesh(gPl,mGlow);g.rotation.x=-Math.PI/2;g.position.set(t.x,-.63,t.z);world.add(g);t.g.push(g)})}
+function applyGfx(){const q=GQ[gfx];rd.setPixelRatio(Math.min(devicePixelRatio||1,q.dpr));rs();
+ rd.shadowMap.enabled=!!q.sh;sun.castShadow=!!q.sh;
+ if(q.sh){rd.shadowMap.type=q.type;sun.shadow.mapSize.set(q.sh,q.sh);if(sun.shadow.map){sun.shadow.map.dispose();sun.shadow.map=null}}
+ rd.toneMapping=q.tm?THREE.ACESFilmicToneMapping:THREE.NoToneMapping;rd.toneMappingExposure=q.tm||1;
+ sc.environment=q.env?mkEnv():null;mGlow.opacity=[0,.12,.2,.3][q.glow];glow.visible=q.glow>0;glow.material.opacity=[0,.45,.6,.85][q.glow];
+ dust.visible=q.dust>0;dgm.setDrawRange(0,q.dust||1);$('vgn').style.display=q.vg?'block':'none';rd.domElement.style.filter=q.env?'saturate(1.18) contrast(1.05)':'none';
+ sc.traverse(o=>{if(o.material)(Array.isArray(o.material)?o.material:[o.material]).forEach(m=>m.needsUpdate=true)})}
+function gfxStep(dt){if(rd.shadowMap.enabled){sun.position.set(B.x+30,60,B.z+20);sun.target.position.set(B.x,0,B.z);sun.target.updateMatrixWorld()}
+ if(SKINS[cur].fx==='rb')glow.material.color.copy(bl.color);
+ if(dust.visible){for(let i=0;i<DN;i++){const k=i*3;dp[k+1]+=dt*.5;if(dp[k+1]>14)dp[k+1]=-4;dp[k]=B.x+(((dp[k]-B.x+20)%40)+40)%40-20;dp[k+2]=B.z+(((dp[k+2]-B.z+20)%40)+40)%40-20}dgm.attributes.position.needsUpdate=true}}
+function gfxUI(){const r=$('gfxr');r.innerHTML='<div style="font-size:14px;opacity:.9">گرافیک:</div>'+[['low','پایین'],['med','متوسط'],['high','بالا'],['pro','حرفه‌ای']].map(a=>'<button class="gq" data-q="'+a[0]+'">'+a[1]+'</button>').join('')+'<div><button class="gq" id="fsb"></button></div><p id="gh" style="font-size:12px;opacity:.7;margin-top:2px"></p>';
+ const mark=()=>{r.querySelectorAll('[data-q]').forEach(b=>b.style.outline=b.dataset.q===gfx?'2px solid #fff':'none');$('gh').textContent=GQ[gfx].txt;$('fsb').textContent='🖵 تمام‌صفحه: '+(fsOn?'روشن':'خاموش')};
+ r.querySelectorAll('[data-q]').forEach(b=>b.onclick=()=>{gfx=b.dataset.q;try{localStorage.setItem('sb_gfx',gfx)}catch(e){}applyGfx();mark()});
+ $('fsb').onclick=()=>{fsOn=!fsOn;try{localStorage.setItem('sb_fs',fsOn?'1':'0')}catch(e){}if(fsOn)goFS();else exitFS();mark()};mark()}
 try{best=Math.max(1,Math.min(MAXL,+localStorage.getItem('sb')||1));score=+localStorage.getItem('sbs')||0;hs=+localStorage.getItem('sbh')||0;wal=+localStorage.getItem('sbg')||0;own=JSON.parse(localStorage.getItem('sbk')||'[0]');cur=Math.min(SKINS.length-1,+localStorage.getItem('sbc')||0)}catch(e){}applySkin();lvl=best;grid();if(hs)$('msg').textContent+=' رکورد: '+hs;
-setup(lvl);st='menu';requestAnimationFrame(loop);
+setup(lvl);st='menu';gfxUI();applyGfx();requestAnimationFrame(loop);
 </script>
 </body>
 </html>

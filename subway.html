@@ -42,7 +42,7 @@ body[data-q=high] #c{filter:contrast(1.1) saturate(1.12)}
 </style></head><body>
 <canvas id="c"></canvas><div id="vg"></div><div id="gr"></div><div id="fl"></div><div id="lb1" class="lb"></div><div id="lb2" class="lb"></div><div id="wf"></div><div id="pw">💥 بووم!</div><div id="sr"></div><div id="bt">☠️ تموم شد</div><div id="bsw"></div>
 <div id="hud"><span id="sc">۰</span><span id="sn"></span><span id="co">🪙 ۰</span></div><button id="pz">⏸</button>
-<div id="ov"><h1 id="t">🚇 مترو رانر</h1><p id="m"></p><div>گرافیک: <button class="gq" data-q="low">پایین</button><button class="gq" data-q="med">متوسط</button><button class="gq" data-q="high">بالا</button></div><p id="gh" style="font-size:13px;opacity:.75"></p><p id="wl" style="font-weight:700;font-size:18px"></p><button id="sb" class="sbtn">🛍️ فروشگاه اسکین</button><button id="go">شروع</button><button id="rs" class="gq" style="display:none">از نو</button></div>
+<div id="ov"><h1 id="t">🚇 مترو رانر</h1><p id="m"></p><div>گرافیک: <button class="gq" data-q="low">پایین</button><button class="gq" data-q="med">متوسط</button><button class="gq" data-q="high">بالا</button></div><div><button class="gq" id="fsb"></button></div><p id="gh" style="font-size:13px;opacity:.75"></p><p id="wl" style="font-weight:700;font-size:18px"></p><button id="sb" class="sbtn">🛍️ فروشگاه اسکین</button><button id="go">شروع</button><button id="rs" class="gq" style="display:none">از نو</button></div>
 <div id="dn"></div>
 <div id="shop"><div id="sht"><button id="shx" class="sbtn">✖ بستن</button><b id="shw"></b></div><div id="shl"></div></div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -244,7 +244,7 @@ const G=26;let rf=false,bu=false,fd=false,sl=-1,gt=0,cs=0,fi=0,jt=0;
 function gapAt(t){const u=t%34;if(u<8)return 3.8+Math.sin(u*.7)*.5;if(u<10)return 3.8+12.2*(u-8)/2;if(u<31)return 16;return 16-12.2*(u-31)/3}
 function reset(){for(const o of OB)S.remove(o.m);for(const c of CO)S.remove(c.m);OB.length=CO.length=0;
  z0=z;lane=1;y=0;vy=0;roll=0;speed=15;coins=0;gnow=0;sneak=0;for(const o of SH)S.remove(o.m);SH.length=0;score=0;nextZ=z-60;P.position.x=0;P.rotation.set(0,0,0);P.scale.set(1,1,1);cx=0;cy=0;lastSc=lastCo=-1;shake=0;ct=ht=0;hit=false;rt=0;at=0;hs=0;for(const o of STR)S.remove(o);STR.length=0;$('pw').style.animation='none';CX.forEach(h=>h.g.visible=false);bp.visible=false;$('bsw').innerHTML='';cam.up.set(0,1,0);rf=bu=fd=false;sl=-1;gt=cs=fi=jt=0;[BL,FLS,SPL].forEach(a=>{a.forEach(o=>S.remove(o.m));a.length=0});[CH,...CX].forEach(h=>{h.bat.visible=true;h.gun.visible=false});$('sr').style.opacity=0;$('bt').style.animation='none';$('wf').style.background='#fff';$('wf').style.opacity=0;cam.fov=62;cam.updateProjectionMatrix();$('lb1').style.height=$('lb2').style.height=0;C.visible=true;$('fl').style.opacity=0;shM.visible=false;P.visible=true;PL.aL.rotation.z=PL.aR.rotation.z=0;fs=0;inv=0;fl=0;DOG.g.visible=false;pzT=45}
-function start(){au();reset();AB=SKINS[sel].ab;shield=AB.sh||0;djOk=true;st='dance';dnT=0;dnB=-1;dnN=-1;paused=false;$('rs').style.display='none';$('pz').style.display='none';$('ov').style.display='none';$('dn').style.display='block';C.visible=true;cam.fov=48;cam.updateProjectionMatrix();sfx.power();NA('start',0)}
+function start(){au();goFS();reset();AB=SKINS[sel].ab;shield=AB.sh||0;djOk=true;st='dance';dnT=0;dnB=-1;dnN=-1;paused=false;$('rs').style.display='none';$('pz').style.display='none';$('ov').style.display='none';$('dn').style.display='block';C.visible=true;cam.fov=48;cam.updateProjectionMatrix();sfx.power();NA('start',0)}
 function crash(o){shM.visible=false;wallet+=coins;svs();P.scale.set(1,1,1);trHit=!!(o&&o.len>5);if(trHit){if(z>o.z+o.len/2-1.2){z=o.z+o.len/2+.5}else trHit=false;speed=0}
  for(const a of[OB,CO,SH]){for(const q of a)S.remove(q.m);a.length=0}$('pz').style.display='none';st='caught';ct=ht=0;at=0;hs=0;ah=0;hit=false;cz0=cz;C.visible=true;$('lb1').style.height=$('lb2').style.height='11vh';sfx.crash();sfx.whistle();shake=.4;
  if(score>best){best=score;try{localStorage.setItem('subway_best',best)}catch(e){}}
@@ -439,6 +439,10 @@ function applyGfx(){const q=GQ[gfx];document.body.dataset.q=gfx;R.setPixelRatio(
  {const hi=gfx==='high';HQ.forEach(h=>{const o=hi?h.on:h.off;for(const k in o){const v=o[k];if(h.m[k]&&h.m[k].isColor)h.m[k].set(v);else h.m[k]=v}});S.environment=hi?ENV:null;GL.forEach(g=>g.visible=hi);HL.intensity=hi?.5:.75}
  S.traverse(o=>{if(o.material)(Array.isArray(o.material)?o.material:[o.material]).forEach(m=>m.needsUpdate=true)});
  document.querySelectorAll('.gq').forEach(b=>b.style.outline=b.dataset.q===gfx?'3px solid #fff':'none');$('gh').textContent=q.txt}
+let fsOn=true;try{fsOn=localStorage.getItem("subway_fs")!=="0"}catch(e){}
+function goFS(){if(!fsOn||document.fullscreenElement||document.webkitFullscreenElement)return;const e=document.documentElement,f=e.requestFullscreen||e.webkitRequestFullscreen;try{const p=f&&f.call(e);if(p&&p.catch)p.catch(()=>{})}catch(x){}}
+function exitFS(){try{if(document.fullscreenElement||document.webkitFullscreenElement)(document.exitFullscreen||document.webkitExitFullscreen).call(document)}catch(x){}}
+const fsb=$('fsb'),fsMark=()=>{fsb.textContent='🖵 تمام‌صفحه: '+(fsOn?'روشن':'خاموش')};fsb.onclick=()=>{fsOn=!fsOn;try{localStorage.setItem('subway_fs',fsOn?'1':'0')}catch(e){}if(fsOn)goFS();else exitFS();fsMark()};fsMark();
 document.querySelectorAll('.gq[data-q]').forEach(b=>b.onclick=()=>{gfx=b.dataset.q;try{localStorage.setItem('subway_gfx',gfx)}catch(e){}applyGfx()});
 $('sb').onclick=()=>{shopR();$('shop').style.display='block'};$('shx').onclick=()=>{$('shop').style.display='none'};
 setSkin();updW();
