@@ -2,6 +2,9 @@
 (()=>{
 'use strict';
 const $=id=>document.getElementById(id);
+/* ثبت بازی صداپرش در آرکید (باید قبل از Store اجرا بشه تا رکورد و لیدربورد هم ساخته بشه) */
+window.EXTRA_GAMES=window.EXTRA_GAMES||[];
+if(!window.EXTRA_GAMES.some(x=>x&&x.id==='voicerunner'))window.EXTRA_GAMES.push({id:'voicerunner',icon:'🎤',name:'صداپرش',desc:'با صدات بازی کن! آروم حرف بزن = راه رفتن، داد بزن = پرش؛ ۱۰۰ مرحله',color:'#ffd23f',embed:true,noFX:true});
 try{localStorage.removeItem('arcade_photo');localStorage.removeItem('arcade_photo_ok')}catch(e){}
 const cv=$('c'),ctx=cv.getContext('2d');
 const W=480,H=640;
@@ -765,9 +768,10 @@ const resultFX={
 };
 
 /* ================= embedded arcade games ================= */
-const GAME_V=4; /* هر بار بازی رو آپدیت کردی این عدد رو یکی زیاد کن تا کش مرورگر پاک بشه */
+const GAME_V=5; /* هر بار بازی رو آپدیت کردی این عدد رو یکی زیاد کن تا کش مرورگر پاک بشه */
 function loadEmbedGame(id){
   const u=id+'.html?v='+GAME_V;
+  try{gameFrame.setAttribute('allow','microphone; autoplay; fullscreen')}catch(e){} /* برای بازی‌های صدایی مثل صداپرش */
   fetch(u).then(r=>{if(!r.ok)throw new Error('HTTP '+r.status);return r.text();})
     .then(t=>{if(cur&&cur.id===id)gameFrame.srcdoc=t;})
     .catch(e=>alert('بازی لود نشد: '+u+'\n'+e.message));
@@ -843,7 +847,7 @@ const TOTAL_NOTE='مجموع بهترین امتیاز هر نفر توی همه
 const GAME_CATEGORY={
   breakoutpro:'classic',pong:'sports',dino:'runner',ninja:'action',memory:'puzzle',colorseq:'puzzle',
   flappy:'runner',snake:'classic',soccer:'sports',pancake:'runner',traffic:'runner',pacman:'action',
-  doodle:'runner',amirshahi:'sports',markhor:'action',cityrun:'runner',laserheist:'puzzle',skyball:'action',subway:'runner',hokm:'classic',chaharbarg:'classic'
+  doodle:'runner',voicerunner:'runner',amirshahi:'sports',markhor:'action',cityrun:'runner',laserheist:'puzzle',skyball:'action',subway:'runner',hokm:'classic',chaharbarg:'classic'
 };
 function localTotal(){
   const v=IDS.reduce((a,k)=>a+Store.best(k),0);

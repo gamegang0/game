@@ -50,9 +50,15 @@ addEventListener('keyup',e=>{if(e.code==='ArrowRight')kR=false});
 const GY=()=>H*.74,PW=26,PH=42;
 let lvlN=1,bonus=0,lvStart=0,lvEnd=0,minX=0,coinS=0,genDone=false,bn='',bnT=0,rr=1,fb=false,shk=0,st='menu',px,py,vx,vy,gnd,cam,lvl,pl,arm,armT,armMax,seg,obs,coins,gx,score,coinN,best=0,parts,dead,tt=0,cd;
 try{best=+localStorage.getItem('vr_best')||0;lvlN=Math.min(100,Math.max(1,+localStorage.getItem('vr_lv')||1));bonus=+localStorage.getItem('vr_pts')||0;coinS=+localStorage.getItem('vr_cn')||0}catch(e){}
+
+/* ---------- اتصال به آرکید: ارسال امتیاز به لیدربورد ---------- */
+const GID='voicerunner';let base=0,lastSent=-1,lastT=-1;
+function post(type,sc,extra){try{if(window.parent&&window.parent!==window)window.parent.postMessage(Object.assign({source:'nova-arcade-embed',game:GID,type:type,score:Math.max(0,Math.floor(sc||0))},extra||{}),'*')}catch(e){}}
+function gained(){return Math.max(0,score-base)}
+function syncScore(){const g=gained();if(g!==lastSent&&(lastT<0||tt-lastT>.2)){lastSent=g;lastT=tt;post('score',g)}}
 function lenOf(n){return 1500+n*30}
 function rng(){rr=rr+0x6D2B79F5|0;let t=Math.imul(rr^rr>>>15,1|rr);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}
-function reset(){rr=lvlN*7919;px=60;py=0;vx=vy=0;gnd=true;cam=0;lvl=pl=0;arm=false;armT=armMax=0;seg=[{a:-400,b:600}];obs=[];coins=[];gx=600;coinN=coinS;score=bonus;parts=[];dead=false;cd=0;lvStart=60;minX=20;lvEnd=60+lenOf(lvlN);genDone=false;bn='مرحله '+lvlN;bnT=1.6;gen()}
+function reset(){base=bonus+coinS*10;lastSent=-1;lastT=-1;rr=lvlN*7919;px=60;py=0;vx=vy=0;gnd=true;cam=0;lvl=pl=0;arm=false;armT=armMax=0;seg=[{a:-400,b:600}];obs=[];coins=[];gx=600;coinN=coinS;score=bonus;parts=[];dead=false;cd=0;lvStart=60;minX=20;lvEnd=60+lenOf(lvlN);genDone=false;bn='مرحله '+lvlN;bnT=1.6;gen()}
 function feat(x0,d,a,b){const L=lvlN,ty=['box','spk'];if(L>=3)ty.push('saw');if(L>=5)ty.push('wall');if(L>=8)ty.push('fire');if(L>=12)ty.push('rock');if(L>=16)ty.push('mine');if(L>=20)ty.push('laser');
  const nw=[[3,'saw'],[5,'wall'],[8,'fire'],[12,'rock'],[16,'mine'],[20,'laser']].filter(q=>L>=q[0]&&L<q[0]+3).map(q=>q[1])[0],t=nw&&rng()<.55?nw:ty[(rng()*ty.length)|0],v=1+(L%10)/10;
  if(t==='box')obs.push({t:'box',x:x0,w:36,h:36+rng()*(40+d*50)});
@@ -70,7 +76,7 @@ function gen(){while(!genDone&&gx<px+1400){const d=Math.min(1,(lvlN-1)/70+.05);
   const n=3+(rng()*3|0);for(let i=0;i<n;i++)coins.push({x:a+len*.15+i*30,y:60+Math.sin(i/(n-1)*Math.PI)*50});gx=b}
  seg=seg.filter(s=>s.b>cam-300);obs=obs.filter(o=>o.x>cam-300);coins=coins.filter(c=>c.x>cam-300)}
 function nextLv(){bonus+=10000;if(lvlN>=100)return win();lvlN++;coinS=coinN;minX=lvEnd-20;lvStart=lvEnd;lvEnd+=lenOf(lvlN);genDone=false;rr=lvlN*7919;bn='مرحله '+lvlN+'  +۱۰۰۰۰';bnT=2.4;boom('#ffd23f',40);shk=.5;try{localStorage.setItem('vr_lv',lvlN);localStorage.setItem('vr_pts',bonus);localStorage.setItem('vr_cn',coinN)}catch(e){}}
-function win(){if(dead)return;dead=true;st='over';score=bonus+coinN*10;if(score>best){best=score;try{localStorage.setItem('vr_best',best)}catch(e){}}lvlN=1;bonus=0;coinS=0;try{localStorage.setItem('vr_lv',1);localStorage.setItem('vr_pts',0);localStorage.setItem('vr_cn',0)}catch(e){}
+function win(){if(dead)return;dead=true;st='over';score=bonus+coinN*10;post('finish',gained(),{fx:'win',won:true});if(score>best){best=score;try{localStorage.setItem('vr_best',best)}catch(e){}}lvlN=1;bonus=0;coinS=0;try{localStorage.setItem('vr_lv',1);localStorage.setItem('vr_pts',0);localStorage.setItem('vr_cn',0)}catch(e){}
  $('ov').querySelector('h1').textContent='🏆 قهرمان صداپرش!';$('ov').querySelector('p').innerHTML='هر ۱۰۰ مرحله رو رد کردی!<br>امتیاز نهایی: '+score;$('go').textContent='دوباره از اول';$('ov').style.display='flex';menuInfo()}
 function onGround(){for(const s of seg)if(px>s.a&&px<s.b)return true;return false}
 function boom(c,n){for(let i=0;i<n;i++)parts.push({x:px,y:GY()-py-20,vx:(Math.random()-.5)*300,vy:-Math.random()*300,l:.7,c})}
@@ -100,9 +106,9 @@ function upd(dt){tt+=dt;
   if(!over&&!fl&&py<-30){gnd=false}}
  if(py<-GY()*.6-40)return die();
  for(let i=coins.length-1;i>=0;i--){const c=coins[i];if(Math.abs(c.x-px)<24&&Math.abs(c.y-py-PH/2)<34){coins.splice(i,1);coinN++;boom('#ffe27a',4)}}
- score=bonus+coinN*10+Math.floor((px-lvStart)/30);if(px>=lvEnd)nextLv();cam+=(px-W*.3/S-cam)*Math.min(1,dt*6);gen();
+ score=bonus+coinN*10+Math.floor((px-lvStart)/30);if(px>=lvEnd)nextLv();syncScore();cam+=(px-W*.3/S-cam)*Math.min(1,dt*6);gen();
  for(let i=parts.length-1;i>=0;i--){const p=parts[i];p.x+=p.vx*dt;p.y+=p.vy*dt;p.vy+=900*dt;p.l-=dt;if(p.l<=0)parts.splice(i,1)}}
-function die(){if(dead)return;dead=true;st='over';shk=1;boom('#ff3b3b',30);if(score>best){best=score;try{localStorage.setItem('vr_best',best)}catch(e){}}
+function die(){if(dead)return;dead=true;st='over';post('finish',gained(),{fx:'none',won:false});shk=1;boom('#ff3b3b',30);if(score>best){best=score;try{localStorage.setItem('vr_best',best)}catch(e){}}
  setTimeout(()=>{$('ov').querySelector('h1').textContent='💥 باختی!';$('ov').querySelector('p').innerHTML='مرحله '+lvlN+' از ۱۰۰ · امتیاز: '+score+'<br>سکه: '+coinN+' · رکورد: '+best;$('go').textContent='دوباره (مرحله '+lvlN+')';$('ov').style.display='flex';menuInfo()},700)}
 /* ---------- رسم ---------- */
 const stars=Array.from({length:70},()=>[Math.random(),Math.random()*.6,Math.random()*2+.5]),bld=Array.from({length:40},(_,i)=>[i*90,60+Math.random()*140,50+Math.random()*30]);
@@ -182,7 +188,7 @@ let last=0;function loop(t){requestAnimationFrame(loop);const dt=Math.min(.033,(
 function menuInfo(){$('rst').style.display=lvlN>1?'':'none'}
 $('rst').onclick=()=>{lvlN=1;bonus=0;coinS=0;try{localStorage.setItem('vr_lv',1);localStorage.setItem('vr_pts',0);localStorage.setItem('vr_cn',0)}catch(e){}menuInfo();$('go').textContent=mic||fb?'شروع ▶':$('go').textContent};
 $('go').onclick=async()=>{if(!mic&&!fb){await initMic();if(mic){$('mt').style.display='block';$('go').textContent=lvlN>1?'ادامه از مرحله '+lvlN+' ▶':'شروع ▶';$('msg').style.color='#8fffb0';$('msg').textContent='۲ ثانیه ساکت باش تا نویز سنجیده بشه، بعد حرف بزن؛ نوار باید تکون بخوره';return}fb=true;$('go').textContent='شروع با کیبورد (→ و Space)';return}
- reset();st='run';$('ov').style.display='none'};
+ reset();st='run';$('ov').style.display='none';post('start',0)};
 menuInfo();
 reset();st='menu';requestAnimationFrame(loop);
 })();
