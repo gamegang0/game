@@ -9,6 +9,7 @@ window.EXTRA_GAMES=[
   {"id": "doodle", "icon": "🎮", "name": "پرش دودل", "desc": "بازی جدید", "color": "#35f2ff"},
   {"id": "flappy", "icon": "🐦", "name": "فلپی‌برد", "desc": "پرنده رو بالا نگه دار، سکه جمع کن و اسکین‌های اسطوره‌ای باز کن", "color": "#48dbfb"},
   {"id": "hokm", "icon": "🎮", "name": "حکم دو نفره آنلاین", "desc": "بازی جدید", "color": "#35f2ff"},
+  {"id": "laserheist", "icon": "🎮", "name": "نفوذگر لیزری", "desc": "بازی جدید", "color": "#35f2ff"},
   {"id": "markhor", "icon": "🎮", "name": "مارخور", "desc": "بازی جدید", "color": "#35f2ff"},
   {"id": "memory", "icon": "🃏", "name": "کارت بازی", "desc": "کارت‌ها رو برگردون و جفت‌های مثل هم رو پیدا کن", "color": "#c77dff"},
   {"id": "ninja", "icon": "🍉", "name": "نینجای میوه", "desc": "میوه‌ها رو ببر، مراقب بمب باش", "color": "#ff4d6d"},
