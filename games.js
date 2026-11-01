@@ -21,5 +21,6 @@ window.EXTRA_GAMES=[
   {"id": "soccer", "icon": "⚽", "name": "ساکر استار", "desc": "شوت بزن، از دفاع و دروازه‌بان رد شو و گل بزن", "color": "#2ecc71"},
   {"id": "subway", "icon": "🎮", "name": "مترو رانر ۳بعدی", "desc": "بازی جدید", "color": "#35f2ff"},
   {"id": "traffic", "icon": "🚗", "name": "Neon Traffic", "desc": "بین ماشین‌ها جاخالی بده؛ سرعت مدام بیشتر می‌شه", "color": "#35f2ff"},
-  {"id": "voicerunner", "icon": "🎮", "name": "🎤 صداپرش", "desc": "بازی جدید", "color": "#35f2ff"}
+  {"id": "voicerunner", "icon": "🎮", "name": "🎤 صداپرش", "desc": "بازی جدید", "color": "#35f2ff"},
+  {"id": "zirzamin_pejman_drips_v2", "icon": "🎮", "name": "فرار از زیرزمین شهر فرش", "desc": "بازی جدید", "color": "#35f2ff"}
 ];
