@@ -64,6 +64,17 @@ body.touch #crouchBtn{display:block}
 #hidingFX:before{content:"";position:absolute;left:18%;right:18%;top:44%;height:10%;border-top:5px solid rgba(120,125,115,.55);border-bottom:5px solid rgba(120,125,115,.55);background:linear-gradient(180deg,rgba(5,8,8,.28),rgba(15,20,18,.12));box-shadow:0 0 25px #000}
 #hidingFX div{position:absolute;left:0;right:0;bottom:18%;text-align:center;color:#e8e4cd;font-weight:900;font-size:clamp(16px,3vw,24px);text-shadow:0 2px 9px #000}
 #hidingFX small{font-size:12px;color:#c2bfae;font-weight:600}
+/* ورود سینمایی به دریچه */
+#hidingFX.entering{animation:ventEnter .95s cubic-bezier(.18,.82,.25,1) both}
+#hidingFX.entering:before{animation:ventShutter .95s cubic-bezier(.2,.8,.2,1) both}
+#hidingFX.entering:after{content:"";position:absolute;inset:0;pointer-events:none;background:radial-gradient(circle at center,transparent 0 8%,rgba(0,0,0,.96) 78%);transform:scale(1.8);opacity:0;animation:ventTunnel .95s ease-out both}
+#hidingFX.entering div{animation:ventText .95s .18s ease-out both}
+@keyframes ventEnter{0%{opacity:0;filter:blur(8px);transform:scale(1.18)}35%{opacity:1;filter:blur(0);transform:scale(.94)}70%{transform:scale(1.025)}100%{opacity:1;transform:scale(1)}}
+@keyframes ventShutter{0%{top:8%;height:84%;left:4%;right:4%;border:18px solid #777;box-shadow:0 0 0 100vmax #000,0 0 50px #d7c9a0}55%{top:37%;height:20%;left:12%;right:12%;border-width:9px}100%{top:44%;height:10%;left:18%;right:18%;border-width:5px}}
+@keyframes ventTunnel{0%{opacity:1;transform:scale(1.8)}55%{opacity:.8;transform:scale(.8)}100%{opacity:0;transform:scale(.2)}}
+@keyframes ventText{0%{opacity:0;transform:translateY(22px) scale(.8);filter:blur(5px)}100%{opacity:1;transform:translateY(0) scale(1);filter:blur(0)}}
+#hidingFX:not(.entering){transition:opacity .25s ease}
+
 #zapFX{position:fixed;z-index:16;left:0;right:0;top:35%;text-align:center;pointer-events:none;opacity:0;font-size:clamp(42px,10vw,90px);color:#b9f5ff;text-shadow:0 0 12px #25cfff,0 0 34px #1a90ff;transform:scale(.3) rotate(-12deg)}
 #zapFX.active{animation:zapPop .48s cubic-bezier(.1,1.4,.3,1) both}
 @keyframes zapPop{0%{opacity:0;transform:scale(.25) rotate(-18deg)}22%{opacity:1;transform:scale(1.15) rotate(7deg)}68%{opacity:1;transform:scale(1) rotate(-5deg)}100%{opacity:0;transform:scale(1.4) rotate(9deg)}}
@@ -157,6 +168,7 @@ input.t{background:rgba(0,0,0,.45);border:1px solid rgba(243,233,181,.4);border-
 #medBtn{position:fixed;z-index:12;bottom:max(34px,env(safe-area-inset-bottom));right:max(430px,calc(env(safe-area-inset-right) + 424px));width:70px;height:56px;border-radius:16px;border:2px solid #ff8a8a;background:rgba(120,0,0,.65);color:#fff;font:800 14px system-ui,Tahoma,sans-serif;display:none;padding:0;pointer-events:auto}#medBtn.on{display:block}
 @media (max-height:520px){#start,#lobby,#over{gap:6px;padding:8px 16px;justify-content:safe center}#start p,#start .kbd{display:none}#start h1{font-size:20px}#start .btn{padding:8px 26px;font-size:16px}}
 #errBox{position:fixed;z-index:99999;left:0;right:0;top:0;background:rgba(150,0,0,.92);color:#fff;font:12px/1.5 monospace;padding:6px 10px;direction:ltr;text-align:left;display:none;max-height:40vh;overflow:auto;user-select:text;-webkit-user-select:text}
+ .bar[title="نفس"]{display:none!important}
 </style>
 </head>
 <body>
@@ -188,7 +200,7 @@ input.t{background:rgba(0,0,0,.45);border:1px solid rgba(243,233,181,.4);border-
 <div id="hud">
   <div class="col"><span class="pill" id="keys">🔑 ۰ / ۳</span><span class="pill" id="tm">۰:۰۰</span><span class="pill" id="ping" style="display:none"></span><span class="pill" id="taserStat">⚡ شوکر: ۰</span><div class="bar" title="باتری چراغ‌قوه"><b>🔦</b><div id="bat"><i></i></div></div><div class="bar" title="نفس"><b>⚡</b><div id="stam"><i></i></div></div><div style="display:flex;gap:6px"><button id="pauseBtn" class="mb" aria-label="مکث">⏸</button><button id="mute" class="mb" aria-label="صدا">🔊</button></div></div>
 </div>
-<div class="ptag" id="pt0"></div><div class="ptag" id="pt1"></div><div class="ptag" id="pt2"></div><div id="specBar" style="position:fixed;z-index:13;left:0;right:0;bottom:max(14px,env(safe-area-inset-bottom));display:none;justify-content:center;gap:10px;align-items:center;pointer-events:none"><span class="pill" id="specN"></span><button class="btn2" id="specNext" style="pointer-events:auto">👁 بعدی</button></div><div id="msg"></div><div id="nameTag"></div><div id="hidingFX"><div>داخل دریچه پنهان شدی<br><small>می‌تونی ۳۶۰ درجه اطرافت رو نگاه کنی؛ برای بیرون آمدن E یا دکمه خروج رو بزن</small></div></div><div id="zapFX">⚡⚡</div>
+<div class="ptag" id="pt0"></div><div class="ptag" id="pt1"></div><div class="ptag" id="pt2"></div><div id="specBar" style="position:fixed;z-index:13;left:0;right:0;bottom:max(14px,env(safe-area-inset-bottom));display:none;justify-content:center;gap:10px;align-items:center;pointer-events:none"><span class="pill" id="specN"></span><button class="btn2" id="specNext" style="pointer-events:auto">👁 بعدی</button></div><div id="msg"></div><div id="nameTag"></div><div id="hidingFX"><div>داخل دریچه پنهان شدی<br><small>می‌تونی ۳۶۰ درجه اطرافت رو نگاه کنی؛ برای بیرون آمدن E یا دکمه خروج رو بزن</small><br><small id="ventCountdown">زمان باقی‌مانده: ۱۵ ثانیه</small></div></div><div id="zapFX">⚡⚡</div>
 <div id="joy"><div id="knob"></div></div>
 <button id="run" aria-label="دویدن">⚡</button>
 <button id="flBtn" aria-label="چراغ‌قوه">🔦</button>
@@ -763,6 +775,8 @@ const lampOnFlag=new Uint8Array(MW*MH).fill(1);
 /* ========= حالت بازی ========= */
 let px,py,pa,pitch=0,keysGot,stam,bat,flashOn,tAlive,mon,state='menu',bob=0,msgT=0,sprint=false,stepT=0,lastLock=0,shake=0,monSeen=0,scareT=0,escapeT=0,blackT=0,nextBlack=70,sweat=0;
 let isHidden=false,hideVent=null,crouching=false,taserAmmo=0,taserPickup=null;
+// محدودیت دریچه: حداکثر ۱۵ ثانیه داخل، سپس ۶۰ ثانیه زمان انتظار برای ورود دوباره.
+let ventStayLeft=0,ventCooldownLeft=0;
 const keysDown={};let joyX=0,joyY=0,lookDX=0,lookDY=0;
 let sFwd=[1,0,0];
 const fmt=t=>FA(Math.floor(t/60))+':'+FA(String(Math.floor(t%60)).padStart(2,'0'));
@@ -789,10 +803,15 @@ function randomFloorSpot(minPlayerDist=7){
 function placeTaserPickup(){const p=randomFloorSpot(8);return{x:p.x,y:p.y,active:true}}
 function nearbyVent(){let best=null,bd=.95;for(const v of ventSpots){const d=Math.hypot(px-v.x,py-v.y);if(d<bd){best=v;bd=d}}return best}
 function updateActionButtons(){
-  const near=nearbyVent();const hb=$('hideBtn'),tb=$('taserBtn'),cb=$('crouchBtn');
-  hb.classList.toggle('on',!!near||isHidden);hb.disabled=(!near&&!isHidden)||(!isHidden&&ventTaken(near));hb.textContent=isHidden?'🚪 خروج':'🕳 پنهان';
+  const near=nearbyVent();const hb=$('hideBtn'),tb=$('taserBtn'),cb=$('crouchBtn'),rb=$('run');
+  hb.classList.toggle('on',!!near||isHidden);
+  const cooling=ventCooldownLeft>0;
+  hb.disabled=(!near&&!isHidden)||(!isHidden&&(ventTaken(near)||cooling));
+  hb.textContent=isHidden?'🚪 خروج':(cooling&&near?'⏳ '+FA(Math.ceil(ventCooldownLeft))+' ث':'🕳 پنهان');
   tb.classList.toggle('on',taserAmmo>0);tb.disabled=taserAmmo<1;
   cb.classList.toggle('on',crouching);cb.textContent=crouching?'↗':'↘';
+  rb.classList.toggle('on',sprint);rb.textContent=sprint?'🏃':'⚡';rb.setAttribute('aria-pressed',sprint?'true':'false');
+  rb.title=sprint?'دویدن روشن است؛ برای خاموش کردن دوباره بزن':'برای روشن/خاموش کردن دویدن بزن';
   $('taserStat').textContent='⚡ شوکر: '+FA(taserAmmo);
   $('medBtn').classList.toggle('on',!!(NET.on&&NET.med&&NET.med.st===1&&NET.med.h===NET.pid&&Object.values(NET.players).some(p=>p.st===1)));
 }
@@ -804,7 +823,7 @@ function reset(){
   pa=bestA;sFwd=[Math.cos(pa),0,Math.sin(pa)];
   keysGot=0;stam=100;bat=100;flashOn=true;tAlive=0;shake=0;monSeen=0;scareT=0;blackT=0;nextBlack=70+Math.random()*25;powerLevel=1;
   mon={x:monsterSpawn[0]+.5,y:monsterSpawn[1]+.5,state:'patrol',path:[],pt:0,face:0,walk:0,target:null,lostT:0,lastKnown:null,speed:0,alertT:0,hbT:0,stT:0,brT:0,seenP:false,stunT:0};
-  isHidden=false;hideVent=null;crouching=false;taserAmmo=0;taserPickup=placeTaserPickup();$('hidingFX').classList.remove('active');updateActionButtons();
+  isHidden=false;hideVent=null;crouching=false;sprint=false;ventStayLeft=0;ventCooldownLeft=0;taserAmmo=0;taserPickup=placeTaserPickup();$('hidingFX').classList.remove('active');updateActionButtons();
   updKeys();$('flBtn').classList.add('on');
   if(NET.on)netReset();showMsg('چراغ‌قوه روشنه (F) — ۴ کلید پیدا کن، باتری جمع کن',4200);
   $('nameTag').style.display='none';$('redv').style.opacity=0;
@@ -863,7 +882,7 @@ function bfsPath(sx,sy,tx,ty){
 }
 const isCl=()=>NET.on&&!NET.host;
 const isMoving=()=>state==='play'&&!isHidden&&(Math.hypot(joyX,joyY)>.1||keysDown.KeyW||keysDown.KeyS||keysDown.KeyA||keysDown.KeyD||keysDown.ArrowUp||keysDown.ArrowDown);
-const isRunning=()=>!crouching&&(keysDown.ShiftLeft||keysDown.ShiftRight||sprint||joyM>.93)&&isMoving()&&stam>0;
+const isRunning=()=>!crouching&&(keysDown.ShiftLeft||keysDown.ShiftRight||sprint)&&isMoving();
 function targets(){
   const T=[];
   if(state==='play')T.push({id:NET.pid,x:px,y:py,mv:isMoving(),rn:isRunning(),cr:crouching,hd:isHidden,fl:flashOn&&bat>0});
@@ -891,8 +910,11 @@ function monsterUpdate(dt){
   if(m.pt<=0){
     m.pt=.2;let best=null,bd=1e9;
     for(const t of T){const d=Math.hypot(t.x-m.x,t.y-m.y);
+      // دید: خمیده سخت‌تر دیده می‌شود؛ چراغ‌قوه محدوده دید را بیشتر می‌کند.
       const sr=t.fl?(t.cr?13:20):(powerLevel>.35?(t.cr?7:14):(t.cr?2.6:5));
-      const hr=t.rn?20:(t.cr?(t.mv?2.2:1.1):(t.mv?9.5:2.8));
+      // شنیدن: دویدن از هر فاصله‌ای شنیده می‌شود؛ راه‌رفتن فقط از نزدیک.
+      // در حالت خمیده صدای قدم قابل‌شنیدن نیست و فقط دید مستقیم اهمیت دارد.
+      const hr=t.rn?Infinity:(t.cr?0:(t.mv?8:0));
       if(!t.hd&&!grace&&d<bd&&(d<hr||(d<sr&&los(m.x,m.y,t.x,t.y)))){bd=d;best=t}}
     if(best){if(m.state!=='chase')monAlert();m.state='chase';m.lastKnown=[best.x|0,best.y|0];m.lostT=0}
     if(m.state==='chase'){
@@ -1150,7 +1172,11 @@ function grainStop(){if(grainIv){clearInterval(grainIv);grainIv=0}}
 let last=0,distToMon=99,seenT=0,markT=0,blackWarn=false;
 function update(dt){
   tAlive+=dt;$('tm').textContent=fmt(tAlive);
+  if(ventCooldownLeft>0)ventCooldownLeft=Math.max(0,ventCooldownLeft-dt);
   if(isHidden){
+    ventStayLeft=Math.max(0,ventStayLeft-dt);
+    const vcd=$('ventCountdown');if(vcd)vcd.textContent='زمان باقی‌مانده: '+FA(Math.ceil(ventStayLeft))+' ثانیه';
+    if(ventStayLeft<=0){exitVent(true);return;}
     // داخل دریچه حرکت نمی‌کنی، اما دوربین آزادانه در تمام جهت‌ها می‌چرخد.
     if(keysDown.ArrowLeft)pa-=1.9*dt;
     if(keysDown.ArrowRight)pa+=1.9*dt;
@@ -1168,9 +1194,9 @@ function update(dt){
   if(keysDown.ArrowLeft)pa-=1.9*dt;if(keysDown.ArrowRight)pa+=1.9*dt;
   pa+=lookDX;pitch=Math.max(-1.2,Math.min(1.2,pitch+lookDY));lookDX=lookDY=0;
   const l=Math.hypot(f,s);if(l>1){f/=l;s/=l}
-  const moving=l>.08,wantRun=!crouching&&(keysDown.ShiftLeft||keysDown.ShiftRight||sprint||joyM>.93)&&moving&&stam>0;
+  const moving=l>.08,wantRun=!crouching&&(keysDown.ShiftLeft||keysDown.ShiftRight||sprint)&&moving;
   const sp=wantRun?3.5:(crouching?1.35:2.25);
-  if(wantRun)stam=Math.max(0,stam-36*dt);else stam=Math.min(100,stam+(moving?12:22)*dt);
+  stam=100; // دویدن نامحدود؛ نوار انرژی همیشه پر می‌ماند
   const dx=(Math.cos(pa)*f-Math.sin(pa)*s)*sp*dt,dy=(Math.sin(pa)*f+Math.cos(pa)*s)*sp*dt;tryMove(dx,dy);
   if(moving){bob+=dt*(wantRun?13:(crouching?4.2:8));stepT-=dt;if(stepT<=0){stepT=wantRun?.2:(crouching?.62:.3);if(crouching){nz(.055,230,1,.025,'lowpass')}else sfx.step(wantRun)}}
   /* چراغ‌قوه و باتری */
@@ -1206,21 +1232,38 @@ function updateScare(dt){
   shake=1;$('redv').style.opacity=0;
   if(scareT>5.8)showOver();
 }
+function exitVent(expired=false){
+  if(!isHidden)return;
+  if(NET.on)netHide(-1);
+  isHidden=false;hideVent=null;ventStayLeft=0;ventCooldownLeft=60;
+  $('hidingFX').classList.remove('active','entering');
+  showMsg(expired?'۱۵ ثانیه‌ات تموم شد! از دریچه بیرون اومدی؛ تا ۱ دقیقه نمی‌تونی دوباره وارد بشی.':'از دریچه اومدی بیرون؛ تا ۱ دقیقه نمی‌تونی دوباره وارد دریچه بشی.',3000,expired);
+  updateActionButtons();
+}
 function toggleHide(){
   if(state!=='play')return;
-  if(isHidden){if(NET.on)netHide(-1);isHidden=false;hideVent=null;$('hidingFX').classList.remove('active');showMsg('از دریچه اومدی بیرون؛ آروم حرکت کن',2200);updateActionButtons();return;}
+  if(isHidden){exitVent(false);return;}
+  if(ventCooldownLeft>0){showMsg('برای ورود دوباره به دریچه باید '+FA(Math.ceil(ventCooldownLeft))+' ثانیه صبر کنی',2200,true);return;}
   const v=nearbyVent();
   if(!v){showMsg('برای قایم شدن باید کنار یکی از دریچه‌ها بری',2200,true);return;}
   if(ventTaken(v)){showMsg('این دریچه پره! فقط یک نفر جا داره 🚫',2400,true);return}
-  isHidden=true;hideVent=v;if(NET.on)netHide(ventSpots.indexOf(v));crouching=false;sprint=false;flashOn=false;$('flBtn').classList.remove('on');
+  isHidden=true;hideVent=v;ventStayLeft=15;if(NET.on)netHide(ventSpots.indexOf(v));crouching=false;sprint=false;flashOn=false;$('flBtn').classList.remove('on');updateActionButtons();
+  const vcd=$('ventCountdown');if(vcd)vcd.textContent='زمان باقی‌مانده: ۱۵ ثانیه';
   joyX=joyY=lookDX=lookDY=0;for(const k in keysDown)keysDown[k]=false;
-  $('hidingFX').classList.add('active');
+  $('hidingFX').classList.add('active');$('hidingFX').classList.remove('entering');void $('hidingFX').offsetWidth;$('hidingFX').classList.add('entering');setTimeout(()=>$('hidingFX').classList.remove('entering'),1050);
   if(mon.state==='chase'){
     const target=mon.lastKnown||[px|0,py|0];mon.state='search';mon.target=target;mon.path=bfsPath(mon.x|0,mon.y|0,target[0],target[1]);mon.lostT=0;
   }
   showMsg('وارد دریچه شدی؛ پژمان دیگه نمی‌تونه ببینتت',2600);updateActionButtons();
 }
-function toggleCrouch(){if(state!=='play'||isHidden)return;crouching=!crouching;if(crouching)sprint=false;showMsg(crouching?'آروم خم شو؛ صدای قدم‌هات کمتره':'دوباره ایستادی',1500);updateActionButtons();}
+function toggleRun(){
+  if(state!=='play'||isHidden)return;
+  if(crouching)crouching=false;
+  sprint=!sprint;
+  showMsg(sprint?'🏃 حالت دویدن روشن شد؛ برای خاموش کردن دوباره دکمه را بزن':'حالت دویدن خاموش شد',1600);
+  updateActionButtons();
+}
+function toggleCrouch(){if(state!=='play'||isHidden)return;crouching=!crouching;if(crouching)sprint=false;showMsg(crouching?'آروم خم شو؛ صدای قدم‌هات شنیده نمی‌شه، فقط اگه ببینت پیدات می‌کنه':'دوباره ایستادی',1800);updateActionButtons();}
 function useTaser(){
   if(state!=='play'||isHidden)return;
   if(taserAmmo<1){showMsg('شوکر نداری؛ یکی رو توی زیرزمین پیدا کن',1800,true);return;}
@@ -1318,10 +1361,11 @@ document.addEventListener('touchmove',tMove,{passive:false});
 document.addEventListener('touchend',tEnd);document.addEventListener('touchcancel',tEnd);
 const rb=$('run');
 let runId=null,runX=0,runY=0,joyM=0;
-rb.addEventListener('touchstart',e=>{e.preventDefault();e.stopPropagation();sprint=true;rb.classList.add('on');const t=e.changedTouches[0];runId=t.identifier;runX=t.clientX;runY=t.clientY},{passive:false});
-const rbEnd=()=>{sprint=false;runId=null;rb.classList.remove('on')};
+// دکمه دویدن حالت قفل‌شونده دارد: یک‌بار روشن، بار دوم خاموش.
+rb.addEventListener('touchstart',e=>{e.preventDefault();e.stopPropagation();toggleRun();const t=e.changedTouches[0];runId=t.identifier;runX=t.clientX;runY=t.clientY},{passive:false});
+const rbEnd=()=>{runId=null};
 rb.addEventListener('touchend',rbEnd);rb.addEventListener('touchcancel',rbEnd);
-rb.addEventListener('mousedown',()=>{sprint=true;rb.classList.add('on')});addEventListener('mouseup',rbEnd);
+rb.addEventListener('click',()=>{if(!IS_MOB)toggleRun()});
 const fb=$('flBtn');fb.addEventListener('touchstart',e=>{e.preventDefault();e.stopPropagation();if(state==='play')toggleFlash()},{passive:false});fb.addEventListener('click',()=>{if(state==='play'&&!IS_MOB)toggleFlash()});
 const hb=$('hideBtn');hb.addEventListener('touchstart',e=>{e.preventDefault();e.stopPropagation();toggleHide()},{passive:false});hb.addEventListener('click',()=>{if(!IS_MOB)toggleHide()});
 const tb=$('taserBtn');tb.addEventListener('touchstart',e=>{e.preventDefault();e.stopPropagation();useTaser()},{passive:false});tb.addEventListener('click',()=>{if(!IS_MOB)useTaser()});
@@ -1591,7 +1635,7 @@ function onMsg(d){switch(d.t){
   case 'msg':showMsg(d.m,4200,!!d.b);break;
   case 'caught':startScare();break;
   case 'rev':if(state==='scare'||state==='escape')NET.pendRev=d;else applyRev(d);break;
-  case 'deny':if(isHidden){isHidden=false;hideVent=null;$('hidingFX').classList.remove('active');showMsg('این دریچه پر بود!',2200,true);updateActionButtons()}break;
+  case 'deny':if(isHidden){isHidden=false;hideVent=null;ventStayLeft=0;$('hidingFX').classList.remove('active');showMsg('این دریچه پر بود!',2200,true);updateActionButtons()}break;
   case 'end':NET.res=d.res;NET.busy=false;if(state!=='scare'&&state!=='escape')showEndMulti();break;
   case 'full':netErr(d.m);leaveNet();break;
 }}
