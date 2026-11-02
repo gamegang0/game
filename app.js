@@ -4,6 +4,7 @@
 const $=id=>document.getElementById(id);
 /* ثبت بازی صداپرش در آرکید (باید قبل از Store اجرا بشه تا رکورد و لیدربورد هم ساخته بشه) */
 window.EXTRA_GAMES=window.EXTRA_GAMES||[];
+if(!window.EXTRA_GAMES.some(x=>x&&x.id==='zirzamin'))window.EXTRA_GAMES.push({id:'zirzamin',icon:'🕳️',name:'زیرزمین شهر فرش',desc:'در بک‌رومز گیر افتادی؛ کلیدها رو پیدا کن و از دست پژمان فرار کن',color:'#e0b53a',embed:true,fs:true,landscape:true,noFX:true});
 if(!window.EXTRA_GAMES.some(x=>x&&x.id==='voicerunner'))window.EXTRA_GAMES.push({id:'voicerunner',icon:'🎤',name:'صداپرش',desc:'با صدات بازی کن! آروم حرف بزن = راه رفتن، داد بزن = پرش؛ ۱۰۰ مرحله',color:'#ffd23f',embed:true,noFX:true});
 try{localStorage.removeItem('arcade_photo');localStorage.removeItem('arcade_photo_ok')}catch(e){}
 const cv=$('c'),ctx=cv.getContext('2d');
@@ -784,7 +785,10 @@ window.addEventListener('message',e=>{
   if(!d||d.source!=='nova-arcade-embed'||!cur||!cur.embed||d.game!==cur.id)return;
   if(e.source!==gameFrame.contentWindow)return;
   const n=Math.max(0,Math.floor(Number(d.score)||0));
-  if(d.type==='start'){
+  if(d.type==='fs'){
+    if(document.body.classList.contains('zfs'))lockLandscape();
+  }else if(d.type==='start'){
+    if(document.body.classList.contains('zfs'))lockLandscape();
     if(!embedRunStarted){embedRunStarted=true;Shell.begin();}
     Shell.score(0);
   }else if(d.type==='score'){
@@ -839,12 +843,35 @@ const META=[
 ];
 /* بازی‌های جدید از games.js میان */
 (window.EXTRA_GAMES||[]).forEach(g=>{if(g&&g.id&&!META.some(m=>m.id===g.id))META.push(Object.assign({embed:true},g))});
+/* ---- لوگوی هر بازی متناسب با اسمش (جایگزین 🎮) ---- */
+const ICON_BY_ID={dino:'🦖',snake:'🐍',breakoutpro:'🧱',pong:'🏓',ninja:'🥷',memory:'🧠',colorseq:'🎨',flappy:'🐦',soccer:'⚽',pancake:'🥞',traffic:'🚦',pacman:'🟡',doodle:'🪂',voicerunner:'🎤',amirshahi:'⚽',markhor:'🐍',cityrun:'🏙️',laserheist:'🕵️',skyball:'🔮',subway:'🚇',hokm:'🃏',chaharbarg:'🃏',zirzamin:'🕳️'};
+const ICON_KEYWORDS=[
+  [/فوتبال|ساکر|گل‌?زنی|پنالتی/,'⚽'],[/بسکتبال/,'🏀'],[/والیبال/,'🏐'],[/تنیس/,'🎾'],[/بیلیارد|اسنوکر/,'🎱'],[/بولینگ/,'🎳'],[/گلف/,'⛳'],[/بوکس|مشت/,'🥊'],[/کشتی|مبارزه|جنگ‌?جو/,'🥋'],
+  [/پینگ|پونگ|راکت/,'🏓'],[/دایناسور|دینو/,'🦖'],[/مار(?!خور)|اسنیک/,'🐍'],[/مارخور/,'🩸'],[/آجر|بریک|توپ‌?و‌?آجر/,'🧱'],[/نینجا|سامورایی/,'🥷'],[/حافظه|مموری/,'🧠'],[/رنگ/,'🎨'],
+  [/فلپی|پرنده|کلاغ|جوجه|پرواز/,'🐦'],[/پنکیک|پنکک/,'🥞'],[/ترافیک|رانندگی|ماشین|راننده|مسابقه‌?ی?‌?ماشین|رالی|درگ/,'🏎️'],[/پک‌?من/,'🟡'],[/دودل|چتر/,'🪂'],
+  [/صدا/,'🎤'],[/امیر/,'👑'],[/سیتی|شهر/,'🏙️'],[/لیزر|نفوذ|دزد/,'🕵️'],[/اسکای|توپ/,'🔮'],[/مترو|قطار|ریل/,'🚇'],[/پاسور|حکم|چهار‌?برگ|ورق|کارت|پوکر|بلک‌?جک/,'🃏'],
+  [/شطرنج/,'♟️'],[/دوز|اکس‌?او|XO/i,'⭕'],[/تتریس|بلوک/,'🧩'],[/پازل|معما|جورچین/,'🧩'],[/سودوکو|عدد|ریاضی|۲۰۴۸|2048/,'🔢'],[/کلمه|واژه|حدس|وردل|کلمات/,'🔤'],[/ماین|مین‌?یاب|مین/,'💣'],
+  [/فضا|سفینه|فضایی|کهکشان|ستاره|اینویدر|مهاجم/,'🚀'],[/هواپیما|جت|هلیکوپتر/,'✈️'],[/تانک|توپخانه/,'💥'],[/تیر|کمان|تیراندازی|اسنایپر|شلیک|هدف/,'🎯'],[/شمشیر|شوالیه|نبرد/,'⚔️'],
+  [/زامبی|مرده|ترس|وحشت|روح|شبح|هیولا/,'👻'],[/زیرزمین|بک‌?روم|زیر‌?زمین|تونل|غار|مخفی/,'🕳️'],[/ماهی|دریا|اقیانوس|آب‌?بازی|زیردریایی/,'🐟'],[/ماجراجویی|جنگل|گنج/,'🗺️'],
+  [/ماریو|پرش|پلتفرم|قارچ/,'🍄'],[/میوه|هندوانه|برش/,'🍉'],[/آشپز|غذا|پیتزا|برگر|کیک/,'🍔'],[/قایم‌?باشک|مخفی‌?کاری/,'🙈'],[/پول|سکه|طلا|ثروت/,'🪙'],[/موتور|موتورسواری|دوچرخه/,'🏍️'],
+  [/اسب|سوارکاری/,'🐎'],[/گربه|موش/,'🐱'],[/سگ/,'🐶'],[/ماهیگیری/,'🎣'],[/بمب/,'💣'],[/تله|کاتر/,'🪤'],[/دویدن|دونده|ران\b|رانر|فرار/,'🏃'],[/اسکی|اسنوبرد|برف/,'⛷️'],[/تاس|شانس|کازینو|قمار/,'🎲'],[/موسیقی|پیانو|ریتم/,'🎵'],[/ساعت|زمان/,'⏱️'],[/بالن|بادکنک|حباب/,'🎈']
+];
+(function fixIcons(){
+  META.forEach(m=>{
+    const bad=!m.icon||m.icon==='🎮';
+    if(!bad)return;
+    let ic=ICON_BY_ID[m.id];
+    if(!ic){const t=String(m.name||'')+' '+String(m.tabName||'')+' '+String(m.id||'');for(const [re,e] of ICON_KEYWORDS){if(re.test(t)){ic=e;break}}}
+    m.icon=ic||'🕹️';
+  });
+})();
 let tab='total',rk=0;
 const IDS=META.filter(m=>!m.norec).map(m=>m.id);
 const TABS=[{id:'total',icon:'👑',name:'مجموع'},...META.filter(m=>!m.norec).map(m=>Object.assign({},m,{name:m.tabName||m.name,icon:m.tabIcon||m.icon}))];
 function weekLeftText(){const T=12600000,n=Date.now()+T,d=Math.floor(n/864e5),nx=((Math.floor((d-1)/7)+1)*7+1)*864e5-T,m=Math.max(0,nx-Date.now()),dd=Math.floor(m/864e5),hh=Math.floor(m%864e5/36e5);return '⏳ ریست هفتگی رتبه‌ها (جمعه): '+(dd?FA(dd)+' روز و ':'')+FA(hh)+' ساعت دیگر'}
 const TOTAL_NOTE='مجموع بهترین امتیاز هر نفر توی همه‌ی بازی‌ها';
 const GAME_CATEGORY={
+  zirzamin:'action',
   breakoutpro:'classic',pong:'sports',dino:'runner',ninja:'action',memory:'puzzle',colorseq:'puzzle',
   flappy:'runner',snake:'classic',soccer:'sports',pancake:'runner',traffic:'runner',pacman:'action',
   doodle:'runner',voicerunner:'runner',amirshahi:'sports',markhor:'action',cityrun:'runner',laserheist:'puzzle',skyball:'action',subway:'runner',hokm:'classic',chaharbarg:'classic'
@@ -1273,7 +1300,7 @@ function renderMenu(){
     const stat=m.id==='pong'?`رکورد: <b>${FA(g.best)}</b> · برد: ${FA(g.wins)} · باخت: ${FA(g.losses)}`:`رکورد: <b>${FA(g.best)}</b> · آخرین: ${FA(g.last)} · ${FA(g.plays)} بار بازی`;
     const b=document.createElement('button');
     b.className='card arcadeCard';b.dataset.gameId=m.id;b.dataset.category=GAME_CATEGORY[m.id]||'classic';b.style.setProperty('--c',m.color);b.style.setProperty('--i',META.indexOf(m));
-    const badge=(m.id==='dino'?'🦖 DINO RUN':m.id==='snake'?'🐍 SNAKE LAB':m.id==='breakoutpro'?'🧱 BRICK STORM':m.id==='pong'?'🏓 DUEL ARENA':m.id==='ninja'?'🍉 NINJA MODE':m.id==='memory'?'🃏 MEMORY LAB':m.id==='colorseq'?'🎨 COLOR MEMORY':m.id==='soccer'?'⚽ SOCCER STAR':m.id==='pancake'?'🥞 PANCAKE TOWER':m.id==='traffic'?'🚦 NEON TRAFFIC':m.id==='markhor'?'🩸 MARKHOR':m.id==='amirshahi'?'👑 AMIR SHAHI':m.id==='cityrun'?'🏙️ CITY RUN':m.id==='hokm'?'🃏 PASUR':m.id==='laserheist'?'🕵️ LASER HEIST':m.id==='skyball'?'🔮 SKY BALL':m.id==='subway'?'🚇 SUBWAY RUN':'🐦 SKY RUN');
+    const badge=(m.id==='dino'?'🦖 DINO RUN':m.id==='snake'?'🐍 SNAKE LAB':m.id==='breakoutpro'?'🧱 BRICK STORM':m.id==='pong'?'🏓 DUEL ARENA':m.id==='ninja'?'🍉 NINJA MODE':m.id==='memory'?'🃏 MEMORY LAB':m.id==='colorseq'?'🎨 COLOR MEMORY':m.id==='soccer'?'⚽ SOCCER STAR':m.id==='pancake'?'🥞 PANCAKE TOWER':m.id==='traffic'?'🚦 NEON TRAFFIC':m.id==='markhor'?'🩸 MARKHOR':m.id==='amirshahi'?'👑 AMIR SHAHI':m.id==='cityrun'?'🏙️ CITY RUN':m.id==='hokm'?'🃏 PASUR':m.id==='laserheist'?'🕵️ LASER HEIST':m.id==='skyball'?'🔮 SKY BALL':m.id==='subway'?'🚇 SUBWAY RUN':m.id==='zirzamin'?'🕳️ BACKROOMS':'🐦 SKY RUN');
     const metaTxt=m.id==='hokm'?'🌐 آنلاین · لیدربورد':`🏆 ${FA(g.best)} · ${FA(g.plays)} بازی`;
     b.innerHTML=`<span class="arcadeScene"><span class="arcadeStars"></span><span class="arcadeBadge">${badge} · LIVE</span><span class="arcadeIcon">${m.icon}</span></span><span class="arcadeInfo"><span class="arcadeName">${m.name}</span><span class="arcadeDesc">${m.desc}</span><span class="arcadeMeta"><span>${metaTxt}</span><span class="arcadePlay">▶ بازی کن</span></span></span>`;
     b.onclick=()=>{audio();if(m.norec){sfx.ui();if(m.pick)openPasurMenu();else openGame(m.id)}else openGameRank(m)};
@@ -1289,6 +1316,17 @@ function setTouchControls(id){
   box.classList.remove('show');
   box.querySelectorAll('[data-touch-game]').forEach(x=>x.hidden=x.dataset.touchGame!==id);
 }
+const zfsStyle=document.createElement('style');
+zfsStyle.textContent='body.zfs #hud,body.zfs .backHome,body.zfs #memoryFsToggle,body.zfs #touchControls,body.zfs #resultFX,body.zfs #lifeFX{display:none!important}'
++'body.zfs{overflow:hidden!important}'
++'body.zfs #play{position:fixed!important;inset:0!important;width:100%!important;height:100%!important;max-width:none!important;max-height:none!important;margin:0!important;padding:0!important;z-index:9000!important;background:#000!important;display:block!important}'
++'body.zfs #gameFrame{position:fixed!important;inset:0!important;left:0!important;top:0!important;right:0!important;bottom:0!important;width:100vw!important;height:100vh!important;height:100dvh!important;max-width:none!important;max-height:none!important;margin:0!important;padding:0!important;border:0!important;border-radius:0!important;transform:none!important;aspect-ratio:auto!important;z-index:9001!important;background:#000!important}'
++'body.zfs #bottomNav{display:none!important}';
+document.head.appendChild(zfsStyle);
+async function lockLandscape(){
+  try{await ensureFullscreen()}catch(e){}
+  try{if(screen.orientation&&screen.orientation.lock)await screen.orientation.lock('landscape')}catch(e){}
+}
 async function lockPortrait(){
   try{await ensureFullscreen()}catch(e){}
   try{if(screen.orientation&&screen.orientation.lock)await screen.orientation.lock('portrait')}catch(e){}
@@ -1301,6 +1339,9 @@ function openGame(id){
   document.body.classList.remove('memoryFS');
   document.body.classList.toggle('mkfs',id==='markhor'||id==='amirshahi'||id==='cityrun'||!!(Games[id]&&Games[id].fs));
   if(id==='markhor'||id==='amirshahi'||(Games[id]&&Games[id].portrait))lockPortrait();
+  const _land=!!(cur&&cur.landscape)||id==='zirzamin';
+  document.body.classList.toggle('zfs',_land);
+  if(_land)lockLandscape();
   $('menu').hidden=true;$('play').hidden=false;
   $('bs').textContent=FA(Store.best(id));$('bw').hidden=!!cur.norec;$('info').textContent='';$('bp').textContent='⏸';$('bp').hidden=!!(cur.embed||cur.nopause);
   setTouchControls(id);
@@ -1313,7 +1354,7 @@ function goHome(){
   if(cur&&cur.leave)cur.leave();
   Shell.leave();cur=null;paused=false;embedRunStarted=false;
   gameFrame.hidden=true;gameFrame.srcdoc='';cv.hidden=false;$('bp').hidden=false;setTouchControls('');
-  document.body.classList.remove('playing');document.body.classList.remove('mkfs');document.body.classList.remove('memoryFS');unlockPortrait();
+  document.body.classList.remove('playing');document.body.classList.remove('mkfs');document.body.classList.remove('memoryFS');document.body.classList.remove('zfs');unlockPortrait();
   $('play').hidden=true;$('menu').hidden=false;renderMenu();
 }
 function setPause(p){paused=p;$('bp').textContent=p?'▶':'⏸'}
