@@ -1062,7 +1062,11 @@ function monsterAnim(dt){if(!mon)return;mon.walk+=dt*2}
 /* ========= جهت صفحه ========= */
 function chkOrient(){document.body.classList.toggle('portrait',innerHeight>innerWidth*1.02)}
 function onResize(){chkOrient();resize();const j=document.getElementById('joy');j.style.left='110px';j.style.top=(innerHeight-90)+'px'}
-addEventListener('resize',onResize);addEventListener('orientationchange',()=>setTimeout(onResize,200));
+addEventListener('resize',onResize);
+function onResizeSoon(){[0,100,250,500,900,1500].forEach(t=>setTimeout(()=>{try{window.scrollTo(0,0)}catch(e){}onResize()},t))}
+addEventListener('orientationchange',onResizeSoon);
+if(window.visualViewport)window.visualViewport.addEventListener('resize',onResizeSoon);
+document.addEventListener('fullscreenchange',onResizeSoon);
 chkOrient();resize();
 
 /* ========= ورودی ========= */
@@ -1117,11 +1121,15 @@ const tb=$('taserBtn');tb.addEventListener('touchstart',e=>{e.preventDefault();e
 const cb=$('crouchBtn');cb.addEventListener('touchstart',e=>{e.preventDefault();e.stopPropagation();toggleCrouch()},{passive:false});cb.addEventListener('click',()=>{if(!IS_MOB)toggleCrouch()});
 joy.style.left='110px';joy.style.top=(innerHeight-90)+'px';
 
+const EMBEDDED=(function(){try{return window.parent!==window}catch(e){return true}})();
 function tryLandscape(){
+  if(EMBEDDED){
+    /* داخل آرکید: خود آرکید فول‌اسکرین و قفل افقی رو انجام می‌ده */
+    try{window.parent.postMessage({source:'nova-arcade-embed',game:'zirzamin',type:'fs',score:0,won:false},'*')}catch(e){}
+    return;
+  }
   try{const el=document.documentElement;if(IS_MOB&&!document.fullscreenElement&&!document.webkitFullscreenElement){const f=el.requestFullscreen||el.webkitRequestFullscreen;if(f){const r=f.call(el,{navigationUI:'hide'});if(r&&r.catch)r.catch(()=>{})}}}catch(e){}
   try{if(screen.orientation&&screen.orientation.lock)screen.orientation.lock('landscape').catch(()=>{})}catch(e){}
-  /* داخل آرکید: از صفحه‌ی اصلی هم بخواه فول‌اسکرین و افقی کنه */
-  try{if(window.parent!==window)window.parent.postMessage({source:'nova-arcade-embed',game:'zirzamin',type:'fs',score:0,won:false},'*')}catch(e){}
 }
 function begin(){
   tryLandscape();audioInit();if(AC&&AC.state==='suspended')AC.resume();

@@ -786,9 +786,9 @@ window.addEventListener('message',e=>{
   if(e.source!==gameFrame.contentWindow)return;
   const n=Math.max(0,Math.floor(Number(d.score)||0));
   if(d.type==='fs'){
-    if(document.body.classList.contains('zfs'))lockLandscape();
+    if(document.body.classList.contains('zfs')){lockLandscape();zfsFitSoon()}
   }else if(d.type==='start'){
-    if(document.body.classList.contains('zfs'))lockLandscape();
+    if(document.body.classList.contains('zfs')){lockLandscape();zfsFitSoon()}
     if(!embedRunStarted){embedRunStarted=true;Shell.begin();}
     Shell.score(0);
   }else if(d.type==='score'){
@@ -1317,12 +1317,43 @@ function setTouchControls(id){
   box.querySelectorAll('[data-touch-game]').forEach(x=>x.hidden=x.dataset.touchGame!==id);
 }
 const zfsStyle=document.createElement('style');
-zfsStyle.textContent='body.zfs #hud,body.zfs .backHome,body.zfs #memoryFsToggle,body.zfs #touchControls,body.zfs #resultFX,body.zfs #lifeFX{display:none!important}'
-+'body.zfs{overflow:hidden!important}'
-+'body.zfs #play{position:fixed!important;inset:0!important;width:100%!important;height:100%!important;max-width:none!important;max-height:none!important;margin:0!important;padding:0!important;z-index:9000!important;background:#000!important;display:block!important}'
-+'body.zfs #gameFrame{position:fixed!important;inset:0!important;left:0!important;top:0!important;right:0!important;bottom:0!important;width:100vw!important;height:100vh!important;height:100dvh!important;max-width:none!important;max-height:none!important;margin:0!important;padding:0!important;border:0!important;border-radius:0!important;transform:none!important;aspect-ratio:auto!important;z-index:9001!important;background:#000!important}'
-+'body.zfs #bottomNav{display:none!important}';
+zfsStyle.textContent='body.zfs{position:fixed!important;left:0!important;top:0!important;right:0!important;bottom:0!important;width:100%!important;height:100%!important;overflow:hidden!important;overscroll-behavior:none!important;margin:0!important;padding:0!important;background:#000!important;transform:none!important}'
++'body.zfs>*:not(#play):not(.modal){display:none!important}'
++'body.zfs #play{position:fixed!important;left:0!important;top:0!important;right:auto!important;bottom:auto!important;width:var(--zw,100vw)!important;height:var(--zh,100vh)!important;max-width:none!important;max-height:none!important;margin:0!important;padding:0!important;transform:none!important;z-index:9000!important;background:#000!important;display:block!important;overflow:hidden!important}'
++'body.zfs #play>*:not(#gameFrame){display:none!important}'
++'body.zfs #gameFrame{position:fixed!important;left:0!important;top:0!important;right:auto!important;bottom:auto!important;width:var(--zw,100vw)!important;height:var(--zh,100vh)!important;max-width:none!important;max-height:none!important;margin:0!important;padding:0!important;border:0!important;border-radius:0!important;transform:none!important;aspect-ratio:auto!important;z-index:9001!important;background:#000!important;display:block!important}';
 document.head.appendChild(zfsStyle);
+/* ---- حالت تمام‌صفحه‌ی واقعی برای بازی‌های افقی ---- */
+let zfsHome=null,zfsScroll=0;
+function zfsFit(){
+  if(!document.body.classList.contains('zfs'))return;
+  const vv=window.visualViewport;
+  const w=Math.round(Math.max(window.innerWidth||0,vv?vv.width:0)),h=Math.round(Math.max(window.innerHeight||0,vv?vv.height:0));
+  if(w&&h){const r=document.documentElement.style;r.setProperty('--zw',w+'px');r.setProperty('--zh',h+'px')}
+  try{window.scrollTo(0,0)}catch(e){}
+}
+function zfsFitSoon(){[0,60,150,300,600,1000,1800].forEach(t=>setTimeout(zfsFit,t))}
+addEventListener('resize',zfsFitSoon);
+addEventListener('orientationchange',zfsFitSoon);
+document.addEventListener('fullscreenchange',zfsFitSoon);
+document.addEventListener('webkitfullscreenchange',zfsFitSoon);
+if(window.visualViewport)window.visualViewport.addEventListener('resize',zfsFitSoon);
+function zfsEnter(){
+  const p=$('play');if(!p)return;
+  if(!zfsHome&&p.parentNode&&p.parentNode!==document.body){zfsHome={parent:p.parentNode,next:p.nextSibling};zfsScroll=window.pageYOffset||0}
+  document.body.appendChild(p); /* بیرون از هر والدی که transform یا آفست داره */
+  document.body.classList.add('zfs');
+  zfsFitSoon();
+}
+function zfsLeave(){
+  const had=document.body.classList.contains('zfs');
+  document.body.classList.remove('zfs');
+  const p=$('play');
+  if(zfsHome&&p){try{zfsHome.parent.insertBefore(p,zfsHome.next&&zfsHome.next.parentNode===zfsHome.parent?zfsHome.next:null)}catch(e){zfsHome.parent.appendChild(p)}}
+  zfsHome=null;
+  const r=document.documentElement.style;r.removeProperty('--zw');r.removeProperty('--zh');
+  if(had){try{window.scrollTo(0,zfsScroll)}catch(e){}}
+}
 async function lockLandscape(){
   try{await ensureFullscreen()}catch(e){}
   try{if(screen.orientation&&screen.orientation.lock)await screen.orientation.lock('landscape')}catch(e){}
@@ -1340,8 +1371,7 @@ function openGame(id){
   document.body.classList.toggle('mkfs',id==='markhor'||id==='amirshahi'||id==='cityrun'||!!(Games[id]&&Games[id].fs));
   if(id==='markhor'||id==='amirshahi'||(Games[id]&&Games[id].portrait))lockPortrait();
   const _land=!!(cur&&cur.landscape)||id==='zirzamin';
-  document.body.classList.toggle('zfs',_land);
-  if(_land)lockLandscape();
+  if(_land){zfsEnter();lockLandscape()}else zfsLeave();
   $('menu').hidden=true;$('play').hidden=false;
   $('bs').textContent=FA(Store.best(id));$('bw').hidden=!!cur.norec;$('info').textContent='';$('bp').textContent='⏸';$('bp').hidden=!!(cur.embed||cur.nopause);
   setTouchControls(id);
@@ -1354,7 +1384,7 @@ function goHome(){
   if(cur&&cur.leave)cur.leave();
   Shell.leave();cur=null;paused=false;embedRunStarted=false;
   gameFrame.hidden=true;gameFrame.srcdoc='';cv.hidden=false;$('bp').hidden=false;setTouchControls('');
-  document.body.classList.remove('playing');document.body.classList.remove('mkfs');document.body.classList.remove('memoryFS');document.body.classList.remove('zfs');unlockPortrait();
+  document.body.classList.remove('playing');document.body.classList.remove('mkfs');document.body.classList.remove('memoryFS');zfsLeave();unlockPortrait();
   $('play').hidden=true;$('menu').hidden=false;renderMenu();
 }
 function setPause(p){paused=p;$('bp').textContent=p?'▶':'⏸'}
