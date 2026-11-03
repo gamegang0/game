@@ -210,16 +210,16 @@ body.mpon #pauseBtn{display:none!important}
 <div id="hud">
   <div class="col"><span class="pill" id="keys">🔑 ۰ / ۳</span><span class="pill" id="tm">۰:۰۰</span><span class="pill" id="taserStat">⚡ شوکر: ۰</span><div class="bar" title="باتری چراغ‌قوه"><b>🔦</b><div id="bat"><i></i></div></div><div class="bar" title="نفس"><b>⚡</b><div id="stam"><i></i></div></div><div style="display:flex;gap:6px"><button id="pauseBtn" class="mb" aria-label="مکث">⏸</button><button id="mute" class="mb" aria-label="صدا">🔊</button></div></div>
 </div>
-<div id="msg"></div><div id="nameTag"></div><div id="hidingFX"><div>داخل دریچه پنهان شدی<br><small>می‌تونی ۳۶۰ درجه اطرافت رو نگاه کنی؛ برای بیرون آمدن E یا دکمه خروج رو بزن</small></div></div><div id="zapFX">⚡⚡</div>
+<div id="msg"></div><div id="nameTag"></div><div id="hidingFX"><div>داخل دریچه پنهان شدی<br><small>حداکثر ۱۵ ثانیه؛ بعد خودکار بیرون میای. سپس همین دریچه ۶۰ ثانیه قفل می‌شه.</small></div></div><div id="zapFX">⚡⚡</div>
 <div id="pingPill" class="pill"></div><div id="feed"></div><div id="ptags"><div class="ptag"></div><div class="ptag"></div><div class="ptag"></div></div><div id="spec"><button id="specPrev" aria-label="قبلی">◀</button><span id="specName"></span><button id="specNext" aria-label="بعدی">▶</button></div>
 <div id="joy"><div id="knob"></div></div>
-<button id="run" aria-label="دویدن">⚡</button>
+<button id="run" title="دویدن روشن/خاموش" aria-label="دویدن روشن/خاموش" aria-label="دویدن">⚡</button>
 <button id="flBtn" aria-label="چراغ‌قوه">🔦</button>
 <button id="hideBtn" aria-label="پنهان شدن">🕳 پنهان</button><button id="taserBtn" aria-label="شوکر انرژی">⚡</button><button id="crouchBtn" aria-label="خم شدن">↘</button>
 
 <div id="start" class="scr">
   <h1>فرار از زیرزمین شهر فرش<small>طبقه‌ی ۰ — بک‌رومز</small></h1>
-  <p>توی زیرزمین بی‌انتهای شهر فرش گیر افتادی؛ لامپ‌ها یکی‌یکی می‌میرن و برق گاهی می‌ره!<br>۴ کلید رو پیدا کن، باتری برای چراغ‌قوه جمع کن و در سبز خروج رو باز کن.<br><b id="mn"></b> تو راهروها گشت می‌زنه؛ صدای دویدن و نور چراغ‌قوه رو می‌شنوه و می‌بینه. پشت دیوار قایم شو!</p>
+  <p>توی زیرزمین بی‌انتهای شهر فرش گیر افتادی؛ لامپ‌ها یکی‌یکی می‌میرن و برق گاهی می‌ره!<br>کلیدها رو پیدا کن (تک‌نفره ۴ تا · دونفره ۶ تا · سه‌نفره ۸ تا)، باتری برای چراغ‌قوه جمع کن و در سبز خروج رو باز کن.<br><b id="mn"></b> تو راهروها گشت می‌زنه؛ صدای دویدن و نور چراغ‌قوه رو می‌شنوه و می‌بینه. پشت دیوار قایم شو!<br>دویدن بی‌نهایته، ولی پژمان صدای دویدنت رو از هر جای نقشه می‌شنوه! خم شو (↘) تا صدای قدمت نره؛ فقط اگه ببینتت پیدات می‌کنه.</p>
   <button class="btn" id="go">شروع (تک‌نفره)</button>
   <button class="btn" id="mpOpen">🌐 چندنفره · تا ۳ نفر</button>
   <button class="btn2" id="homeA">🕹 بازگشت به آرکید</button>
@@ -278,7 +278,7 @@ body.mpon #pauseBtn{display:none!important}
 /* ========= تنظیمات ساده ========= */
 const MONSTER='پژمان جمشیدی';       // اسم هیولای این نسخه
 const CAUGHT_TEXT=n=>'«'+n+'» گیرت انداخت! 💀';
-const NEED_KEYS=4;
+let NEED_KEYS=4;const keysForN=n=>n>=3?8:n===2?6:4;
 const H=1.35, EYE=.74, MS=.86;        // ارتفاع سقف، ارتفاع چشم، مقیاس هیولا
 
 const $=id=>document.getElementById(id);
@@ -290,9 +290,11 @@ const SB_KEY='sb_publishable_vpVUe8xUxnxSgY1fiv3p9A_eQBWY3Hp';   // anon public 
 const MP={on:false,ws:null,id:-1,hostId:-1,host:false,room:'',name:'',pl:{},list:[],started:false,over:false,ping:0,lastSend:0,lastMon:0,lastState:'',mnet:null,specId:-1,nextBo:80,pup:null,pingIv:0,cid:'',pres:{},cmap:{},syn:false,hb:0,hbT:{},ref:0,mode:'',wantRoom:'',myName:''};
 const PCOL=[[.25,.62,1],[1,.55,.2],[.4,1,.55]],PCSS=['#7ec0ff','#ffb070','#8dffb0'];
 let curMv=false,curRun=false,runLook=null;
+const VM={fA:1,bt:-1,kt:-1,sx:0,sy:0,mv:0,run:0,cr:0,ppa:null,ppt:0};
 let arcadeStarted=false;
 function arcadeNotify(type,score=0,won=false){if(type==='start')arcadeStarted=true;try{if(window.parent!==window)window.parent.postMessage({source:'nova-arcade-embed',game:'zirzamin',type,score,won},'*')}catch(e){}}
 $('mn').textContent=MONSTER;
+try{$('stam').parentNode.style.display='none'}catch(e){}
 const IS_MOB=(navigator.maxTouchPoints||0)>0||'ontouchstart' in window;
 if(IS_MOB)document.body.classList.add('mob','touch');
 const MEMLS={};
@@ -341,8 +343,10 @@ uniform vec3 uCam,uFwd,uTint,uEmis;
 uniform float uTime,uFlash,uRim,uDirtAmt,uFix,uAlpha,uFogD,uH;
 uniform vec2 uMapSize;
 uniform vec3 uLP[4],uLC[4];
+uniform vec3 uFP[2],uFD[2];uniform vec2 uFO;
 varying vec3 vW,vN;varying vec2 vUV;
 float lampI(vec2 c){return texture2D(uMask,(c+.5)/uMapSize).b;}
+float fSpot(vec3 P,vec3 D,float o,vec3 N,vec3 W){vec3 Ld=W-P;float dl=length(Ld)+1e-4;vec3 d=Ld/dl;float sp=smoothstep(.76,.94,dot(d,D));return o*sp/(1.+dl*dl*.05)*(max(dot(N,-d),0.)*.8+.2)*2.6;}
 void main(){
   vec3 toC=uCam-vW;float dist=length(toC);vec3 V=toC/dist;
   vec4 tx=texture2D(uTex,vUV);
@@ -381,6 +385,7 @@ void main(){
   float spot=smoothstep(.76,.94,cd);
   float fa=1./(1.+dl*dl*.05);
   lit+=vec3(1.,.95,.8)*uFlash*spot*fa*(max(dot(N,-Ldir),0.)*.8+.2)*2.6;
+  lit+=vec3(1.,.95,.8)*(fSpot(uFP[0],uFD[0],uFO.x,N,vW)+fSpot(uFP[1],uFD[1],uFO.y,N,vW));
   vec3 col=alb*lit+uEmis;
   col+=uRim*pow(1.-max(dot(N,V),0.),2.2)*vec3(.6,.13,.09);
   float fg=exp(-dist*uFogD);
@@ -400,8 +405,10 @@ uniform vec3 uCam,uFwd,uTint,uEmis;
 uniform float uTime,uFlash,uRim,uDirtAmt,uFix,uAlpha,uFogD,uH;
 uniform vec2 uMapSize;
 uniform vec3 uLP[4],uLC[4];
+uniform vec3 uFP[2],uFD[2];uniform vec2 uFO;
 varying vec3 vW,vN;varying vec2 vUV;
 float lampI(vec2 c){return texture2D(uMask,(c+.5)/uMapSize).b;}
+float fSpot(vec3 P,vec3 D,float o,vec3 N,vec3 W){vec3 Ld=W-P;float dl=length(Ld)+1e-4;vec3 d=Ld/dl;float sp=smoothstep(.76,.94,dot(d,D));return o*sp/(1.+dl*dl*.05)*(max(dot(N,-d),0.)*.8+.2)*2.6;}
 void main(){
   vec3 toC=uCam-vW;float dist=length(toC);vec3 V=toC/dist;
   vec4 tx=texture2D(uTex,vUV);
@@ -468,6 +475,7 @@ void main(){
 #if Q>=3
   lit+=vec3(1.,.93,.75)*uFlash*smoothstep(.55,.8,cd)*fa*.12*(max(dot(N,-Ldir),0.)*.8+.2);
 #endif
+  lit+=vec3(1.,.95,.8)*(fSpot(uFP[0],uFD[0],uFO.x,N,vW)+fSpot(uFP[1],uFD[1],uFO.y,N,vW));
   vec3 col=alb*lit+uEmis;
   col+=uRim*pow(1.-max(dot(N,V),0.),2.2)*vec3(.6,.13,.09);
 #if Q>=2
@@ -722,9 +730,7 @@ function genMap(){
   const spot=r=>{let x,y,g=0;do{x=r.x+rnd(r.w);y=r.y+rnd(r.h)}while(map[y*MW+x]!==0&&g++<40);return{x:x+.5,y:y+.5}};
   keysPos=kr.map(r=>Object.assign(spot(r),{got:false}));
   battPos=[];const shuf=a=>{for(let i=a.length-1;i>0;i--){const j=rnd(i+1);[a[i],a[j]]=[a[j],a[i]]}return a};   // شافل ثابت، تا روی همه‌ی مرورگرها یک نقشه بسازه
-  const br=shuf(rooms.slice(1)).slice(0,6);br.forEach(r=>battPos.push(Object.assign(spot(r),{got:false})));
-  battPos.push(Object.assign({x:startCell[0]+2.5,y:startCell[1]+.5,got:false}));
-  if(map[(battPos[battPos.length-1].y|0)*MW+(battPos[battPos.length-1].x|0)]!==0)battPos.pop();
+  const NB=NEED_KEYS>=8?5:NEED_KEYS>=6?4:3;const br=shuf(rooms.slice(1)).slice(0,NB);br.forEach(r=>battPos.push(Object.assign(spot(r),{got:false})));
   // چند دریچه‌ی قابل ورود در اتاق‌های متفاوت
   ventSpots=[];
   const vr=shuf(rooms.slice(1));
@@ -810,7 +816,7 @@ const lampOnFlag=new Uint8Array(MW*MH).fill(1);
 
 /* ========= حالت بازی ========= */
 let px,py,pa,pitch=0,keysGot,stam,bat,flashOn,tAlive,mon,state='menu',bob=0,msgT=0,sprint=false,stepT=0,lastLock=0,shake=0,monSeen=0,scareT=0,escapeT=0,blackT=0,nextBlack=70,sweat=0;
-let isHidden=false,hideVent=null,crouching=false,taserAmmo=0,taserPickup=null;
+let isHidden=false,hideVent=null,hideStartedAt=0,hideCooldownUntil=[],crouching=false,taserAmmo=0,taserPickup=null;
 const keysDown={};let joyX=0,joyY=0,lookDX=0,lookDY=0;
 let sFwd=[1,0,0];
 const fmt=t=>FA(Math.floor(t/60))+':'+FA(String(Math.floor(t%60)).padStart(2,'0'));
@@ -838,7 +844,10 @@ function placeTaserPickup(){const p=randomFloorSpot(8);return{x:p.x,y:p.y,active
 function nearbyVent(){let best=null,bd=.95;for(const v of ventSpots){const d=Math.hypot(px-v.x,py-v.y);if(d<bd){best=v;bd=d}}return best}
 function updateActionButtons(){
   const near=nearbyVent();const hb=$('hideBtn'),tb=$('taserBtn'),cb=$('crouchBtn');
-  const occ=!!near&&!isHidden&&ventOcc(ventSpots.indexOf(near));hb.classList.toggle('on',(!!near&&!occ)||isHidden);hb.disabled=(!near||occ)&&!isHidden;hb.textContent=isHidden?'🚪 خروج':(occ?'🔒 پره':'🕳 پنهان');
+  const vi=near?ventSpots.indexOf(near):-1,cd=vi>=0?Math.max(0,(hideCooldownUntil[vi]||0)-performance.now()):0;
+  const occ=!!near&&!isHidden&&ventOcc(vi);hb.classList.toggle('on',(!!near&&!occ)||isHidden);
+  hb.disabled=(!near||occ||cd>0)&&!isHidden;
+  hb.textContent=isHidden?'🚪 خروج':(cd>0?'⏳ '+Math.ceil(cd/1000)+'ث':(occ?'🔒 پره':'🕳 پنهان'));
   tb.classList.toggle('on',taserAmmo>0);tb.disabled=taserAmmo<1;
   cb.classList.toggle('on',crouching);cb.textContent=crouching?'↗':'↘';
   $('taserStat').textContent='⚡ شوکر: '+FA(taserAmmo);
@@ -851,10 +860,10 @@ function reset(seed){
   px=startCell[0]+.5;py=startCell[1]+.5;pitch=0;
   let bestA=0,bestN=-1;for(const a of [0,Math.PI/2,Math.PI,-Math.PI/2]){let n=0;while(n<30&&map[((py+Math.sin(a)*(n+1))|0)*MW+((px+Math.cos(a)*(n+1))|0)]===0)n++;if(n>bestN){bestN=n;bestA=a}}
   pa=bestA;sFwd=[Math.cos(pa),0,Math.sin(pa)];
-  keysGot=0;stam=100;bat=100;flashOn=true;tAlive=0;shake=0;monSeen=0;scareT=0;blackT=0;nextBlack=70+Math.random()*25;powerLevel=1;
+  VM.bt=-1;VM.kt=-1;VM.fA=1;keysGot=0;stam=100;bat=100;flashOn=true;tAlive=0;shake=0;monSeen=0;scareT=0;blackT=0;nextBlack=70+Math.random()*25;powerLevel=1;
   mon={x:monsterSpawn[0]+.5,y:monsterSpawn[1]+.5,state:'patrol',path:[],pt:0,face:0,walk:0,target:null,lostT:0,lastKnown:null,speed:0,alertT:0,hbT:0,stT:0,brT:0,seenP:false,stunT:0};
-  isHidden=false;hideVent=null;crouching=false;taserAmmo=0;taserPickup=wr(placeTaserPickup);$('hidingFX').classList.remove('active');updateActionButtons();
-  updKeys();$('flBtn').classList.add('on');
+  isHidden=false;hideVent=null;hideStartedAt=0;hideCooldownUntil=ventSpots.map(()=>0);sprint=false;crouching=false;taserAmmo=0;taserPickup=wr(placeTaserPickup);$('hidingFX').classList.remove('active');updateActionButtons();
+  updKeys();$('run').classList.remove('on');$('flBtn').classList.add('on');
   showMsg('چراغ‌قوه روشنه (F) — ۴ کلید پیدا کن، باتری جمع کن',4200);
   MP.mnet=null;MP.pup=null;if(MP.on&&MP.started){const _sp=spawnFor(MP.id);px=_sp[0];py=_sp[1]}
   $('nameTag').style.display='none';$('redv').style.opacity=0;
@@ -915,12 +924,12 @@ function bfsPath(sx,sy,tx,ty){
 function aiPlayers(){
   const L=[];
   const mv=Math.hypot(joyX,joyY)>.1||keysDown.KeyW||keysDown.KeyS||keysDown.KeyA||keysDown.KeyD||keysDown.ArrowUp||keysDown.ArrowDown;
-  const run=!crouching&&(keysDown.ShiftLeft||keysDown.ShiftRight||sprint)&&mv&&stam>0;
+  const run=!crouching&&(keysDown.ShiftLeft||keysDown.ShiftRight||sprint)&&mv;
   const me=MP.on?MP.pl[MP.id]:null;
   if(!MP.on||(me&&me.st==='alive'&&state==='play'))L.push({id:MP.on?MP.id:-1,me:true,x:px,y:py,hid:isHidden,cr:crouching,mv:!!mv,run:!!run,fl:flashOn&&bat>0});
   if(MP.on)for(const id in MP.pl){
     if(+id===MP.id)continue;const p=MP.pl[id];
-    if(p.in&&p.st==='alive'&&p.seen)L.push({id:+id,me:false,x:p.x,y:p.y,hid:p.hid,cr:p.cr,mv:p.mv,run:p.run,fl:p.fl});
+    if(p.in&&p.st==='alive'&&p.seen)L.push({id:+id,me:false,x:p.nx,y:p.ny,hid:p.hid,cr:p.cr,mv:p.mv,run:p.run,fl:p.fl});
   }
   return L;
 }
@@ -949,7 +958,7 @@ function monsterAI(dt){
       const dist=q.dist;
       const sightRange=q.fl?(q.cr?13:20):(powerLevel>.35?(q.cr?7:14):(q.cr?2.6:5));
       const sees=dist<sightRange&&los(m.x,m.y,q.x,q.y);
-      const hearR=q.run?20:(q.cr?(q.mv?2.2:1.1):(q.mv?9.5:2.8));
+      const hearR=q.run?1e9:(q.cr?0:(q.mv?9.5:2.8));
       const hears=dist<hearR;
       if(!q.hid&&!grace&&(sees||hears)&&dist<bd){best=q;bd=dist}
     }
@@ -976,7 +985,7 @@ function monsterAI(dt){
     }
   }
   const chT=P.find(q=>q.id===m.chaseId)||near;
-  const base=m.state==='chase'?2.65+keysGot*.22+Math.min(tAlive/520,.25):(m.state==='search'?1.7:1.18);
+  const base=m.state==='chase'?2.65+.88*keysGot/NEED_KEYS+Math.min(tAlive/520,.25):(m.state==='search'?1.7:1.18);
   const speed=base*(blackT>0?1.12:1);
   m.speed=0;
   if(m.path.length){
@@ -1125,6 +1134,84 @@ function drawBatt(x,z,tm,seed){
 }
 const dust=[];for(let i=0;i<150;i++)dust.push([Math.random()*12-6,Math.random()*3,Math.random()*12-6,Math.random()*6]);
 const pbuf=gl.createBuffer();
+/* ========= اول‌شخص: دست‌ها و چراغ‌قوه (انیمیشن راه رفتن، دویدن، خم شدن، جیب، باتری) ========= */
+function drawViewModel(tm,dt,cam,dir){
+  const V=VM;
+  const tgt=(flashOn&&bat>0&&!isHidden)?1:0;
+  V.fA+=Math.max(-3.2*dt,Math.min(3.2*dt,tgt-V.fA));
+  V.mv+=((curMv?1:0)-V.mv)*Math.min(1,dt*7);V.run+=((curRun?1:0)-V.run)*Math.min(1,dt*6);V.cr+=((crouching?1:0)-V.cr)*Math.min(1,dt*7);
+  if(V.bt>=0){V.bt+=dt;if(V.bt>1.5)V.bt=-1}
+  if(V.kt>=0){V.kt+=dt;if(V.kt>1.3)V.kt=-1}
+  const dd=Math.max(dt,.001);
+  if(V.ppa==null){V.ppa=pa;V.ppt=pitch}
+  const vy=angW(pa-V.ppa)/dd,vp=(pitch-V.ppt)/dd;V.ppa=pa;V.ppt=pitch;
+  V.sx+=(cl(-vy*.012,-.07,.07)-V.sx)*Math.min(1,dt*9);V.sy+=(cl(-vp*.012,-.06,.06)-V.sy)*Math.min(1,dt*9);
+  if(state!=='play'||isHidden||(V.fA<.01&&V.bt<0&&V.kt<0))return;
+  const f=dir,r=[-Math.sin(pa),0,Math.cos(pa)];
+  const up=[-r[2]*f[1],r[2]*f[0]-r[0]*f[2],r[0]*f[1]];
+  const B=new Float32Array([f[0],f[1],f[2],0,up[0],up[1],up[2],0,r[0],r[1],r[2],0,cam[0],cam[1],cam[2],1]);
+  gl.useProgram(PM.p);gl.clear(gl.DEPTH_BUFFER_BIT);gl.enable(gl.DEPTH_TEST);gl.disable(gl.BLEND);gl.depthMask(true);gl.uniform1f(U.uFix,0);bindT(TEX.white);
+  const c=PCOL[(MP.on&&MP.id>=0?MP.id:0)%3],JK=[c[0]*.45+.05,c[1]*.45+.05,c[2]*.45+.05],GL=[.1,.1,.11],GLE=[.025,.025,.03],TC=[.14,.14,.17];
+  const mvk=V.mv,rn=V.run,cr=V.cr,e=sm(V.fA),po=1-e,bs=Math.sin(bob),bc=Math.cos(bob);
+  let ox=.34+rn*.03,oy=-.2,oz=.2;
+  oy+=-Math.abs(bs)*.016*mvk*(1+rn*1.2)+Math.sin(tm*1.6)*.0035-cr*.03-rn*.035+V.sy;
+  oz+=bc*.012*mvk*(1+rn)+V.sx;
+  oy-=po*.42;oz+=po*.12;ox-=po*.12;
+  const u=V.bt>=0?V.bt/1.5:-1;
+  let shk=0;if(u>.5&&u<.8)shk=Math.sin(u*90)*.006;
+  const tilt=-rn*.28+po*.8+V.sy*2;
+  const G=cm(B,cm(M4.T(ox,oy+shk,oz),cm(M4.RY(.1),M4.RZ(tilt))));
+  const on=(flashOn&&bat>0)?1:0,RZq=M4.RZ(-Math.PI/2);
+  /* چراغ‌قوه */
+  part(G,cm(M4.T(.07,0,0),RZq),'cyl',[.052,.2,.052],TC,[.03,.03,.04],.3);
+  part(G,cm(M4.T(.07,.0,0),RZq),'cyl',[.056,.03,.056],[.3,.3,.33],[.05,.05,.06],.3);
+  part(G,cm(M4.T(.19,0,0),RZq),'cyl',[.078,.075,.078],[.36,.36,.4],[.06,.06,.07],.3);
+  part(G,M4.T(.228,0,0),'sphere',[.016,.07,.07],[1,.95,.7],[on*2.2+.1,on*2+.1,on*1.2+.08],0);
+  part(G,M4.T(.06,.034,0),'box',[.03,.015,.02],[.8,.1,.1],[.5,0,0],.3);
+  /* دست راست + آستین */
+  part(G,M4.T(.02,-.012,0),'box',[.115,.085,.105],GL,GLE,.3);
+  for(const z of [-.034,0,.034])part(G,M4.T(.08,-.03,z),'box',[.05,.04,.03],GL,GLE,.3);
+  part(G,M4.T(.055,.04,-.03),'box',[.07,.03,.03],GL,GLE,.3);
+  bone(G,[-.03,-.012,.0],[-.42,-.19,.15],.09,.1,'box',JK,[JK[0]*.2,JK[1]*.2,JK[2]*.2],.3);
+  part(G,M4.T(-.06,-.015,.0),'box',[.035,.095,.105],c,[c[0]*.7,c[1]*.7,c[2]*.7],.4);
+  /* دست چپ و باتری */
+  if(u>=0){
+    const L1=[.26,-.42,-.22],L2=[.58,-.46,-.02],L3=[.34,-.06,-.1],L4=[ox-.02,oy-.03,oz-.03];
+    const mix=(A,Bp,t)=>[lerp(A[0],Bp[0],t),lerp(A[1],Bp[1],t),lerp(A[2],Bp[2],t)];
+    let hp;
+    if(u<.18)hp=mix(L1,L2,sm(u/.18));else if(u<.42)hp=mix(L2,L3,sm((u-.18)/.24));else if(u<.58)hp=mix(L3,L4,sm((u-.42)/.16));
+    else if(u<.8)hp=[L4[0],L4[1]+shk,L4[2]];else hp=mix(L4,L1,sm((u-.8)/.2));
+    const HM=cm(B,M4.T(hp[0],hp[1],hp[2]));
+    part(HM,IDM,'box',[.11,.09,.1],GL,GLE,.3);
+    part(HM,M4.T(.05,-.02,.03),'box',[.06,.035,.03],GL,GLE,.3);
+    bone(B,hp,[hp[0]-.3,hp[1]-.26,hp[2]-.1],.09,.1,'box',JK,[JK[0]*.2,JK[1]*.2,JK[2]*.2],.3);
+    if(u<.8){
+      const s2=sm((u-.6)/.18),k=1-.9*s2;
+      part(HM,cm(M4.T(.07,.0,0),M4.RZ(.5)),'cyl',[.05*k,.12*k,.05*k],[.25,.9,.35],[0,.8,.2],.5);
+      if(u>.66)part(HM,M4.T(.04,0,0),'sphere',[.13,.13,.13],[.3,1,.5],[.5,1.8,.8],0);
+    }
+  }
+  /* کلید: دست چپ از پایین می‌آد، کلید رو برمی‌داره، جلوی صورتت می‌چرخونه، می‌ذاره تو جیب */
+  if(V.kt>=0&&u<0){
+    const uk=V.kt/1.3,K1=[.26,-.42,-.22],K2=[.58,-.46,-.02],K3=[.4,-.03,-.03];
+    const mix=(A,Bp,t)=>[lerp(A[0],Bp[0],t),lerp(A[1],Bp[1],t),lerp(A[2],Bp[2],t)];
+    let hp;
+    if(uk<.18)hp=mix(K1,K2,sm(uk/.18));else if(uk<.45)hp=mix(K2,K3,sm((uk-.18)/.27));
+    else if(uk<.75)hp=[K3[0],K3[1]+Math.sin(uk*20)*.006,K3[2]];else hp=mix(K3,K1,sm((uk-.75)/.25));
+    const HM=cm(B,M4.T(hp[0],hp[1],hp[2]));
+    part(HM,IDM,'box',[.11,.09,.1],GL,GLE,.3);
+    part(HM,M4.T(.05,-.02,.03),'box',[.06,.035,.03],GL,GLE,.3);
+    bone(B,hp,[hp[0]-.3,hp[1]-.26,hp[2]-.1],.09,.1,'box',JK,[JK[0]*.2,JK[1]*.2,JK[2]*.2],.3);
+    if(uk>=.14&&uk<.97){
+      const sc=uk>.86?1-sm((uk-.86)/.11):1,spin=uk*16,KM=cm(HM,cm(M4.T(.09,.03,0),cm(M4.RY(spin),M4.RZ(.35))));
+      const G1=[1,.78,.2],E1=[.9,.6,.08];
+      part(KM,cm(M4.T(-.07*sc,0,0),M4.RX(Math.PI/2)),'torus',[.14*sc,.14*sc,.14*sc],G1,E1,.5);
+      part(KM,M4.T(.06*sc,0,0),'box',[.18*sc,.028*sc,.028*sc],G1,E1,.5);
+      part(KM,M4.T(.12*sc,-.03*sc,0),'box',[.028*sc,.055*sc,.028*sc],G1,E1,.5);
+      part(KM,M4.T(.082*sc,-.026*sc,0),'box',[.028*sc,.042*sc,.028*sc],G1,E1,.5);
+    }
+  }
+}
 function drawFrame(tm,dt){
   const asp=cv.width/cv.height,rt=state==='scare'?1:0;
   const eyeY=EYE+(crouching?-.2:0)+Math.sin(bob)*.014+(shake?(Math.random()-.5)*shake*.03:0)+(state==='scare'?(Math.random()-.5)*.03:0);
@@ -1149,6 +1236,12 @@ function drawFrame(tm,dt){
   cand.sort((a,b)=>Math.hypot(a[0]-px,a[1]-py)-Math.hypot(b[0]-px,b[1]-py));
   for(let i=0;i<2;i++){const c=cand[i];if(c&&Math.hypot(c[0]-px,c[1]-py)<10){LP.set([c[0],.35,c[1]],6+i*3);LC.set(c[2]===1?[.9,.65,.15]:[.1,.7,.2],6+i*3)}}
   gl.uniform3fv(U.uLP,LP);gl.uniform3fv(U.uLC,LC);
+  /* چراغ‌قوه‌ی دوستان: هرجا انداختن، برای من هم روشن می‌کنه */
+  {const FP=new Float32Array(6),FD=new Float32Array(6),FO=[0,0],fr=[];
+   if(MP.on&&MP.started)for(const id in MP.pl){const p=MP.pl[id];if(+id===MP.id||!p.in||p.st!=='alive'||p.hid||!p.seen||!p.fl)continue;if(state==='spectate'&&+id===MP.specId)continue;const d=Math.hypot(p.x-px,p.y-py);if(d<28)fr.push([d,p])}
+   fr.sort((a,b)=>a[0]-b[0]);
+   for(let i=0;i<2&&i<fr.length;i++){const p=fr[i][1],c2=Math.cos(p.pt);FP.set([p.x,p.cr?.54:.74,p.y],i*3);FD.set([c2*Math.cos(p.a),Math.sin(p.pt),c2*Math.sin(p.a)],i*3);FO[i]=1}
+   gl.uniform3fv(U.uFP,FP);gl.uniform3fv(U.uFD,FD);gl.uniform2f(U.uFO,FO[0],FO[1]);}
   gl.activeTexture(gl.TEXTURE1);gl.bindTexture(gl.TEXTURE_2D,TEX.dirt);gl.activeTexture(gl.TEXTURE2);gl.bindTexture(gl.TEXTURE_2D,G3.maskTex);gl.activeTexture(gl.TEXTURE0);
   gl.uniform1f(U.uFix,0);
   /* محیط */
@@ -1202,6 +1295,7 @@ function drawFrame(tm,dt){
   gl.vertexAttribPointer(0,3,gl.FLOAT,false,32,0);gl.vertexAttribPointer(1,4,gl.FLOAT,false,32,12);gl.vertexAttribPointer(2,1,gl.FLOAT,false,32,28);
   gl.drawArrays(gl.POINTS,0,arr.length/8);
   gl.depthMask(true);gl.disable(gl.BLEND);
+  drawViewModel(tm,dt,cam,dir);
 }
 function project(p){const v=G3.VP,x=p[0],y=p[1],z=p[2];const cx=v[0]*x+v[4]*y+v[8]*z+v[12],cy=v[1]*x+v[5]*y+v[9]*z+v[13],cw=v[3]*x+v[7]*y+v[11]*z+v[15];if(cw<=.05)return null;return[cx/cw,cy/cw,cw]}
 
@@ -1229,6 +1323,14 @@ let last=0,distToMon=99,seenT=0,markT=0,blackWarn=false;
 function update(dt){
   if(!MP.on)tAlive+=dt;$('tm').textContent=fmt(tAlive);curMv=curRun=false;
   if(isHidden){
+    // هر دریچه حداکثر ۱۵ ثانیه؛ سپس خروج خودکار و ۶۰ ثانیه کول‌داون همان دریچه.
+    if(performance.now()-hideStartedAt>=15000){
+      const vi=hideVent?ventSpots.indexOf(hideVent):-1;
+      if(vi>=0)startVentCooldown(vi);
+      isHidden=false;hideVent=null;hideStartedAt=0;$('hidingFX').classList.remove('active');
+      showMsg('۱۵ ثانیه تموم شد؛ خودکار از دریچه بیرون اومدی. کول‌داون: ۶۰ ثانیه',3200,true);
+      updateActionButtons();mpSendState(true);return;
+    }
     // داخل دریچه حرکت نمی‌کنی، اما دوربین آزادانه در تمام جهت‌ها می‌چرخد.
     if(keysDown.ArrowLeft)pa-=1.9*dt;
     if(keysDown.ArrowRight)pa+=1.9*dt;
@@ -1246,9 +1348,9 @@ function update(dt){
   if(keysDown.ArrowLeft)pa-=1.9*dt;if(keysDown.ArrowRight)pa+=1.9*dt;
   pa+=lookDX;pitch=Math.max(-1.2,Math.min(1.2,pitch+lookDY));lookDX=lookDY=0;
   const l=Math.hypot(f,s);if(l>1){f/=l;s/=l}
-  const moving=l>.08,wantRun=!crouching&&(keysDown.ShiftLeft||keysDown.ShiftRight||sprint)&&moving&&stam>0;
+  const moving=l>.08,wantRun=!crouching&&(keysDown.ShiftLeft||keysDown.ShiftRight||sprint)&&moving;
   curMv=moving;curRun=wantRun;const sp=wantRun?3.5:(crouching?1.35:2.25);
-  if(wantRun)stam=Math.max(0,stam-36*dt);else stam=Math.min(100,stam+(moving?12:22)*dt);
+  stam=100;
   const dx=(Math.cos(pa)*f-Math.sin(pa)*s)*sp*dt,dy=(Math.sin(pa)*f+Math.cos(pa)*s)*sp*dt;tryMove(dx,dy);
   if(moving){bob+=dt*(wantRun?13:(crouching?4.2:8));stepT-=dt;if(stepT<=0){stepT=wantRun?.2:(crouching?.62:.3);if(crouching){nz(.055,230,1,.025,'lowpass')}else sfx.step(wantRun)}}
   /* چراغ‌قوه و باتری */
@@ -1262,8 +1364,8 @@ function update(dt){
   updateLamps(dt);
   ambT-=dt;if(ambT<=0){ambT=5+Math.random()*9;const r=Math.random();(r<.35?sfx.drip:r<.65?sfx.clang:sfx.whisper)()}
   /* برداشتن */
-  for(const k of keysPos)if(!k.got&&Math.hypot(px-k.x,py-k.y)<.6){k.got=true;keysGot++;updKeys();mpSend({t:'k',i:keysPos.indexOf(k)});sfx.key();showMsg(keysGot<NEED_KEYS?'کلید پیدا شد! '+FA(NEED_KEYS-keysGot)+' تا مونده':'همه‌ی کلیدها رو داری — برو سراغ در سبز خروج!',2800)}
-  for(const b of battPos)if(!b.got&&Math.hypot(px-b.x,py-b.y)<.6){b.got=true;mpSend({t:'b',i:battPos.indexOf(b)});bat=Math.min(100,bat+45);if(!flashOn&&bat>0){flashOn=true;$('flBtn').classList.add('on')}sfx.batt();showMsg('باتری برداشتی 🔋 +۴۵٪',1800)}
+  for(const k of keysPos)if(!k.got&&Math.hypot(px-k.x,py-k.y)<.6){k.got=true;keysGot++;updKeys();VM.kt=0;VM.bt=-1;mpSend({t:'k',i:keysPos.indexOf(k)});sfx.key();showMsg(keysGot<NEED_KEYS?'کلید پیدا شد! '+FA(NEED_KEYS-keysGot)+' تا مونده':'همه‌ی کلیدها رو داری — برو سراغ در سبز خروج!',2800)}
+  for(const b of battPos)if(!b.got&&Math.hypot(px-b.x,py-b.y)<.6){b.got=true;mpSend({t:'b',i:battPos.indexOf(b)});bat=Math.min(100,bat+45);VM.bt=0;VM.kt=-1;if(!flashOn&&bat>0){flashOn=true;$('flBtn').classList.add('on')}sfx.batt();showMsg('باتری برداشتی 🔋 +۴۵٪',1800)}
   if(taserPickup&&taserPickup.active&&taserAmmo<1&&Math.hypot(px-taserPickup.x,py-taserPickup.y)<.72){taserPickup.active=false;mpSend({t:'tg'});taserAmmo=1;showMsg('شوکر انرژی پیدا کردی! فقط ۱ تیر داری ⚡',2600);tone(680,.12,.16,'triangle',0,0);tone(980,.16,.13,'triangle',0,.09);updateActionButtons()}
   if(Math.hypot(px-(exitCell[0]+.5),py-(exitCell[1]+.5))<1.25){if(keysGot>=NEED_KEYS){sfx.open();win()}else if(performance.now()-lastLock>2500){lastLock=performance.now();showMsg('در قفله! هنوز '+FA(NEED_KEYS-keysGot)+' کلید لازم داری',2000,true);sfx.locked()}}
   distToMon=monsterUpdate(dt);
@@ -1285,17 +1387,22 @@ function updateScare(dt){
 }
 function toggleHide(){
   if(state!=='play')return;
-  if(isHidden){isHidden=false;hideVent=null;$('hidingFX').classList.remove('active');showMsg('از دریچه اومدی بیرون؛ آروم حرکت کن',2200);updateActionButtons();mpSendState(true);return;}
+  if(isHidden){
+    const vi=hideVent?ventSpots.indexOf(hideVent):-1;
+    if(vi>=0)startVentCooldown(vi);
+    isHidden=false;hideVent=null;hideStartedAt=0;$('hidingFX').classList.remove('active');
+    showMsg('از دریچه اومدی بیرون؛ کول‌داون این دریچه ۶۰ ثانیه است',2600);updateActionButtons();mpSendState(true);return;
+  }
   const v=nearbyVent();
   if(!v){showMsg('برای قایم شدن باید کنار یکی از دریچه‌ها بری',2200,true);return;}
-  if(ventOcc(ventSpots.indexOf(v))){showMsg('این دریچه پره! توی هر دریچه فقط یک نفر جا می‌شه',2400,true);return;}
-  isHidden=true;hideVent=v;crouching=false;sprint=false;flashOn=false;$('flBtn').classList.remove('on');
+  const vi=ventSpots.indexOf(v),left=(hideCooldownUntil[vi]||0)-performance.now();
+  if(left>0){showMsg('این دریچه هنوز کول‌داون داره: '+Math.ceil(left/1000)+' ثانیه',2200,true);return;}
+  if(ventOcc(vi)){showMsg('این دریچه پره! توی هر دریچه فقط یک نفر جا می‌شه',2400,true);return;}
+  isHidden=true;hideVent=v;hideStartedAt=performance.now();crouching=false;sprint=false;flashOn=false;$('flBtn').classList.remove('on');$('run').classList.remove('on');
   joyX=joyY=lookDX=lookDY=0;for(const k in keysDown)keysDown[k]=false;
   $('hidingFX').classList.add('active');
-  if(mon.state==='chase'){
-    const target=mon.lastKnown||[px|0,py|0];mon.state='search';mon.target=target;mon.path=bfsPath(mon.x|0,mon.y|0,target[0],target[1]);mon.lostT=0;
-  }
-  showMsg('وارد دریچه شدی؛ پژمان دیگه نمی‌تونه ببینتت',2600);updateActionButtons();mpSendState(true);
+  if(mon.state==='chase'){const target=mon.lastKnown||[px|0,py|0];mon.state='search';mon.target=target;mon.path=bfsPath(mon.x|0,mon.y|0,target[0],target[1]);mon.lostT=0;}
+  showMsg('وارد دریچه شدی؛ فقط ۱۵ ثانیه می‌تونی بمونی',2600);updateActionButtons();mpSendState(true);
 }
 function toggleCrouch(){if(state!=='play'||isHidden)return;crouching=!crouching;if(crouching)sprint=false;showMsg(crouching?'آروم خم شو؛ صدای قدم‌هات کمتره':'دوباره ایستادی',1500);updateActionButtons();}
 function useTaser(){
@@ -1359,6 +1466,7 @@ function spawnFor(id){
   return[bx,by];
 }
 const ventOcc=i=>i>=0&&MP.on&&MP.started&&Object.values(MP.pl).some(p=>p.id!==MP.id&&p.in&&p.st==='alive'&&p.hid&&p.hv===i);
+function startVentCooldown(i,broadcast=true){if(i<0)return;hideCooldownUntil[i]=performance.now()+60000;if(broadcast&&MP.on&&MP.started)mpSend({t:'vc',i,ms:60000});updateActionButtons();}
 
 /* ---------- شبکه: Supabase Realtime (Broadcast + Presence) با پروتکل Phoenix، بدون هیچ کتابخونه‌ای ---------- */
 const HOSTONLY=new Set(['m','caught','bo','go','lobby']);
@@ -1503,7 +1611,7 @@ function mpStartGame(){
 }
 
 function mpCleanup(){
-  const w=MP.ws;MP.ws=null;MP.on=false;MP.started=false;MP.over=false;MP.pl={};MP.list=[];MP.mnet=null;MP.pup=null;MP.pres={};MP.cmap={};if(MP.sch){try{MP.sb.removeChannel(MP.sch)}catch(e){}MP.sch=null;MP.sb=null}try{if(w&&w.readyState===1)w.send(JSON.stringify({topic:MP.topic,event:'phx_leave',payload:{},ref:'9'}))}catch(e){}
+  const w=MP.ws;MP.ws=null;MP.on=false;MP.started=false;MP.over=false;MP.pl={};MP.list=[];MP.mnet=null;MP.mbuf=[];MP.moff=null;MP.pup=null;MP.pres={};MP.cmap={};if(MP.sch){try{MP.sb.removeChannel(MP.sch)}catch(e){}MP.sch=null;MP.sb=null}try{if(w&&w.readyState===1)w.send(JSON.stringify({topic:MP.topic,event:'phx_leave',payload:{},ref:'9'}))}catch(e){}
   clearInterval(MP.pingIv);MP.pingIv=0;
   document.body.classList.remove('mpon','spec');$('spec').classList.remove('on');$('pingPill').style.display='none';
   try{w&&w.close()}catch(e){}
@@ -1558,7 +1666,7 @@ function mpPeers(list){
   }
 }
 function mpBecameHost(){
-  mon.pt=0;mon.path=[];MP.mnet=null;MP.nextBo=tAlive+60;
+  mon.pt=0;mon.path=[];MP.mnet=null;MP.mbuf=[];MP.moff=null;MP.nextBo=tAlive+60;
   feedAdd('تو الان میزبان هستی','good');
 }
 function mpBackToLobby(m){
@@ -1578,9 +1686,10 @@ function mpMsg(m){
     case'go':mpGo(m);break;
     case'lobby':mpBackToLobby(m);break;
     case's':mpOnState(m);break;
+    case'vc':{const i=m.i|0;if(i>=0&&i<ventSpots.length)startVentCooldown(i,false);break;}
     case'm':mpOnMon(m);break;
-    case'k':{if(!MP.started)break;const k=keysPos[m.i|0];if(k&&!k.got){k.got=true;keysGot=keysPos.filter(q=>q.got).length;updKeys();const p=MP.pl[m.from];feedAdd('🔑 '+(p?p.name:'یکی')+' یه کلید پیدا کرد ('+FA(keysGot)+'/'+FA(NEED_KEYS)+')','good')}break}
-    case'b':{if(!MP.started)break;const b=battPos[m.i|0];if(b)b.got=true;break}
+    case'k':{if(!MP.started)break;const k=keysPos[m.i|0];if(k&&!k.got){k.got=true;keysGot=keysPos.filter(q=>q.got).length;updKeys();const p=MP.pl[m.from];if(p){p.kt=0;p.bt=null}feedAdd('🔑 '+(p?p.name:'یکی')+' یه کلید پیدا کرد ('+FA(keysGot)+'/'+FA(NEED_KEYS)+')','good')}break}
+    case'b':{if(!MP.started)break;const b=battPos[m.i|0];if(b)b.got=true;const pb=MP.pl[m.from];if(pb){pb.bt=0;pb.kt=null}break}
     case'tg':{if(MP.started&&taserPickup)taserPickup.active=false;break}
     case'tp':{if(MP.started&&isFinite(+m.x)&&isFinite(+m.y))taserPickup={x:+m.x,y:+m.y,active:true};break}
     case'stun':{
@@ -1603,6 +1712,7 @@ function mpGo(m){
   if(MP.cmap[MP.cid]==null)return;MP.id=MP.cmap[MP.cid];MP.hostId=0;MP.host=(MP.id===0);
   for(const q of(m.players||[]))MP.pl[q.id]={id:q.id,name:q.name,in:true,st:'alive',x:0,y:0,a:0,pt:0,nx:0,ny:0,na:0,np:0,vx:0,vy:0,rt:now,hid:false,cr:false,run:false,mv:false,fl:true,hv:-1,seen:false};
   if(!MP.pl[MP.id])return;
+  MP.nPl=Math.min(3,Math.max(1,(m.players||[]).length));MP.mbuf=[];MP.moff=null;MP.mnet=null;MP.mD=150;
   MP.started=true;MP.over=false;MP.lastState='';MP.lastSend=0;MP.lastMon=0;MP.specId=-1;
   MP.nextBo=70+Math.random()*25;
   $('mp').classList.add('hidden');document.body.classList.remove('spec');$('spec').classList.remove('on');
@@ -1621,18 +1731,38 @@ function mpSendState(force){
   const key=x+','+y+','+a+','+p+','+f+','+hv;
   if(!force){const idle=key===MP.lastState;if(now-MP.lastSend<(idle?250:50))return}
   MP.lastSend=now;MP.lastState=key;
-  mpSend({t:'s',x,y,a,p,f,v:hv});
+  mpSend({t:'s',x,y,a,p,f,v:hv,T:Math.round(now)});
 }
 function forceUnhide(msg){
-  isHidden=false;hideVent=null;$('hidingFX').classList.remove('active');showMsg(msg,2600,true);updateActionButtons();mpSendState(true);
+  const vi=hideVent?ventSpots.indexOf(hideVent):-1;if(vi>=0)startVentCooldown(vi);
+  isHidden=false;hideVent=null;hideStartedAt=0;$('hidingFX').classList.remove('active');showMsg(msg,2600,true);updateActionButtons();mpSendState(true);
+}
+/* درون‌یابی با زمان‌نگاری: هر بسته زمان فرستنده رو داره؛ ما ~۱۰۰ms عقب‌تر نمایش می‌دیم تا حرکت دیگران نرم باشه و نپره */
+const SS={x:0,y:0,a:0,p:0};
+const angW=d=>Math.atan2(Math.sin(d),Math.cos(d));
+function snapSample(buf,rt,o,canExtra){
+  const n=buf.length,L=buf[n-1];
+  if(rt>=L.t){const ex=canExtra?Math.min(rt-L.t,120)/1000:0;o.x=L.x+L.vx*ex;o.y=L.y+L.vy*ex;o.a=L.a;o.p=L.p;return 2}
+  const F=buf[0];
+  if(rt<=F.t){o.x=F.x;o.y=F.y;o.a=F.a;o.p=F.p;return 1}
+  let i=n-2;while(i>0&&buf[i].t>rt)i--;
+  const A=buf[i],B=buf[i+1],f=(rt-A.t)/((B.t-A.t)||1);
+  if(Math.hypot(B.x-A.x,B.y-A.y)>3){const q=f<.5?A:B;o.x=q.x;o.y=q.y}else{o.x=A.x+(B.x-A.x)*f;o.y=A.y+(B.y-A.y)*f}
+  o.a=A.a+angW(B.a-A.a)*f;o.p=A.p+(B.p-A.p)*f;return 0;
 }
 function mpOnState(m){
   const p=MP.pl[m.from];if(!p||!p.in||!MP.started)return;
   const x=+m.x,y=+m.y;if(!isFinite(x)||!isFinite(y)||x<0||y<0||x>MW||y>MH)return;
-  const now=performance.now(),dt=(now-p.rt)/1000;
-  if(p.seen&&dt>.008&&dt<.4){let vx=(x-p.nx)/dt,vy=(y-p.ny)/dt;const sp=Math.hypot(vx,vy);if(sp>4.5){vx*=4.5/sp;vy*=4.5/sp}p.vx=vx;p.vy=vy}else{p.vx=p.vy=0}
+  const now=performance.now();let T=+m.T;if(!isFinite(T))T=now;
+  const buf=p.buf||(p.buf=[]),pv=buf[buf.length-1];
+  if(pv&&T<=pv.t)return;                                  // بسته‌ی قدیمی/تکراری
+  const o=now-T;if(p.off==null||o<p.off)p.off=o;else p.off+=(o-p.off)*.003;
+  const f=m.f|0,mv=!!(f&8);let vx=0,vy=0;
+  if(pv&&mv){const dt=(T-pv.t)/1000;if(dt>.01&&dt<.5){vx=(x-pv.x)/dt;vy=(y-pv.y)/dt;const sp=Math.hypot(vx,vy);if(sp>4.5){vx*=4.5/sp;vy*=4.5/sp}}}
+  buf.push({t:T,x,y,a:+m.a||0,p:Math.max(-1.3,Math.min(1.3,+m.p||0)),vx,vy});
+  while(buf.length>40)buf.shift();
   p.nx=x;p.ny=y;p.na=+m.a||0;p.np=Math.max(-1.3,Math.min(1.3,+m.p||0));p.rt=now;
-  const f=m.f|0;p.hid=!!(f&1);p.cr=!!(f&2);p.run=!!(f&4);p.mv=!!(f&8);p.fl=!!(f&16);p.hv=(m.v==null)?-1:(m.v|0);
+  p.hid=!!(f&1);p.cr=!!(f&2);p.run=!!(f&4);p.mv=mv;p.fl=!!(f&16);p.hv=(m.v==null)?-1:(m.v|0);if(p.hv>=0)p.lhv=p.hv;
   if(!p.seen){p.seen=true;p.x=x;p.y=y;p.a=p.na;p.pt=p.np}
   /* اگه دو نفر دقیقاً هم‌زمان رفتن توی یک دریچه، اونی که شماره‌اش بزرگ‌تره بیرون میاد */
   if(p.hid&&isHidden&&hideVent&&ventSpots.indexOf(hideVent)===p.hv&&MP.id>p.id)forceUnhide('یکی چند لحظه زودتر از تو رفت توی این دریچه!');
@@ -1640,9 +1770,14 @@ function mpOnState(m){
 function mpOnMon(m){
   if(MP.host||!MP.started||!mon)return;
   const x=+m.x,y=+m.y;if(!isFinite(x)||!isFinite(y))return;
-  const now=performance.now(),n=MP.mnet;let vx=0,vy=0;
-  if(n){const dt=(now-n.t)/1000;if(dt>.01&&dt<.4){vx=(x-n.x)/dt;vy=(y-n.y)/dt;const s2=Math.hypot(vx,vy);if(s2>6){vx*=6/s2;vy*=6/s2}}}
-  MP.mnet={x,y,vx,vy,t:now,f:+m.f||0};
+  const now=performance.now();let T=+m.T;if(!isFinite(T))T=now;
+  const b=MP.mbuf||(MP.mbuf=[]),pv=b[b.length-1];
+  if(pv&&T<=pv.t)return;
+  const o=now-T;if(MP.moff==null||o<MP.moff)MP.moff=o;else MP.moff+=(o-MP.moff)*.003;
+  let vx=0,vy=0;
+  if(pv){const dt=(T-pv.t)/1000;if(dt>.01&&dt<.5){vx=(x-pv.x)/dt;vy=(y-pv.y)/dt;const s2=Math.hypot(vx,vy);if(s2>6){vx*=6/s2;vy*=6/s2}}}
+  b.push({t:T,x,y,a:+m.f||0,p:0,vx,vy});while(b.length>40)b.shift();
+  MP.mnet={f:+m.f||0};
   mon.state=['patrol','chase','search','stunned'][m.s|0]||'patrol';mon.speed=+m.sp||0;mon.stunT=+m.u||0;
 }
 function blackoutOnly(dt){
@@ -1653,17 +1788,21 @@ function mpTickPre(dt){
   if(!MP.on||!MP.started)return;
   const now=performance.now();
   if(!MP.over){tAlive+=dt;$('tm').textContent=fmt(tAlive)}
+  mpAnimStep(dt);
   for(const id in MP.pl){
-    if(+id===MP.id)continue;const p=MP.pl[id];if(!p.in||!p.seen)continue;
-    const age=Math.min(.1,(now-p.rt)/1000),tx=p.nx+p.vx*age,ty=p.ny+p.vy*age,k=Math.min(1,dt*20);
-    if(Math.hypot(tx-p.x,ty-p.y)>3){p.x=tx;p.y=ty}else{p.x+=(tx-p.x)*k;p.y+=(ty-p.y)*k}
-    p.a+=Math.atan2(Math.sin(p.na-p.a),Math.cos(p.na-p.a))*Math.min(1,dt*25);p.pt+=(p.np-p.pt)*k;
+    if(+id===MP.id)continue;const p=MP.pl[id];if(!p.in||!p.seen||!p.buf||!p.buf.length)continue;
+    const D=p.D||(p.D=100),rt=now-(p.off||0)-D,last=p.buf[p.buf.length-1];
+    const r=snapSample(p.buf,rt,SS,p.mv);
+    if(r===2&&p.mv&&rt-last.t>15)p.D=Math.min(260,D+dt*90);else p.D=Math.max(90,D-dt*4);   // اگه بسته دیر رسید، تأخیر نمایش خودکار بیشتر می‌شه
+    p.x=SS.x;p.y=SS.y;p.a=SS.a;p.pt=Math.max(-1.3,Math.min(1.3,SS.p));
+    const cut=rt-400;while(p.buf.length>2&&p.buf[1].t<cut)p.buf.shift();
   }
-  if(!MP.host&&MP.mnet&&mon){
-    const n=MP.mnet,age=Math.min(.12,(now-n.t)/1000),tx=n.x+n.vx*age,ty=n.y+n.vy*age,k=Math.min(1,dt*18);
-    if(Math.hypot(tx-mon.x,ty-mon.y)>4){mon.x=tx;mon.y=ty}else{mon.x+=(tx-mon.x)*k;mon.y+=(ty-mon.y)*k}
-    mon.face+=Math.atan2(Math.sin(n.f-mon.face),Math.cos(n.f-mon.face))*Math.min(1,dt*10);
-    mon.walk+=dt*mon.speed*3.4;
+  if(!MP.host&&MP.mbuf&&MP.mbuf.length&&mon){
+    const D=MP.mD||(MP.mD=150),rt=now-(MP.moff||0)-D,last=MP.mbuf[MP.mbuf.length-1];
+    const r=snapSample(MP.mbuf,rt,SS,mon.speed>0);
+    if(r===2&&mon.speed>0&&rt-last.t>15)MP.mD=Math.min(320,D+dt*90);else MP.mD=Math.max(140,D-dt*4);
+    mon.x=SS.x;mon.y=SS.y;mon.face=SS.a;mon.walk+=dt*mon.speed*3.4;
+    const cut=rt-500;while(MP.mbuf.length>2&&MP.mbuf[1].t<cut)MP.mbuf.shift();
   }
   if(state!=='play'&&state!=='pause')blackoutOnly(dt);
 }
@@ -1675,7 +1814,7 @@ function mpTickPost(dt){
     if(tAlive>MP.nextBo){MP.nextBo=tAlive+90+Math.random()*40;mpSend({t:'bo'});mpBlackout()}
     if(now-MP.lastMon>=80){
       MP.lastMon=now;
-      mpSend({t:'m',x:r2(mon.x),y:r2(mon.y),f:r2(mon.face),s:{patrol:0,chase:1,search:2,stunned:3}[mon.state]||0,sp:Math.round(mon.speed*10)/10,u:Math.round(mon.stunT*10)/10});
+      mpSend({t:'m',x:r2(mon.x),y:r2(mon.y),f:r2(mon.face),s:{patrol:0,chase:1,search:2,stunned:3}[mon.state]||0,sp:Math.round(mon.speed*10)/10,u:Math.round(mon.stunT*10)/10,T:Math.round(now)});
     }
   }
   mpSendState(false);
@@ -1737,29 +1876,144 @@ function mpResults(){
 }
 
 /* ---------- نمایش بازیکن‌های دیگه ---------- */
+/* ---------- ابزار اسکلت: استخوان بین دو نقطه ---------- */
+const sm=t=>t<=0?0:t>=1?1:t*t*(3-2*t),lerp=(a,b,t)=>a+(b-a)*t,cl=(v,a,b)=>Math.max(a,Math.min(b,v));
+const apr=(cur,tg,rate,dt)=>cur+Math.max(-rate*dt,Math.min(rate*dt,tg-cur));
+function boneM(a,b){
+  const dx=b[0]-a[0],dy=b[1]-a[1],dz=b[2]-a[2],L=Math.hypot(dx,dy,dz)||1e-4,ux=dx/L,uy=dy/L,uz=dz/L;
+  let hx=0,hy=0,hz=1;if(Math.abs(uz)>.85){hx=1;hz=0}
+  let xx=hy*uz-hz*uy,xy=hz*ux-hx*uz,xz=hx*uy-hy*ux;const xl=Math.hypot(xx,xy,xz)||1;xx/=xl;xy/=xl;xz/=xl;
+  const zx=uy*xz-uz*xy,zy=uz*xx-ux*xz,zz=ux*xy-uy*xx;
+  const m=M4.id();m[0]=xx;m[1]=xy;m[2]=xz;m[4]=ux;m[5]=uy;m[6]=uz;m[8]=zx;m[9]=zy;m[10]=zz;
+  m[12]=(a[0]+b[0])/2;m[13]=(a[1]+b[1])/2;m[14]=(a[2]+b[2])/2;return[m,L];
+}
+function bone(base,a,b,w,d,mesh,tint,emis,rim){const[m,L]=boneM(a,b);part(base,m,mesh,[w,L,d],tint,emis||[0,0,0],rim||0)}
+/* انیمیشن‌های بازیکن‌های دیگه (راه رفتن، دویدن، خم شدن، قایم شدن، چراغ‌قوه، باتری) — هر دو طرف یک کد رو می‌بینن */
+function mpAnimStep(dt){
+  for(const id in MP.pl){
+    const p=MP.pl[id];if(+id===MP.id||!p.in)continue;
+    p.wA=apr(p.wA||0,(p.mv&&!p.hid)?1:0,5,dt);
+    p.ph=(p.ph||0)+(p.mv?dt*(p.run?12:(p.cr?5.5:8.5)):0);
+    p.rA=apr(p.rA||0,(p.run&&p.mv)?1:0,4,dt);
+    p.cA=apr(p.cA||0,p.cr?1:0,5,dt);
+    p.hA=apr(p.hA||0,p.hid?1:0,2.8,dt);
+    if(p.fA==null)p.fA=p.fl?1:0;
+    p.fA=apr(p.fA,p.fl?1:0,3.2,dt);
+    if(p.bt!=null){p.bt+=dt;if(p.bt>1.5)p.bt=null}
+    if(p.kt!=null){p.kt+=dt;if(p.kt>1.3)p.kt=null}
+  }
+}
+function armP(S,al,el,zm){const E=[S[0]+.15*Math.sin(al),S[1]-.15*Math.cos(al),S[2]*(1-.5*zm)],b=al+el,W=[E[0]+.14*Math.sin(b),E[1]-.14*Math.cos(b),S[2]*(1-.95*zm)];return[E,W,b]}
 function drawPlayers(tm){
   if(!MP.on||!MP.started)return;
+  const PN=[.1,.11,.14],PN2=[.08,.09,.11],BT=[.06,.055,.05],SK=[.95,.8,.65],GL=[.09,.09,.1],PK=[.14,.14,.15],BL=[.06,.06,.07],TC=[.14,.14,.17],NO=[0,0,0];
   for(const id in MP.pl){
-    const p=MP.pl[id];if(+id===MP.id||!p.in||p.st!=='alive'||p.hid||!p.seen)continue;
-    const d=Math.hypot(p.x-px,p.y-py);if(d>26||d<.3)continue;
-    const c=PCOL[id%3],h=p.cr?.78:1,sw=p.mv?Math.sin(tm*(p.run?14:9)+id*2)*.07:0;
-    const base=cm(M4.T(p.x,p.cr?.0:0,p.y),M4.RY(-p.a)),em=[c[0]*.22,c[1]*.22,c[2]*.22],dk=[c[0]*.55,c[1]*.55,c[2]*.55];
-    part(base,M4.T(sw,.15*h,.07),'box',[.1,.3*h,.12],dk,em,.3);
-    part(base,M4.T(-sw,.15*h,-.07),'box',[.1,.3*h,.12],dk,em,.3);
-    part(base,M4.T(0,.47*h,0),'box',[.2,.34*h,.34],c,em,.3);
-    part(base,M4.T(0,.74*h,0),'sphere',[.2,.2,.2],[.95,.8,.65],[.1,.08,.06],.2);
-    part(base,M4.T(.1,.75*h,0),'box',[.05,.05,.12],[.1,.08,.06],[0,0,0],0);
-    part(base,M4.T(.16,.5*h,.2),'box',[.14,.06,.06],[.3,.3,.3],p.fl?[1.2,1.1,.7]:[.05,.05,.05],0);
+    const p=MP.pl[id];if(+id===MP.id||!p.in||p.st!=='alive'||!p.seen)continue;
+    const hA=p.hA||0;if(hA>.985)continue;
+    let X=p.x,Z=p.y;const vi=p.hv>=0?p.hv:p.lhv,vs=(vi!=null&&vi>=0)?ventSpots[vi]:null,eh=sm(hA);
+    if(vs&&hA>0){X=lerp(X,vs.x,eh);Z=lerp(Z,vs.y,eh)}
+    if(Math.hypot(X-px,Z-py)>26||Math.hypot(X-px,Z-py)<.3)continue;
+    const c=PCOL[id%3],JK=[c[0]*.45+.05,c[1]*.45+.05,c[2]*.45+.05],AC=[c[0],c[1],c[2]],ACE=[c[0]*.8,c[1]*.8,c[2]*.8];
+    const wA=p.wA||0,rA=p.rA||0,ph=p.ph||0,fA=p.fA==null?(p.fl?1:0):p.fA,bt=p.bt!=null?p.bt:-1,u=bt>=0?bt/1.5:-1;
+    const cA=Math.max(p.cA||0,hA*.9);
+    const uk=p.kt!=null?p.kt/1.3:-1;
+    const reach=u>=0?sm(u/.22)*(1-sm((u-.22)/.3)):(uk>=0?sm(uk/.2)*(1-sm((uk-.2)/.25)):0);
+    const hipY=.37-.15*cA+Math.sin(tm*1.7+id*2)*.004;
+    const lean=rA*.3+cA*.5+reach*.5,pt=cl(p.pt||0,-1,1);
+    const base=cm(M4.T(X,-eh*.95,Z),M4.RY(-p.a));
+    /* پاها */
+    for(const s of [-1,1]){
+      const phs=ph+(s>0?Math.PI:0);
+      const th=Math.sin(phs)*(.55+.3*rA)*wA*(1-cA*.6)+cA*1.15;
+      const knW=-(Math.max(0,Math.cos(phs))*(.8+.5*rA)*wA+.06);
+      const kn=knW*(1-cA)+(-1.75)*cA;
+      const H=[0,hipY,s*.075],K=[H[0]+.18*Math.sin(th),H[1]-.18*Math.cos(th),H[2]],A=[K[0]+.18*Math.sin(th+kn),K[1]-.18*Math.cos(th+kn),H[2]];
+      bone(base,H,K,.09,.095,'box',PN);bone(base,K,A,.075,.08,'box',PN2);
+      part(base,M4.T(A[0]+.035,Math.max(.02,A[1]+.015),A[2]),'box',[.15,.065,.1],BT);
+      part(base,M4.T(A[0]+.035,Math.max(.02,A[1]+.015)-.028,A[2]),'box',[.155,.012,.104],AC,ACE,.3);   // کف رنگی کفش
+    }
+    /* تنه */
+    const TB=cm(base,cm(M4.T(0,hipY,0),M4.RZ(-lean)));
+    part(TB,M4.T(0,.02,0),'box',[.17,.08,.28],PN);
+    part(TB,M4.T(0,.07,0),'box',[.19,.035,.3],BL);
+    part(TB,M4.T(.098,.07,0),'box',[.012,.03,.05],[.9,.8,.5],[.5,.4,.1],.3);
+    part(TB,M4.T(0,.2,0),'box',[.2,.25,.31],JK,[JK[0]*.12,JK[1]*.12,JK[2]*.12],.35);
+    part(TB,M4.T(.106,.2,0),'box',[.02,.17,.23],PK);
+    for(const z of [-.07,.07])part(TB,M4.T(.118,.2,z),'box',[.012,.17,.03],ACE,[ACE[0]*.9,ACE[1]*.9,ACE[2]*.9],.5);
+    for(const z of [-.18,.18])part(TB,M4.T(0,.32,z),'sphere',[.12,.1,.12],JK,[JK[0]*.1,JK[1]*.1,JK[2]*.1],.3);
+    part(TB,M4.T(-.15,.2,0),'box',[.11,.27,.26],PK);
+    part(TB,M4.T(-.15,.31,0),'box',[.1,.07,.27],[.3,.1,.08]);
+    part(TB,M4.T(-.211,.2,0),'box',[.012,.045,.045],AC,[c[0]*(.4+.7*Math.abs(Math.sin(tm*3+id))),c[1]*(.4+.7*Math.abs(Math.sin(tm*3+id))),c[2]*(.4+.7*Math.abs(Math.sin(tm*3+id)))],.4);   // چراغ چشمک‌زن پشت کوله
+    /* سر */
+    const HB=cm(TB,cm(M4.T(0,.36,0),M4.RZ(cl(pt,-.8,.8)*.8+lean*.9)));
+    part(HB,M4.T(0,.0,0),'box',[.13,.08,.19],JK);                                    // یقه
+    part(HB,M4.T(0,.12,0),'sphere',[.2,.21,.19],SK,[.06,.05,.04],.2);
+    part(HB,M4.T(-.01,.17,0),'sphere',[.235,.17,.225],JK,[JK[0]*.1,JK[1]*.1,JK[2]*.1],.3);   // کلاه
+    part(HB,M4.T(.105,.205,0),'box',[.09,.02,.2],JK);
+    part(HB,M4.T(0,.135,0),'box',[.208,.045,.208],BL);                                // بند عینک
+    part(HB,M4.T(.1,.135,0),'box',[.03,.055,.17],[.08,.08,.1],[c[0]*.9,c[1]*.9,c[2]*.9],.45);   // شیشه‌ی عینک
+    /* بازوها */
+    const sw=Math.sin(ph)*.5*wA*(1+.5*rA),eW=.18+.8*rA*wA+.25*cA;
+    const aH=1.0+pt*.5+lean*.8,bH=Math.PI/2+pt+lean,eH=bH-aH;
+    const fe=bt>=0?Math.max(fA,sm(u/.25)):fA;
+    let aR,eR;
+    if(fe<.35){const k=sm(fe/.35);aR=lerp(sw,-.25,k);eR=lerp(eW,.25,k)}else{const k=sm((fe-.35)/.65);aR=lerp(-.25,aH,k);eR=lerp(.25,eH,k)}
+    let aL=-sw,eL=eW;
+    const meet=u>=0?sm((u-.2)/.2)*(1-sm((u-.82)/.18)):0;
+    if(u>=0){
+      if(u<.22){const k=sm(u/.22);aL=lerp(-sw,.85,k);eL=lerp(eW,.35,k)}
+      else if(u<.5){const k=sm((u-.22)/.28);aL=lerp(.85,1.05,k);eL=lerp(.35,1.2,k)}
+      else if(u<.82){aL=1.05+Math.sin(u*60)*.04;eL=1.2}
+      else{const k=sm((u-.82)/.18);aL=lerp(1.05,-sw,k);eL=lerp(1.2,eW,k)}
+    }
+    if(u<0&&uk>=0){
+      if(uk<.2){const k=sm(uk/.2);aL=lerp(-sw,.8,k);eL=lerp(eW,.3,k)}
+      else if(uk<.5){const k=sm((uk-.2)/.3);aL=lerp(.8,1.15,k);eL=lerp(.3,1.35,k)}
+      else if(uk<.78){aL=1.15;eL=1.35}
+      else{const k=sm((uk-.78)/.22);aL=lerp(1.15,-.2,k);eL=lerp(1.35,.3,k)}
+    }
+    const mk=uk>=0?sm((uk-.2)/.2)*(1-sm((uk-.75)/.15))*.6:0;
+    const SL=[0,.31,-.18],SR=[0,.31,.18];
+    const [EL,WL]=armP(SL,aL,eL,Math.max(meet,mk));
+    const [ER,WR,bR]=armP(SR,aR,eR,meet*.85);
+    bone(TB,SL,EL,.075,.08,'box',JK);bone(TB,EL,WL,.065,.07,'box',JK);part(TB,M4.T(WL[0],WL[1],WL[2]),'box',[.075,.075,.075],GL);
+    bone(TB,SR,ER,.075,.08,'box',JK);bone(TB,ER,WR,.065,.07,'box',JK);part(TB,M4.T(WR[0],WR[1],WR[2]),'box',[.075,.075,.075],GL);
+    /* چراغ‌قوه: از جیب درمیاد، تو دست می‌گیره، برمی‌گرده تو جیب */
+    const dr=[Math.sin(bR),-Math.cos(bR),0];
+    if(fe>.34||bt>=0){
+      const on=p.fl?1:0,P0=[WR[0]-dr[0]*.04,WR[1]-dr[1]*.04,WR[2]],P1=[WR[0]+dr[0]*.15,WR[1]+dr[1]*.15,WR[2]],P2=[WR[0]+dr[0]*.2,WR[1]+dr[1]*.2,WR[2]],P3=[WR[0]+dr[0]*.215,WR[1]+dr[1]*.215,WR[2]];
+      bone(TB,P0,P1,.055,.055,'cyl',TC,[.02,.02,.03],.3);
+      bone(TB,P1,P2,.08,.08,'cyl',[.35,.35,.38],[.05,.05,.06],.3);
+      bone(TB,P2,P3,.07,.07,'sphere',[1,.95,.7],[on*1.9+.12,on*1.7+.12,on*1.0+.1],0);
+    }else{
+      part(TB,M4.T(0,.03,.2),'box',[.04,.09,.05],TC);
+    }
+    /* کلید: از زمین برمی‌داره، جلوی صورتش می‌چرخونه، می‌ذاره تو جیب */
+    if(u<0&&uk>=.12&&uk<.97){
+      const sc=uk>.86?1-sm((uk-.86)/.11):1,sp=tm*0+uk*16,KM=cm(TB,cm(M4.T(WL[0]+.05,WL[1]+.05,WL[2]),M4.RY(sp)));
+      const G1=[1,.78,.2],E1=[.9,.6,.08];
+      part(KM,cm(M4.T(-.05*sc,0,0),M4.RX(Math.PI/2)),'torus',[.1*sc,.1*sc,.1*sc],G1,E1,.5);
+      part(KM,M4.T(.04*sc,0,0),'box',[.13*sc,.02*sc,.02*sc],G1,E1,.5);
+      part(KM,M4.T(.085*sc,-.02*sc,0),'box',[.02*sc,.04*sc,.02*sc],G1,E1,.5);
+      part(KM,M4.T(.055*sc,-.018*sc,0),'box',[.02*sc,.03*sc,.02*sc],G1,E1,.5);
+    }
+    /* باتری: برمی‌داره، می‌ره توی چراغ‌قوه */
+    if(u>=.12&&u<.78){
+      const tail=[WR[0]-dr[0]*.03,WR[1]-dr[1]*.03,WR[2]],s2=sm((u-.5)/.28);
+      const bp=[lerp(WL[0],tail[0],s2),lerp(WL[1],tail[1],s2),lerp(WL[2],tail[2],s2)],k=1-.9*s2;
+      part(TB,cm(M4.T(bp[0],bp[1],bp[2]),M4.RZ(.7)),'cyl',[.05*k,.11*k,.05*k],[.25,.9,.35],[0,.7,.15],.5);
+      if(u>.62){part(TB,M4.T(tail[0],tail[1],tail[2]),'sphere',[.12,.12,.12],[.3,1,.5],[.5,1.8,.8],0)}
+    }
   }
 }
 function mpGlow(pushP){
   if(!MP.on||!MP.started)return;
   for(const id in MP.pl){
-    const p=MP.pl[id];if(+id===MP.id||!p.in||p.st!=='alive'||p.hid||!p.seen)continue;
+    const p=MP.pl[id];if(+id===MP.id||!p.in||p.st!=='alive'||(p.hA||0)>.6||!p.seen)continue;
     if(Math.hypot(p.x-px,p.y-py)>26)continue;
     const c=PCOL[id%3],h=p.cr?.78:1;
     pushP(p.x,.55*h,p.y,c[0],c[1],c[2],.3,.5);
-    if(p.fl)pushP(p.x+Math.cos(p.a)*.2,.5*h,p.y+Math.sin(p.a)*.2,1,.93,.7,.8,.45);
+    if(p.fl&&(p.fA==null||p.fA>.8)){const ca=Math.cos(p.a),sa=Math.sin(p.a),yy=p.cr?.42:.6;pushP(p.x+ca*.3-sa*.15,yy,p.y+sa*.3+ca*.15,1,.93,.7,.8,.45)}
   }
 }
 function mpTags(){
@@ -1856,10 +2110,11 @@ document.addEventListener('touchstart',tStart,{passive:false});
 document.addEventListener('touchmove',tMove,{passive:false});
 document.addEventListener('touchend',tEnd);document.addEventListener('touchcancel',tEnd);
 const rb=$('run');
-rb.addEventListener('touchstart',e=>{e.preventDefault();e.stopPropagation();sprint=true;rb.classList.add('on');const t=e.changedTouches[0];if(t)runLook={id:t.identifier,x:t.clientX,y:t.clientY}},{passive:false});
-const rbEnd=()=>{sprint=false;runLook=null;rb.classList.remove('on')};
+const toggleSprint=()=>{if(state!=='play'||isHidden)return;sprint=!sprint;rb.classList.toggle('on',sprint);showMsg(sprint?'🏃 دویدن روشن شد؛ دوباره بزن خاموش می‌شه':'دویدن خاموش شد',1100)};
+rb.addEventListener('touchstart',e=>{e.preventDefault();e.stopPropagation();toggleSprint()},{passive:false});
+const rbEnd=()=>{runLook=null};
 rb.addEventListener('touchend',rbEnd);rb.addEventListener('touchcancel',rbEnd);
-rb.addEventListener('mousedown',()=>{sprint=true;rb.classList.add('on')});addEventListener('mouseup',rbEnd);
+rb.addEventListener('click',e=>{if(!IS_MOB){e.stopPropagation();toggleSprint()}});
 const fb=$('flBtn');fb.addEventListener('touchstart',e=>{e.preventDefault();e.stopPropagation();if(state==='play')toggleFlash()},{passive:false});fb.addEventListener('click',()=>{if(state==='play'&&!IS_MOB)toggleFlash()});
 const hb=$('hideBtn');hb.addEventListener('touchstart',e=>{e.preventDefault();e.stopPropagation();toggleHide()},{passive:false});hb.addEventListener('click',()=>{if(!IS_MOB)toggleHide()});
 const tb=$('taserBtn');tb.addEventListener('touchstart',e=>{e.preventDefault();e.stopPropagation();useTaser()},{passive:false});tb.addEventListener('click',()=>{if(!IS_MOB)useTaser()});
@@ -1881,7 +2136,7 @@ function begin(seed){
   const clip=$('scareAudio');if(clip){clip.pause();try{clip.currentTime=0}catch(e){}}
   if(master)master.gain.value=muted?0:.9;
   $('foamFX').classList.remove('active');$('scareCaption').classList.remove('active');$('pejmanDrips').classList.remove('active');$('escapeFX').classList.remove('active');$('hidingFX').classList.remove('active');$('zapFX').classList.remove('active');
-  reset(seed);state='play';$('start').classList.add('hidden');$('over').classList.add('hidden');$('pz').classList.add('hidden');
+  NEED_KEYS=(MP.on&&MP.started)?keysForN(MP.nPl||1):4;reset(seed);state='play';$('start').classList.add('hidden');$('over').classList.add('hidden');$('pz').classList.add('hidden');
   $('over').style.background='';$('ot').style.color='';$('again').textContent='دوباره تلاش کن';
   setTimeout(()=>{joyHome()},400);
   arcadeNotify('start');
