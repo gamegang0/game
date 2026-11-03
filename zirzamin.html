@@ -259,7 +259,7 @@ body.mpon #pauseBtn{display:none!important}
       <div><label>کد اتاق</label><input id="mpRoom" maxlength="6" autocomplete="off" autocapitalize="characters" spellcheck="false" dir="ltr" placeholder="ABCD"></div>
     </div>
     <div class="mprow"><button class="btn" id="mpCreate">➕ ساخت اتاق</button><button class="btn" id="mpJoin">🚪 ورود با کد</button></div>
-    <div><label>آدرس سرور</label><input id="mpUrl" dir="ltr" autocomplete="off" spellcheck="false" placeholder="ws://..."></div>
+    <div id="sbBox"><label>Supabase Project URL</label><input id="sbUrl" dir="ltr" autocomplete="off" spellcheck="false" placeholder="https://xxxx.supabase.co"><label>anon public key</label><input id="sbKey" dir="ltr" autocomplete="off" spellcheck="false" placeholder="eyJ..."></div>
   </div>
   <div id="mpLobby" class="mpbox hidden">
     <div>کد اتاق (بزن کپی بشه): <div id="mpCode"></div></div>
@@ -285,8 +285,9 @@ const $=id=>document.getElementById(id);
 const FA=n=>String(n).replace(/\d/g,d=>'۰۱۲۳۴۵۶۷۸۹'[d]);
 const rnd=n=>Math.floor(Math.random()*n);
 function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
-const MP_SERVER='';   // اگه سرور ثابت داری آدرسش رو اینجا بذار، مثلا 'wss://game.example.com'
-const MP={on:false,ws:null,id:-1,hostId:-1,host:false,room:'',name:'',pl:{},list:[],started:false,over:false,ping:0,lastSend:0,lastMon:0,lastState:'',mnet:null,specId:-1,nextBo:80,pup:null,pingIv:0};
+const SB_URL='https://sabxzrwdqhxfdzxonwmw.supabase.co';   // آدرس پروژه‌ی Supabase مثلا 'https://abcd.supabase.co'
+const SB_KEY='sb_publishable_vpVUe8xUxnxSgY1fiv3p9A_eQBWY3Hp';   // anon public key (عمومیه، گذاشتنش اینجا مشکلی نداره)
+const MP={on:false,ws:null,id:-1,hostId:-1,host:false,room:'',name:'',pl:{},list:[],started:false,over:false,ping:0,lastSend:0,lastMon:0,lastState:'',mnet:null,specId:-1,nextBo:80,pup:null,pingIv:0,cid:'',pres:{},cmap:{},syn:false,hb:0,hbT:{},ref:0,mode:'',wantRoom:'',myName:''};
 const PCOL=[[.25,.62,1],[1,.55,.2],[.4,1,.55]],PCSS=['#7ec0ff','#ffb070','#8dffb0'];
 let curMv=false,curRun=false,runLook=null;
 let arcadeStarted=false;
@@ -1345,12 +1346,6 @@ function monsterAnim(dt){if(!mon)return;mon.walk+=dt*2}
    ===================================================================== */
 const MPN=n=>[...String(n==null?'':n).replace(/[\u0000-\u001F\u007F-\u009F\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF<>]/g,'').replace(/\s+/g,' ').trim()].slice(0,16).join('');
 const r2=v=>Math.round(v*100)/100;
-function mpSend(o){const w=MP.ws;if(MP.on&&w&&w.readyState===1){try{w.send(JSON.stringify(o))}catch(e){}}}
-function mpDefaultUrl(){
-  if(MP_SERVER)return MP_SERVER;
-  if(location.protocol==='http:'||location.protocol==='https:')return(location.protocol==='https:'?'wss://':'ws://')+location.host;
-  return'ws://localhost:8080';
-}
 function mpStatus(t,bad){const e=$('mpStatus');e.textContent=t||'';e.style.color=bad?'#ff8a7a':'#cdbf86'}
 function feedAdd(text,cls){
   const f=$('feed'),d=document.createElement('div');d.textContent=text;if(cls)d.className=cls;f.appendChild(d);
@@ -1365,25 +1360,107 @@ function spawnFor(id){
 }
 const ventOcc=i=>i>=0&&MP.on&&MP.started&&Object.values(MP.pl).some(p=>p.id!==MP.id&&p.in&&p.st==='alive'&&p.hid&&p.hv===i);
 
-/* ---------- اتصال ---------- */
+/* ---------- شبکه: Supabase Realtime (Broadcast + Presence) با پروتکل Phoenix، بدون هیچ کتابخونه‌ای ---------- */
+const HOSTONLY=new Set(['m','caught','bo','go','lobby']);
+function mpSend(o){
+  const w=MP.ws;if(!MP.on||!w||w.readyState!==1)return;
+  o.c=MP.cid;
+  try{w.send(JSON.stringify({topic:MP.topic,event:'broadcast',payload:{type:'broadcast',event:'g',payload:o},ref:String(++MP.ref)}))}catch(e){}
+}
+function mpTrack(extra){
+  const me=MP.pres[MP.cid]||{name:MP.myName,t:Date.now(),st:0};Object.assign(me,extra||{});MP.pres[MP.cid]=me;
+  const w=MP.ws;if(w&&w.readyState===1)w.send(JSON.stringify({topic:MP.topic,event:'presence',payload:{type:'presence',event:'track',payload:{name:me.name,t:me.t,st:me.st}},ref:String(++MP.ref)}));
+}
+const mpSorted=()=>Object.keys(MP.pres).map(c=>({c,name:MP.pres[c].name,t:MP.pres[c].t,st:MP.pres[c].st})).sort((a,b)=>a.t-b.t||(a.c<b.c?-1:1));
+function mpSlotOf(c){if(MP.started)return MP.cmap[c]==null?-1:MP.cmap[c];return mpSorted().findIndex(e=>e.c===c)}
 function mpConnect(create){
   const name=MPN($('mpName').value);
   if(!name){mpStatus('اسمت رو بنویس',true);$('mpName').focus();return}
-  const room=String($('mpRoom').value||'').toUpperCase().replace(/[^A-Z0-9]/g,'');
+  const room=String($('mpRoom').value||'').toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,6);
   if(!create&&room.length<4){mpStatus('کد اتاق رو بنویس',true);return}
-  const url=$('mpUrl').value.trim()||mpDefaultUrl();
-  lsSet('zir_name',name);lsSet('zir_srv',url);
+  let url=($('sbUrl').value||SB_URL).trim().replace(/\/+$/,''),key=($('sbKey').value||SB_KEY).trim();
+  if(!url||!key){mpStatus('آدرس پروژه‌ی Supabase و کلید anon رو وارد کن',true);return}
+  if(!/^https?:\/\//.test(url))url='https://'+url;
+  lsSet('zir_name',name);lsSet('zir_sbu',url);lsSet('zir_sbk',key);
+  const code=create?(()=>{const A='ABCDEFGHJKMNPQRSTUVWXYZ23456789',r=new Uint8Array(4);crypto.getRandomValues(r);return[...r].map(v=>A[v%A.length]).join('')})():room;
+  const cr=new Uint8Array(6);crypto.getRandomValues(cr);
+  Object.assign(MP,{cid:[...cr].map(v=>v.toString(36)).join('')+Date.now().toString(36),pres:{},syn:false,mode:create?'create':'join',wantRoom:code,myName:name,topic:'realtime:zir-'+code,room:code,ref:0,hbT:{}});
   mpStatus('در حال اتصال…');
-  let ws;try{ws=new WebSocket(url)}catch(e){mpStatus('آدرس سرور درست نیست',true);return}
+  let ws;
+  try{ws=new WebSocket(url.replace(/^http/,'ws')+'/realtime/v1/websocket?apikey='+encodeURIComponent(key)+'&vsn=1.0.0')}catch(e){mpStatus('آدرس درست نیست',true);return}
   MP.ws=ws;
-  ws.onopen=()=>{ws.send(JSON.stringify({t:'join',room,name,create:!!create}))};
-  ws.onmessage=ev=>{let m;try{m=JSON.parse(ev.data)}catch(e){return}if(MP.ws===ws)mpMsg(m)};
+  ws.onopen=()=>{
+    ws.send(JSON.stringify({topic:MP.topic,event:'phx_join',payload:{config:{broadcast:{self:false,ack:false},presence:{key:MP.cid},private:false},access_token:key},ref:String(++MP.ref),join_ref:'1'}));
+    clearInterval(MP.pingIv);
+    MP.pingIv=setInterval(()=>{if(ws.readyState===1){const r='hb'+(++MP.hb);MP.hbT[r]=performance.now();ws.send(JSON.stringify({topic:'phoenix',event:'heartbeat',payload:{},ref:r}))}},3000);
+  };
+  ws.onmessage=ev=>{let m;try{m=JSON.parse(ev.data)}catch(e){return}if(MP.ws===ws)mpPhx(m)};
   ws.onclose=()=>{if(MP.ws===ws)mpDropped()};
-  ws.onerror=()=>{if(MP.ws===ws&&!MP.on)mpStatus('وصل نشد؛ آدرس سرور رو چک کن',true)};
-  setTimeout(()=>{if(MP.ws===ws&&ws.readyState===0){MP.ws=null;try{ws.close()}catch(e){}mpStatus('زمان اتصال تموم شد؛ آدرس سرور رو چک کن',true)}},8000);
+  ws.onerror=()=>{if(MP.ws===ws&&!MP.on)mpStatus('وصل نشد؛ آدرس و کلید Supabase رو چک کن (یا فیلتر شکن)',true)};
+  setTimeout(()=>{if(MP.ws===ws&&!MP.on&&!MP.syn){MP.ws=null;try{ws.close()}catch(e){}mpStatus('زمان اتصال تموم شد',true)}},9000);
 }
+function mpFail(msg){mpStatus(msg,true);const w=MP.ws;MP.ws=null;clearInterval(MP.pingIv);try{w&&w.close()}catch(e){}}
+function mpPhx(m){
+  switch(m.event){
+    case'phx_reply':{
+      if(m.topic==='phoenix'){const t=MP.hbT[m.ref];if(t){MP.ping=Math.round(performance.now()-t);delete MP.hbT[m.ref];if(MP.on)mpPingUI()}break}
+      const st=m.payload&&m.payload.status;
+      if(st==='error'&&!MP.syn)mpFail('Supabase اتصال رو رد کرد؛ آدرس/کلید رو چک کن');
+      break}
+    case'presence_state':{
+      MP.pres={};for(const c in(m.payload||{})){const ms=m.payload[c].metas||[];const v=ms[ms.length-1];if(v)MP.pres[c]={name:MPN(v.name),t:+v.t||0,st:v.st|0}}
+      if(!MP.syn){MP.syn=true;mpFirstSync()}else mpPresChanged();break}
+    case'presence_diff':{
+      const d=m.payload||{};
+      for(const c in(d.leaves||{}))if(c!==MP.cid||!MP.on)delete MP.pres[c];
+      for(const c in(d.joins||{})){const ms=d.joins[c].metas||[];const v=ms[ms.length-1];if(v)MP.pres[c]={name:MPN(v.name),t:+v.t||0,st:v.st|0}}
+      if(MP.on)mpPresChanged();break}
+    case'broadcast':{
+      const pl=m.payload;if(!pl||pl.event!=='g'||!pl.payload||!MP.on)break;
+      const o=pl.payload;if(typeof o.t!=='string'||typeof o.c!=='string')break;
+      o.from=mpSlotOf(o.c);if(o.from<0)break;
+      if(HOSTONLY.has(o.t)&&o.from!==MP.hostId)break;
+      mpMsg(o);break}
+    case'phx_error':case'phx_close':{if(MP.on)mpDropped();else mpFail('ارتباط قطع شد');break}
+  }
+}
+function mpFirstSync(){
+  const others=Object.keys(MP.pres).filter(c=>c!==MP.cid);
+  if(MP.mode==='join'&&!others.length)return mpFail('اتاقی با این کد پیدا نشد');
+  if(others.length>=3)return mpFail('اتاق پره (حداکثر ۳ نفر)');
+  if(others.some(c=>MP.pres[c].st===1))return mpFail('بازی شروع شده؛ صبر کن دور تموم شه');
+  let name=MP.myName;const used=new Set(others.map(c=>MP.pres[c].name.toLowerCase()));
+  for(let i=2;used.has(name.toLowerCase())&&i<10;i++)name=MP.myName+' '+i;
+  const t=others.length?Math.max(...others.map(c=>MP.pres[c].t))+1:Date.now();
+  MP.pres[MP.cid]={name,t,st:0};MP.name=name;
+  MP.on=true;MP.started=false;MP.over=false;MP.cmap={};document.body.classList.add('mpon');
+  mpTrack();mpPresChanged();mpShowLobby();
+}
+function mpPresChanged(){
+  const was=MP.host;
+  if(!MP.started){
+    const L=mpSorted();const mi=L.findIndex(e=>e.c===MP.cid);
+    if(mi>=3||mi<0){mpLeave();mpStatus('اتاق پره (حداکثر ۳ نفر)',true);return}
+    MP.id=mi;MP.hostId=0;MP.host=(mi===0);
+    mpPeers(L.map((e,i)=>({id:i,name:e.name})));
+  }else{
+    const L=mpSorted().filter(e=>MP.cmap[e.c]!=null);
+    const pl=L.map(e=>({id:MP.cmap[e.c],name:e.name}));
+    if(L.length){MP.hostId=MP.cmap[L[0].c];MP.host=(MP.hostId===MP.id)}
+    mpPeers(pl);if(MP.host&&!was)mpBecameHost();
+  }
+  mpRefreshLobby();
+}
+function mpStartGame(){
+  if(!MP.host||MP.started)return;
+  const L=mpSorted().slice(0,3);
+  const seed=1+Math.floor(Math.random()*2147483000);
+  const msg={t:'go',seed,players:L.map((e,i)=>({id:i,name:e.name,c:e.c}))};
+  mpTrack({st:1});mpSend(msg);mpGo(msg);
+}
+
 function mpCleanup(){
-  const w=MP.ws;MP.ws=null;MP.on=false;MP.started=false;MP.over=false;MP.pl={};MP.list=[];MP.mnet=null;MP.pup=null;
+  const w=MP.ws;MP.ws=null;MP.on=false;MP.started=false;MP.over=false;MP.pl={};MP.list=[];MP.mnet=null;MP.pup=null;MP.pres={};MP.cmap={};try{if(w&&w.readyState===1)w.send(JSON.stringify({topic:MP.topic,event:'phx_leave',payload:{},ref:'9'}))}catch(e){}
   clearInterval(MP.pingIv);MP.pingIv=0;
   document.body.classList.remove('mpon','spec');$('spec').classList.remove('on');$('pingPill').style.display='none';
   try{w&&w.close()}catch(e){}
@@ -1407,10 +1484,6 @@ function mpLeave(){
   mpCleanup();state='menu';mpResetScreens();reset();pa=0;
   $('mp').classList.add('hidden');$('start').classList.remove('hidden');
   $('mpForm').classList.remove('hidden');$('mpLobby').classList.add('hidden');mpStatus('');
-}
-function mpStartPing(){
-  clearInterval(MP.pingIv);
-  const f=()=>mpSend({t:'ping',n:performance.now()});f();MP.pingIv=setInterval(f,2000);
 }
 function mpPingUI(){
   const p=$('pingPill');p.style.display='block';p.textContent='📶 '+MP.ping+' ms';
@@ -1449,7 +1522,7 @@ function mpBackToLobby(m){
   MP.started=false;MP.over=false;MP.pl={};MP.pup=null;
   document.body.classList.remove('spec');$('spec').classList.remove('on');
   state='menu';mpResetScreens();reset();pa=0;
-  MP.list=m.players||MP.list;
+  MP.cmap={};mpPresChanged();
   $('mp').classList.remove('hidden');mpShowLobby();
 }
 
@@ -1457,15 +1530,6 @@ function mpBackToLobby(m){
 function mpMsg(m){
   if(!m||typeof m.t!=='string')return;
   switch(m.t){
-    case'err':{mpStatus(m.m||'خطا',true);const w=MP.ws;MP.ws=null;try{w&&w.close()}catch(e){}break}
-    case'joined':{
-      MP.on=true;MP.id=m.id|0;MP.room=String(m.room||'');MP.hostId=m.host|0;MP.host=(MP.hostId===MP.id);MP.name=String(m.name||'');
-      MP.list=m.players||[];MP.started=false;MP.over=false;document.body.classList.add('mpon');
-      mpShowLobby();mpStartPing();break}
-    case'peers':{
-      const was=MP.host;MP.hostId=m.host|0;MP.host=(MP.hostId===MP.id);
-      mpPeers(m.players||[]);if(MP.host&&!was&&MP.started)mpBecameHost();mpRefreshLobby();break}
-    case'pong':{MP.ping=Math.max(0,Math.round(performance.now()-(+m.n||0)));mpPingUI();break}
     case'go':mpGo(m);break;
     case'lobby':mpBackToLobby(m);break;
     case's':mpOnState(m);break;
@@ -1489,7 +1553,9 @@ function mpBlackout(){
 }
 function mpGo(m){
   if(!MP.on)return;
-  MP.pl={};const now=performance.now();
+  MP.pl={};const now=performance.now();MP.cmap={};
+  for(const q of(m.players||[])){if(typeof q.c==='string')MP.cmap[q.c]=q.id|0}
+  if(MP.cmap[MP.cid]==null)return;MP.id=MP.cmap[MP.cid];MP.hostId=0;MP.host=(MP.id===0);
   for(const q of(m.players||[]))MP.pl[q.id]={id:q.id,name:q.name,in:true,st:'alive',x:0,y:0,a:0,pt:0,nx:0,ny:0,na:0,np:0,vx:0,vy:0,rt:now,hid:false,cr:false,run:false,mv:false,fl:true,hv:-1,seen:false};
   if(!MP.pl[MP.id])return;
   MP.started=true;MP.over=false;MP.lastState='';MP.lastSend=0;MP.lastMon=0;MP.specId=-1;
@@ -1508,7 +1574,7 @@ function mpSendState(force){
   const f=(isHidden?1:0)|(crouching?2:0)|(curRun?4:0)|(curMv?8:0)|((flashOn&&bat>0)?16:0);
   const x=r2(px),y=r2(py),a=r2(pa),p=Math.round(pitch*10)/10;
   const key=x+','+y+','+a+','+p+','+f+','+hv;
-  if(!force){const idle=key===MP.lastState;if(now-MP.lastSend<(idle?250:33))return}
+  if(!force){const idle=key===MP.lastState;if(now-MP.lastSend<(idle?250:50))return}
   MP.lastSend=now;MP.lastState=key;
   mpSend({t:'s',x,y,a,p,f,v:hv});
 }
@@ -1562,7 +1628,7 @@ function mpTickPost(dt){
   if(MP.host&&!MP.over){
     monsterAI(dt);
     if(tAlive>MP.nextBo){MP.nextBo=tAlive+90+Math.random()*40;mpSend({t:'bo'});mpBlackout()}
-    if(now-MP.lastMon>=50){
+    if(now-MP.lastMon>=80){
       MP.lastMon=now;
       mpSend({t:'m',x:r2(mon.x),y:r2(mon.y),f:r2(mon.face),s:{patrol:0,chase:1,search:2,stunned:3}[mon.state]||0,sp:Math.round(mon.speed*10)/10,u:Math.round(mon.stunT*10)/10});
     }
@@ -1669,8 +1735,8 @@ function mpTags(){
 
 /* ---------- اتصال دکمه‌ها ---------- */
 (function(){
-  $('mpName').value=lsGet('zir_name')||'';
-  $('mpUrl').value=lsGet('zir_srv')||mpDefaultUrl();
+  {let an='';try{an=localStorage.getItem('arcade_name')||''}catch(e){}$('mpName').value=lsGet('zir_name')||MPN(an);}   // اسم آرکید به‌صورت پیش‌فرض
+  $('sbUrl').value=lsGet('zir_sbu')||SB_URL;$('sbKey').value=lsGet('zir_sbk')||SB_KEY;if(SB_URL&&SB_KEY)$('sbBox').style.display='none';
   let q=null;try{q=new URLSearchParams(location.search).get('room')}catch(e){}
   if(q){$('mpRoom').value=String(q).toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,6);$('start').classList.add('hidden');$('mp').classList.remove('hidden')}
   $('mpOpen').onclick=()=>{$('start').classList.add('hidden');$('mp').classList.remove('hidden');mpStatus('')};
@@ -1679,7 +1745,7 @@ function mpTags(){
   $('mpRoom').addEventListener('keydown',e=>{if(e.key==='Enter')mpConnect(false)});
   $('mpName').addEventListener('keydown',e=>{if(e.key==='Enter')$('mpRoom').focus()});
   $('mpBack').onclick=()=>{if(MP.ws||MP.on)mpLeave();else{$('mp').classList.add('hidden');$('start').classList.remove('hidden')}};
-  $('mpStart').onclick=()=>{if(MP.host)mpSend({t:'go'})};
+  $('mpStart').onclick=mpStartGame;
   const cp=txt=>{try{navigator.clipboard.writeText(txt).then(()=>mpStatus('کپی شد ✅'),()=>mpStatus(txt))}catch(e){mpStatus(txt)}};
   $('mpCode').onclick=()=>cp(MP.room);
   $('mpCopy').onclick=()=>cp((location.protocol==='http:'||location.protocol==='https:')?location.href.split('?')[0]+'?room='+MP.room:MP.room);
@@ -1775,7 +1841,7 @@ function begin(seed){
   setTimeout(()=>{joyHome()},400);
   arcadeNotify('start');
 }
-$('go').onclick=()=>begin();$('again').onclick=()=>{if(MP.on){if(MP.host)mpSend({t:'lobby'})}else begin()};
+$('go').onclick=()=>begin();$('again').onclick=()=>{if(MP.on){if(MP.host){mpSend({t:'lobby'});mpBackToLobby({});mpTrack({st:0})}}else begin()};
 const goHome=()=>{try{if(window.parent!==window)window.parent.postMessage({source:'nova-arcade-embed',game:'zirzamin',type:'home',score:0,won:false},'*');else location.reload()}catch(e){}};
 ['homeA','homeB','homeC'].forEach(i=>$(i).onclick=goHome);
 function setPause(on){if(MP.on)return;if(on&&state==='play'){state='pause';$('pz').classList.remove('hidden');if(master)master.gain.value=0;lookDX=lookDY=0;joyX=joyY=0}else if(!on&&state==='pause'){state='play';$('pz').classList.add('hidden');if(master)master.gain.value=muted?0:.9}}
