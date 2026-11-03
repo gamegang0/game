@@ -1363,12 +1363,14 @@ const ventOcc=i=>i>=0&&MP.on&&MP.started&&Object.values(MP.pl).some(p=>p.id!==MP
 /* ---------- شبکه: Supabase Realtime (Broadcast + Presence) با پروتکل Phoenix، بدون هیچ کتابخونه‌ای ---------- */
 const HOSTONLY=new Set(['m','caught','bo','go','lobby']);
 function mpSend(o){
+  if(MP.sch){if(!MP.on)return;o.c=MP.cid;try{MP.sch.send({type:'broadcast',event:'g',payload:o})}catch(e){}return}
   const w=MP.ws;if(!MP.on||!w||w.readyState!==1)return;
   o.c=MP.cid;
   try{w.send(JSON.stringify({topic:MP.topic,event:'broadcast',payload:{type:'broadcast',event:'g',payload:o},ref:String(++MP.ref)}))}catch(e){}
 }
 function mpTrack(extra){
   const me=MP.pres[MP.cid]||{name:MP.myName,t:Date.now(),st:0};Object.assign(me,extra||{});MP.pres[MP.cid]=me;
+  if(MP.sch){try{MP.sch.track({name:me.name,t:me.t,st:me.st})}catch(e){}return}
   const w=MP.ws;if(w&&w.readyState===1)w.send(JSON.stringify({topic:MP.topic,event:'presence',payload:{type:'presence',event:'track',payload:{name:me.name,t:me.t,st:me.st}},ref:String(++MP.ref)}));
 }
 const mpSorted=()=>Object.keys(MP.pres).map(c=>({c,name:MP.pres[c].name,t:MP.pres[c].t,st:MP.pres[c].st})).sort((a,b)=>a.t-b.t||(a.c<b.c?-1:1));
@@ -1386,10 +1388,12 @@ function mpConnect(create){
   const cr=new Uint8Array(6);crypto.getRandomValues(cr);
   Object.assign(MP,{cid:[...cr].map(v=>v.toString(36)).join('')+Date.now().toString(36),pres:{},syn:false,mode:create?'create':'join',wantRoom:code,myName:name,topic:'realtime:zir-'+code,room:code,ref:0,hbT:{}});
   mpStatus('در حال اتصال…');
+  const lib=mpLib();if(lib){mpConnectLib(lib,url,key,code);return}
   let ws;
   try{ws=new WebSocket(url.replace(/^http/,'ws')+'/realtime/v1/websocket?apikey='+encodeURIComponent(key)+'&vsn=1.0.0')}catch(e){mpStatus('آدرس درست نیست',true);return}
   MP.ws=ws;
   ws.onopen=()=>{
+    MP.rawOpen=true;
     ws.send(JSON.stringify({topic:MP.topic,event:'phx_join',payload:{config:{broadcast:{self:false,ack:false},presence:{key:MP.cid},private:false},access_token:key},ref:String(++MP.ref),join_ref:'1'}));
     clearInterval(MP.pingIv);
     MP.pingIv=setInterval(()=>{if(ws.readyState===1){const r='hb'+(++MP.hb);MP.hbT[r]=performance.now();ws.send(JSON.stringify({topic:'phoenix',event:'heartbeat',payload:{},ref:r}))}},3000);
@@ -1397,9 +1401,51 @@ function mpConnect(create){
   ws.onmessage=ev=>{let m;try{m=JSON.parse(ev.data)}catch(e){return}if(MP.ws===ws)mpPhx(m)};
   ws.onclose=()=>{if(MP.ws===ws)mpDropped()};
   ws.onerror=()=>{if(MP.ws===ws&&!MP.on)mpStatus('وصل نشد؛ آدرس و کلید Supabase رو چک کن (یا فیلتر شکن)',true)};
-  setTimeout(()=>{if(MP.ws===ws&&!MP.on&&!MP.syn){MP.ws=null;try{ws.close()}catch(e){}mpStatus('زمان اتصال تموم شد',true)}},9000);
+  setTimeout(()=>{if(MP.ws===ws&&!MP.on&&!MP.syn){MP.ws=null;try{ws.close()}catch(e){}mpStatus('زمان اتصال تموم شد ('+(MP.rawOpen?'وب‌سوکت باز شد ولی Supabase جواب نداد؛ کلید رو چک کن':'به سرور Supabase نرسید؛ فیلتر یا نت')+')',true)}},9000);
 }
-function mpFail(msg){mpStatus(msg,true);const w=MP.ws;MP.ws=null;clearInterval(MP.pingIv);try{w&&w.close()}catch(e){}}
+
+/* ---------- اتصال با کتابخونه‌ی رسمی Supabase (همون که آرکید استفاده می‌کنه) ---------- */
+function mpRecv(o){
+  if(!MP.on||!o||typeof o.t!=='string'||typeof o.c!=='string')return;
+  o.from=mpSlotOf(o.c);if(o.from<0)return;
+  if(HOSTONLY.has(o.t)&&o.from!==MP.hostId)return;
+  mpMsg(o);
+}
+function mpLib(){
+  try{if(window.supabase&&window.supabase.createClient)return window.supabase}catch(e){}
+  try{if(window.parent&&window.parent!==window&&window.parent.supabase&&window.parent.supabase.createClient)return window.parent.supabase}catch(e){}
+  return null;
+}
+function mpConnectLib(lib,url,key,code){
+  let sb;
+  try{sb=lib.createClient(url,key,{auth:{persistSession:false,autoRefreshToken:false,detectSessionInUrl:false},realtime:{params:{eventsPerSecond:100}}})}catch(e){mpStatus('ساخت اتصال Supabase ناموفق بود: '+(e&&e.message),true);return}
+  const ch=sb.channel('zir-'+code,{config:{broadcast:{self:false,ack:false},presence:{key:MP.cid}}});
+  MP.sb=sb;MP.sch=ch;MP.ws=null;
+  const readPres=()=>{
+    const st=ch.presenceState(),np={};
+    for(const c in st){const ms=st[c];const v=ms&&ms[ms.length-1];if(v)np[c]={name:MPN(v.name),t:+v.t||0,st:v.st|0}}
+    if(MP.on&&MP.pres[MP.cid]&&!np[MP.cid])np[MP.cid]=MP.pres[MP.cid];
+    MP.pres=np;
+  };
+  ch.on('presence',{event:'sync'},()=>{if(MP.sch!==ch)return;readPres();if(!MP.syn){MP.syn=true;mpFirstSync()}else if(MP.on)mpPresChanged()});
+  ch.on('broadcast',{event:'g'},m=>{if(MP.sch===ch)mpRecv(m&&m.payload)});
+  let done=false;
+  ch.subscribe((status,err)=>{
+    if(MP.sch!==ch)return;
+    if(status==='SUBSCRIBED'){
+      done=true;
+      setTimeout(()=>{if(MP.sch===ch&&!MP.syn){readPres();MP.syn=true;mpFirstSync()}},900);
+      clearInterval(MP.pingIv);
+      MP.pingIv=setInterval(()=>{if(MP.on)mpSend({t:'pp',n:performance.now()})},3000);
+    }else if(status==='CHANNEL_ERROR'||status==='TIMED_OUT'||status==='CLOSED'){
+      const why=(err&&(err.message||String(err)))||status;
+      if(MP.on&&done){mpDropped()}
+      else mpFail('اتصال Supabase ناموفق بود ('+why+')');
+    }
+  });
+  setTimeout(()=>{if(MP.sch===ch&&!MP.on&&!MP.syn)mpFail(done?'کانال وصل شد ولی جواب نگرفتیم؛ دوباره امتحان کن':'به Supabase نرسید؛ نت/فیلتر یا کلید رو چک کن')},12000);
+}
+function mpFail(msg){mpStatus(msg,true);if(MP.sch){try{MP.sb.removeChannel(MP.sch)}catch(e){}MP.sch=null;MP.sb=null;clearInterval(MP.pingIv)}const w=MP.ws;MP.ws=null;clearInterval(MP.pingIv);try{w&&w.close()}catch(e){}}
 function mpPhx(m){
   switch(m.event){
     case'phx_reply':{
@@ -1416,11 +1462,8 @@ function mpPhx(m){
       for(const c in(d.joins||{})){const ms=d.joins[c].metas||[];const v=ms[ms.length-1];if(v)MP.pres[c]={name:MPN(v.name),t:+v.t||0,st:v.st|0}}
       if(MP.on)mpPresChanged();break}
     case'broadcast':{
-      const pl=m.payload;if(!pl||pl.event!=='g'||!pl.payload||!MP.on)break;
-      const o=pl.payload;if(typeof o.t!=='string'||typeof o.c!=='string')break;
-      o.from=mpSlotOf(o.c);if(o.from<0)break;
-      if(HOSTONLY.has(o.t)&&o.from!==MP.hostId)break;
-      mpMsg(o);break}
+      const pl=m.payload;if(!pl||pl.event!=='g')break;
+      mpRecv(pl.payload);break}
     case'phx_error':case'phx_close':{if(MP.on)mpDropped();else mpFail('ارتباط قطع شد');break}
   }
 }
@@ -1460,7 +1503,7 @@ function mpStartGame(){
 }
 
 function mpCleanup(){
-  const w=MP.ws;MP.ws=null;MP.on=false;MP.started=false;MP.over=false;MP.pl={};MP.list=[];MP.mnet=null;MP.pup=null;MP.pres={};MP.cmap={};try{if(w&&w.readyState===1)w.send(JSON.stringify({topic:MP.topic,event:'phx_leave',payload:{},ref:'9'}))}catch(e){}
+  const w=MP.ws;MP.ws=null;MP.on=false;MP.started=false;MP.over=false;MP.pl={};MP.list=[];MP.mnet=null;MP.pup=null;MP.pres={};MP.cmap={};if(MP.sch){try{MP.sb.removeChannel(MP.sch)}catch(e){}MP.sch=null;MP.sb=null}try{if(w&&w.readyState===1)w.send(JSON.stringify({topic:MP.topic,event:'phx_leave',payload:{},ref:'9'}))}catch(e){}
   clearInterval(MP.pingIv);MP.pingIv=0;
   document.body.classList.remove('mpon','spec');$('spec').classList.remove('on');$('pingPill').style.display='none';
   try{w&&w.close()}catch(e){}
@@ -1530,6 +1573,8 @@ function mpBackToLobby(m){
 function mpMsg(m){
   if(!m||typeof m.t!=='string')return;
   switch(m.t){
+    case'pp':mpSend({t:'pg',n:m.n});break;
+    case'pg':{const d=Math.round(performance.now()-(+m.n||0));if(d>=0&&d<5000){MP.ping=d;mpPingUI()}break}
     case'go':mpGo(m);break;
     case'lobby':mpBackToLobby(m);break;
     case's':mpOnState(m);break;
