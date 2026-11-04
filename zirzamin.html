@@ -212,6 +212,12 @@ body.spec #rvBtn,body.hunter #rvBtn{display:none!important}
 #escSeenFX b{display:inline-block;padding:10px 22px;border-radius:18px;font-size:clamp(20px,5vw,38px);color:#eafff0;background:rgba(10,60,30,.75);border:2px solid #7dffb0;text-shadow:0 0 14px #3f8;box-shadow:0 0 40px rgba(80,255,150,.55)}
 #escSeenFX.bad b{color:#ffe3dc;background:rgba(80,10,5,.78);border-color:#ff6a50;text-shadow:0 0 14px #f43;box-shadow:0 0 40px rgba(255,80,50,.55)}
 @keyframes escSeen{0%{opacity:0;transform:translateY(-30px) scale(.6)}12%{opacity:1;transform:translateY(0) scale(1.1)}22%{transform:scale(1)}85%{opacity:1}100%{opacity:0;transform:translateY(-12px)}}
+
+#mp{overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;padding-bottom:max(60px,calc(env(safe-area-inset-bottom) + 40px))}
+#mp,#mp *{touch-action:pan-y}
+#mp input{touch-action:auto}
+#mp>*{flex-shrink:0}
+#mpLobby>*{flex-shrink:0}
 </style>
 </head>
 <body>
@@ -1492,6 +1498,23 @@ function escSeenFX(name){
   el.classList.toggle('bad',bad);el.classList.remove('active');void el.offsetWidth;el.classList.add('active');
   try{if(bad){tone(130,.45,.16,'sawtooth',55)}else{tone(520,.14,.14,'triangle');tone(780,.16,.12,'triangle',0,.1);tone(1040,.22,.1,'triangle',0,.2)}}catch(e){}
 }
+function mpPickHunter(id){
+  if(!MP.host||MP.started||MP.gm!=='hunt')return;
+  const e=mpSorted()[id];if(!e)return;
+  const me=MP.pres[MP.cid];mpTrack({hc:(me&&me.hc===e.c)?null:e.c});mpRefreshLobby();
+}
+function mpKeepGhosts(old,nw){
+  const now=performance.now(),G=MP.ghost||(MP.ghost={});
+  for(const c in nw)delete G[c];
+  for(const c in old){if(c===MP.cid||nw[c]||!old[c]||G[c])continue;G[c]={e:Object.assign({},old[c],{off:false}),t:now}}
+  for(const c in G){if(nw[c])continue;if(now-G[c].t>75000){delete G[c];continue}nw[c]=Object.assign({},G[c].e,{off:true})}
+  return nw;
+}
+setInterval(()=>{
+  if(!MP.on||!MP.ghost||!Object.keys(MP.ghost).length)return;
+  const old=MP.pres,nw={};for(const c in old)if(!old[c].off)nw[c]=old[c];
+  MP.pres=mpKeepGhosts(old,nw);mpPresChanged();
+},5000);
 function mpPingShare(){
   const n=performance.now();if(!MP.on||MP.started||!MP.ping||n-(MP.pgT||0)<3000)return;MP.pgT=n;
   const me=MP.pres[MP.cid];if(me&&Math.abs((me.pg||0)-MP.ping)<8)return;mpTrack({pg:MP.ping});
@@ -1643,10 +1666,10 @@ function mpSend(o){
 }
 function mpTrack(extra){
   const me=MP.pres[MP.cid]||{name:MP.myName,t:Date.now(),st:0};Object.assign(me,extra||{});MP.pres[MP.cid]=me;
-  if(MP.sch){try{MP.sch.track({name:me.name,t:me.t,st:me.st,gm:me.gm||'coop',go:me.go||null,pg:me.pg||0})}catch(e){}return}
-  const w=MP.ws;if(w&&w.readyState===1)w.send(JSON.stringify({topic:MP.topic,event:'presence',payload:{type:'presence',event:'track',payload:{name:me.name,t:me.t,st:me.st,gm:me.gm||'coop',go:me.go||null,pg:me.pg||0}},ref:String(++MP.ref)}));
+  if(MP.sch){try{MP.sch.track({name:me.name,t:me.t,st:me.st,gm:me.gm||'coop',go:me.go||null,pg:me.pg||0,hc:me.hc||null})}catch(e){}return}
+  const w=MP.ws;if(w&&w.readyState===1)w.send(JSON.stringify({topic:MP.topic,event:'presence',payload:{type:'presence',event:'track',payload:{name:me.name,t:me.t,st:me.st,gm:me.gm||'coop',go:me.go||null,pg:me.pg||0,hc:me.hc||null}},ref:String(++MP.ref)}));
 }
-const mpSorted=()=>Object.keys(MP.pres).map(c=>({c,name:MP.pres[c].name,t:MP.pres[c].t,st:MP.pres[c].st,pg:MP.pres[c].pg||0})).sort((a,b)=>a.t-b.t||(a.c<b.c?-1:1));
+const mpSorted=()=>Object.keys(MP.pres).map(c=>({c,name:MP.pres[c].name,t:MP.pres[c].t,st:MP.pres[c].st,pg:MP.pres[c].pg||0,off:!!MP.pres[c].off})).sort((a,b)=>a.t-b.t||(a.c<b.c?-1:1));
 function mpSlotOf(c){if(MP.started)return MP.cmap[c]==null?-1:MP.cmap[c];return mpSorted().findIndex(e=>e.c===c)}
 function mpConnect(create){
   const name=MPN($('mpName').value);
@@ -1696,9 +1719,9 @@ function mpConnectLib(lib,url,key,code){
   MP.sb=sb;MP.sch=ch;MP.ws=null;
   const readPres=()=>{
     const st=ch.presenceState(),np={};
-    for(const c in st){const ms=st[c];const v=ms&&ms[ms.length-1];if(v)np[c]={name:MPN(v.name),t:+v.t||0,st:v.st|0,gm:v.gm,go:v.go,pg:+v.pg||0}}
+    for(const c in st){const ms=st[c];const v=ms&&ms[ms.length-1];if(v)np[c]={name:MPN(v.name),t:+v.t||0,st:v.st|0,gm:v.gm,go:v.go,pg:+v.pg||0,hc:v.hc||null}}
     if(MP.on&&MP.pres[MP.cid]&&!np[MP.cid])np[MP.cid]=MP.pres[MP.cid];
-    MP.pres=np;
+    MP.pres=mpKeepGhosts(MP.pres,np);
   };
   ch.on('presence',{event:'sync'},()=>{if(MP.sch!==ch)return;readPres();if(!MP.syn){MP.syn=true;mpFirstSync()}else if(MP.on)mpPresChanged()});
   ch.on('broadcast',{event:'g'},m=>{if(MP.sch===ch)mpRecv(m&&m.payload)});
@@ -1728,12 +1751,14 @@ function mpPhx(m){
       if(st==='error'&&!MP.syn)mpFail('Supabase اتصال رو رد کرد؛ آدرس/کلید رو چک کن');
       break}
     case'presence_state':{
-      MP.pres={};for(const c in(m.payload||{})){const ms=m.payload[c].metas||[];const v=ms[ms.length-1];if(v)MP.pres[c]={name:MPN(v.name),t:+v.t||0,st:v.st|0,gm:v.gm,go:v.go,pg:+v.pg||0}}
+      const _old0=MP.pres;MP.pres={};for(const c in(m.payload||{})){const ms=m.payload[c].metas||[];const v=ms[ms.length-1];if(v)MP.pres[c]={name:MPN(v.name),t:+v.t||0,st:v.st|0,gm:v.gm,go:v.go,pg:+v.pg||0,hc:v.hc||null}}
+      MP.pres=mpKeepGhosts(_old0,MP.pres);
       if(!MP.syn){MP.syn=true;mpFirstSync()}else mpPresChanged();break}
     case'presence_diff':{
       const d=m.payload||{};
-      for(const c in(d.leaves||{}))if(c!==MP.cid||!MP.on)delete MP.pres[c];
-      for(const c in(d.joins||{})){const ms=d.joins[c].metas||[];const v=ms[ms.length-1];if(v)MP.pres[c]={name:MPN(v.name),t:+v.t||0,st:v.st|0,gm:v.gm,go:v.go,pg:+v.pg||0}}
+      for(const c in(d.leaves||{}))if(c!==MP.cid||!MP.on){const o=MP.pres[c];if(o&&c!==MP.cid&&!o.off){(MP.ghost||(MP.ghost={}))[c]={e:Object.assign({},o,{off:false}),t:performance.now()};MP.pres[c]=Object.assign({},o,{off:true})}else delete MP.pres[c]}
+      for(const c in(d.joins||{})){const ms=d.joins[c].metas||[];const v=ms[ms.length-1];if(v)MP.pres[c]={name:MPN(v.name),t:+v.t||0,st:v.st|0,gm:v.gm,go:v.go,pg:+v.pg||0,hc:v.hc||null}}
+      if(MP.ghost)for(const c in(d.joins||{}))delete MP.ghost[c];
       if(MP.on)mpPresChanged();break}
     case'broadcast':{
       const pl=m.payload;if(!pl||pl.event!=='g')break;
@@ -1758,14 +1783,14 @@ function mpPresChanged(){
   if(!MP.started){
     const L=mpSorted();const mi=L.findIndex(e=>e.c===MP.cid);
     if(mi>=3||mi<0){mpLeave();mpStatus('اتاق پره (حداکثر ۳ نفر)',true);return}
-    MP.id=mi;MP.hostId=0;MP.host=(mi===0);
+    const fi=Math.max(0,L.findIndex(e=>!e.off));MP.id=mi;MP.hostId=fi;MP.host=(mi===fi);
     {const H=L[0],hp=H&&MP.pres[H.c];if(hp&&hp.st===1&&hp.go&&hp.go.seed!==MP.lastSeed&&H.c!==MP.cid&&(hp.go.players||[]).some(q=>q.c===MP.cid)){mpGo(hp.go);return}}   // اگه پیام شروع بهت نرسید، از روی وضعیت میزبان وارد بازی می‌شی
-    mpPeers(L.map((e,i)=>({id:i,name:e.name})));
+    mpPeers(L.map((e,i)=>({id:i,name:e.name,off:!!e.off})));
   }else{
     const L=mpSorted().filter(e=>MP.cmap[e.c]!=null);
     const pl=L.map(e=>({id:MP.cmap[e.c],name:e.name}));
     mpPeers(pl);
-    if(L.length){const oh=MP.pl[MP.hostId],keep=oh&&oh.in&&oh.gone&&performance.now()-oh.gone<10000&&MP.hostId!==MP.id;if(!keep)MP.hostId=MP.cmap[L[0].c];MP.host=(MP.hostId===MP.id)}
+    if(L.length){const oh=MP.pl[MP.hostId],keep=oh&&oh.in&&oh.gone&&performance.now()-oh.gone<10000&&MP.hostId!==MP.id;if(!keep){const _f=L.find(e=>!e.off)||L[0];MP.hostId=MP.cmap[_f.c]}MP.host=(MP.hostId===MP.id)}
     if(MP.host&&!was)mpBecameHost();
   }
   mpRefreshLobby();
@@ -1776,17 +1801,12 @@ function mpSetMode(g){
 }
 function mpStartGame(){
   if(!MP.host||MP.started)return;
+  if(Object.values(MP.pres).some(p=>p.off)){mpStatus('یکی از بازیکن‌ها قطع شده؛ صبر کن دوباره وصل بشه',true);return}
   const L=mpSorted().slice(0,3),hunt=MP.gm==='hunt';
   if(hunt&&L.length<2){mpStatus('برای مود پژمان حداقل ۲ نفر لازمه',true);return}
   let hu=-1;
-  if(hunt){
-    const pg=i=>{const e=L[i],v=e.c===MP.cid?MP.ping:e.pg;return v>0?v:0};
-    const all=L.map((e,i)=>i),known=all.filter(i=>pg(i)>0);
-    if(known.length===all.length){
-      all.sort((a,b)=>pg(a)-pg(b));hu=all[0];
-      if(hu===MP.lastHunter&&all.length>1&&pg(all[1])-pg(all[0])<=60)hu=all[1];   // پینگ‌ها نزدیکن؛ نوبت رو عوض کن
-    }else{const c=all.filter(i=>i!==MP.lastHunter);hu=c[Math.floor(Math.random()*c.length)]}
-  }
+  if(hunt){const c=L.map((e,i)=>i).filter(i=>i!==MP.lastHunter);hu=c[Math.floor(Math.random()*c.length)]}
+  {const hcv=MP.pres[MP.cid]&&MP.pres[MP.cid].hc,pk=hunt&&hcv?L.findIndex(e=>e.c===hcv):-1;if(pk>=0)hu=pk}
   const seed=1+Math.floor(Math.random()*2147483000);
   const msg={t:'go',seed,players:L.map((e,i)=>({id:i,name:e.name,c:e.c})),gm:hunt?'hunt':'coop',hu};
   mpTrack({st:1,go:msg});mpSend(msg);mpGo(msg);
@@ -1819,8 +1839,8 @@ function mpLeave(){
   $('mpForm').classList.remove('hidden');$('mpLobby').classList.add('hidden');mpStatus('');
 }
 function mpLinkUI(bad){const p=$('pingPill');if(bad){p.style.display='block';p.textContent='⚠ اتصال ضعیف… دارم دوباره وصل می‌شم';p.style.color='#ff8a7a'}else mpPingUI()}
-setInterval(()=>{if(MP.on&&MP.linkBad&&performance.now()-MP.linkBad>20000)mpDropped()},1000);
-function mpPingUI(){mpPingShare();
+setInterval(()=>{if(MP.on&&MP.linkBad&&performance.now()-MP.linkBad>90000)mpDropped()},1000);
+function mpPingUI(){
   const p=$('pingPill');p.style.display='block';p.textContent='📶 '+MP.ping+' ms'+(MP.started&&MP.dAvg?' · تأخیر نمایش '+Math.round(MP.dAvg)+'ms':'');
   p.style.color=MP.ping<80?'#7dffb0':MP.ping<160?'#ffe58a':'#ff8a7a';
 }
@@ -1834,12 +1854,14 @@ function mpRefreshLobby(){
   if(!MP.on)return;
   $('mpCode').textContent=MP.room;$('mpCount').textContent=FA(MP.list.length)+' / ۳';
   const L=$('mpList');L.textContent='';
-  MP.list.forEach(p=>{const d=document.createElement('div');d.className='mpP';const _e=mpSorted()[p.id],_pg=p.id===MP.id?MP.ping:(_e&&_e.pg);d.textContent=(p.id===MP.hostId?'👑 ':'🎮 ')+p.name+(p.id===MP.id?' (تو)':'')+(_pg?' · 📶 '+FA(Math.round(_pg))+' ms':'');L.appendChild(d)});
-  $('mpStart').style.display=MP.host?'':'none';$('mpWait').style.display=MP.host?'none':'';
+  MP.list.forEach(p=>{const d=document.createElement('div');d.className='mpP';const _e=mpSorted()[p.id];const _h0=mpSorted()[0],_hp=_h0&&MP.pres[_h0.c],_isH=!!(_hp&&_hp.gm==='hunt'),_sel=_isH&&_hp.hc&&_e&&_e.c===_hp.hc;
+    if(MP.host&&_isH){d.style.cursor='pointer';d.onclick=()=>mpPickHunter(p.id)}
+    d.textContent=(_sel?'👹 ':(p.id===MP.hostId?'👑 ':'🎮 '))+p.name+(p.id===MP.id?' (تو)':'')+(p.off?' · 🔌 قطع شد؛ منتظر اتصال دوباره…':'');L.appendChild(d)});
+  $('mpStart').style.display=MP.host?'':'none';$('mpStart').disabled=Object.values(MP.pres).some(p=>p.off);$('mpWait').style.display=MP.host?'none':'';
   {const hc=mpSorted()[0],gm=(hc&&MP.pres[hc.c]&&MP.pres[hc.c].gm)||'coop';MP.gm=gm;
    $('mpModeCoop').classList.toggle('sel',gm==='coop');$('mpModeHunt').classList.toggle('sel',gm==='hunt');
    $('mpModeCoop').disabled=$('mpModeHunt').disabled=!MP.host;
-   $('mpModeNote').textContent=gm==='hunt'?'بازیکنی که کمترین پینگ رو داره «'+MONSTER+'» می‌شه و بقیه (تا ۲ نفر) فرار می‌کنن · حداقل ۲ نفر':'پژمان هوش مصنوعیه و همه با هم فرار می‌کنن'}
+   $('mpModeNote').textContent=gm==='hunt'?'میزبان با زدن روی اسم یه بازیکن مشخص می‌کنه کی «'+MONSTER+'» بشه (اگه انتخاب نکنه تصادفیه) · حداقل ۲ نفر':'پژمان هوش مصنوعیه و همه با هم فرار می‌کنن'}
 }
 function mpPeers(list){
   const old=MP.list;MP.list=list;
@@ -1910,11 +1932,11 @@ function mpGo(m){
   if(MP.cmap[MP.cid]==null)return;MP.id=MP.cmap[MP.cid];MP.hostId=0;MP.host=(MP.id===0);
   for(const q of(m.players||[]))MP.pl[q.id]={id:q.id,name:MPN(q.name),in:true,st:'alive',x:0,y:0,a:0,pt:0,nx:0,ny:0,na:0,np:0,vx:0,vy:0,rt:now,hid:false,cr:false,run:false,mv:false,fl:true,hv:-1,seen:false};
   if(!MP.pl[MP.id])return;
-  MP.nPl=Math.min(3,Math.max(1,(m.players||[]).length));MP.mbuf=[];MP.moff=null;MP.mnet=null;MP.mD=MP.dmin+25;MP.mjit=null;
+  MP.nPl=Math.min(3,Math.max(1,(m.players||[]).length));MP.mbuf=[];MP.moff=null;MP.mnet=null;MP.mD=MP.dmin+12;MP.mjit=null;
   RV.hold=false;RV.prog=0;RV.target=-1;$('rvBtn').classList.remove('on');MP.rvT=0;
-  MP.lastSeed=m.seed|0;MP.lastSS=0;MP.dmin=MP.nPl>=3?90:MP.nPl===2?60:90;MP.linkBad=0;
+  MP.lastSeed=m.seed|0;MP.lastSS=0;MP.dmin=MP.nPl>=3?55:MP.nPl===2?40:60;MP.linkBad=0;
   MP.hunt={on:m.gm==='hunt'&&(m.hu|0)>=0&&!!MP.pl[m.hu|0],hunter:m.hu|0,me:false,freeAt:0,en:1,lock:false,endT:0,goneMsg:0};
-  if(MP.hunt.on){MP.hunt.me=(MP.id===MP.hunt.hunter);MP.pl[MP.hunt.hunter].st='hunter';MP.nPl=Math.max(1,MP.nPl-1);MP.lastHunter=MP.hunt.hunter;MP.hunt.freeAt=performance.now()+7000;MP.dmin=50}
+  if(MP.hunt.on){MP.hunt.me=(MP.id===MP.hunt.hunter);MP.pl[MP.hunt.hunter].st='hunter';MP.nPl=Math.max(1,MP.nPl-1);MP.lastHunter=MP.hunt.hunter;MP.hunt.freeAt=performance.now()+7000;MP.dmin=35}
   MP.started=true;MP.over=false;MP.lastState='';MP.lastSend=0;MP.lastMon=0;MP.specId=-1;
   MP.nextBo=70+Math.random()*25;
   $('mp').classList.add('hidden');document.body.classList.remove('spec');$('spec').classList.remove('on');
@@ -1938,7 +1960,7 @@ function mpSendState(force){
   if(f!==MP.lastF){MP.lastF=f;force=true}
   const x=r2(px),y=r2(py),a=r2(pa),p=Math.round(pitch*10)/10;
   const key=x+','+y+','+a+','+p+','+f+','+hv;
-  if(!force){const idle=key===MP.lastState,hs=HUNT();if(now-MP.lastSend<(idle?(hs?120:(MP.host&&!HUNT()?80:250)):(hs?33:(MP.nPl>=3?60:MP.nPl===2?33:100))))return}
+  if(!force){const idle=key===MP.lastState,hs=HUNT();if(now-MP.lastSend<(idle?(MP.host&&!hs?50:100):33))return}
   MP.lastSend=now;MP.lastState=key;
   const o={t:'s',x,y,a,p,f,v:hv,T:Math.round(now)};
   if(MP.host&&!HUNT()&&mon)o.M=[r2(mon.x),r2(mon.y),r2(mon.face),{patrol:0,chase:1,search:2,stunned:3}[mon.state]||0,Math.round(mon.speed*10)/10,Math.round(mon.stunT*10)/10];
@@ -1953,7 +1975,7 @@ const SS={x:0,y:0,a:0,p:0};
 const angW=d=>Math.atan2(Math.sin(d),Math.cos(d));
 function snapSample(buf,rt,o,canExtra){
   const n=buf.length,L=buf[n-1];
-  if(rt>=L.t){const ex=canExtra?Math.min(rt-L.t,120)/1000:0;o.x=L.x+L.vx*ex;o.y=L.y+L.vy*ex;o.a=L.a;o.p=L.p;return 2}
+  if(rt>=L.t){const ex=canExtra?Math.min(rt-L.t,150)/1000:0;o.x=L.x+L.vx*ex;o.y=L.y+L.vy*ex;o.a=L.a;o.p=L.p;return 2}
   const F=buf[0];
   if(rt<=F.t){o.x=F.x;o.y=F.y;o.a=F.a;o.p=F.p;return 1}
   let i=n-2;while(i>0&&buf[i].t>rt)i--;
@@ -2006,18 +2028,18 @@ function mpTickPre(dt){
   for(const id in MP.pl){const p=MP.pl[id];if(p.in&&p.gone&&now-p.gone>10000){p.in=false;if(p.st==='alive')p.st='left';feedAdd(p.name+' از بازی خارج شد','bad')}}
   for(const id in MP.pl){
     if(+id===MP.id)continue;const p=MP.pl[id];if(!p.in||!p.seen||!p.buf||!p.buf.length)continue;
-    const D=p.D||(p.D=MP.dmin+15),rt=now-(p.off||0)-D,last=p.buf[p.buf.length-1];
+    const D=p.D||(p.D=MP.dmin+8),rt=now-(p.off||0)-D,last=p.buf[p.buf.length-1];
     const r=snapSample(p.buf,rt,SS,p.mv);
     {const tg=Math.min(200,MP.dmin+(p.jit||0)*1.7);   // تأخیر نمایش = حداقل لازم + دو برابر نوسان واقعی شبکه؛ بعد از هر نوسان سریع برمی‌گرده پایین
-     if(r===2&&p.mv&&rt-last.t>15)p.D=Math.min(260,D+dt*120);else p.D=Math.max(MP.dmin,D+Math.max(-dt*70,Math.min(dt*100,tg-D)))}
+     if(r===2&&p.mv&&rt-last.t>15)p.D=Math.min(260,D+dt*120);else p.D=Math.max(MP.dmin,D+Math.max(-dt*110,Math.min(dt*100,tg-D)))}
     p.x=SS.x;p.y=SS.y;p.a=SS.a;p.pt=Math.max(-1.3,Math.min(1.3,SS.p));
     const cut=rt-400;while(p.buf.length>2&&p.buf[1].t<cut)p.buf.shift();
   }
   if(!MP.host&&MP.mbuf&&MP.mbuf.length&&mon){
-    const D=MP.mD||(MP.mD=150),rt=now-(MP.moff||0)-D,last=MP.mbuf[MP.mbuf.length-1];
+    const D=MP.mD||(MP.mD=90),rt=now-(MP.moff||0)-D,last=MP.mbuf[MP.mbuf.length-1];
     const r=snapSample(MP.mbuf,rt,SS,mon.speed>0);
-    {const tg=Math.min(220,MP.dmin+15+(MP.mjit||0)*1.7);
-     if(r===2&&mon.speed>0&&rt-last.t>15)MP.mD=Math.min(320,D+dt*120);else MP.mD=Math.max(MP.dmin+10,D+Math.max(-dt*70,Math.min(dt*100,tg-D)))}
+    {const tg=Math.min(220,MP.dmin+8+(MP.mjit||0)*1.7);
+     if(r===2&&mon.speed>0&&rt-last.t>15)MP.mD=Math.min(320,D+dt*120);else MP.mD=Math.max(MP.dmin+5,D+Math.max(-dt*110,Math.min(dt*100,tg-D)))}
     mon.x=SS.x;mon.y=SS.y;mon.face=SS.a;mon.walk+=dt*mon.speed*3.4;
     const cut=rt-500;while(MP.mbuf.length>2&&MP.mbuf[1].t<cut)MP.mbuf.shift();
   }
