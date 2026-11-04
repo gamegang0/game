@@ -186,6 +186,32 @@ body.hunter #hideBtn,body.hunter #taserBtn,body.hunter #crouchBtn,body.hunter #f
 #rvBtn i{position:absolute;left:0;top:0;bottom:0;width:0;background:rgba(125,255,176,.4);pointer-events:none}
 #rvBtn span{position:relative}
 body.spec #rvBtn,body.hunter #rvBtn{display:none!important}
+
+/* ===== انیمیشن دریچه + نشانگر شکارچی ===== */
+#hidingFX.active{animation:ventDark .8s ease-out both}
+#hidingFX.active:before{animation:ventSlit .8s cubic-bezier(.2,.8,.2,1) both}
+#hidingFX:after{content:"";position:absolute;left:18%;right:18%;top:44%;height:10%;pointer-events:none;background:repeating-linear-gradient(90deg,rgba(130,135,125,.55) 0 3px,transparent 3px 18px);opacity:0}
+#hidingFX.active:after{animation:ventBars .8s ease-out both}
+@keyframes ventDark{0%{opacity:0}35%{opacity:.2}100%{opacity:1}}
+@keyframes ventSlit{0%{transform:scaleY(.05);opacity:0}100%{transform:scaleY(1);opacity:1}}
+@keyframes ventBars{0%{opacity:0;transform:translateY(-14px)}60%{opacity:.2}100%{opacity:1;transform:none}}
+#huntMarks{position:fixed;inset:0;pointer-events:none;z-index:10}
+.hmark{position:fixed;transform:translate(-50%,-50%);display:none;pointer-events:none;font-weight:900;font-size:14px;color:#ff5a4a;text-shadow:0 0 8px #000,0 2px 5px #000;white-space:nowrap;text-align:center;animation:hmPulse 1s ease-in-out infinite}
+.hmark.walk{color:#ffd36a}
+@keyframes hmPulse{0%,100%{opacity:.95}50%{opacity:.4}}
+
+/* ===== انیمیشن گرفتن / فرار ===== */
+#catchFX{position:fixed;inset:0;z-index:19;pointer-events:none;display:grid;place-items:center;opacity:0;visibility:hidden;background:radial-gradient(ellipse at center,transparent 28%,rgba(110,215,255,.6) 100%)}
+#catchFX.active{visibility:visible;animation:catchA 1.5s ease-out both}
+#catchFX b{font-size:clamp(34px,9vw,80px);color:#eaffff;text-shadow:0 0 18px #4cf,0 4px 12px #000;text-align:center;animation:catchT 1.5s ease-out both}
+#catchFX small{display:block;font-size:.36em;color:#bfefff}
+@keyframes catchA{0%{opacity:0}10%{opacity:1}100%{opacity:0}}
+@keyframes catchT{0%{transform:scale(.3) rotate(-9deg)}18%{transform:scale(1.18) rotate(3deg)}35%{transform:scale(1)}100%{transform:scale(1.04)}}
+#escSeenFX{position:fixed;left:0;right:0;top:22%;z-index:19;text-align:center;pointer-events:none;opacity:0;visibility:hidden}
+#escSeenFX.active{visibility:visible;animation:escSeen 3.2s ease-out both}
+#escSeenFX b{display:inline-block;padding:10px 22px;border-radius:18px;font-size:clamp(20px,5vw,38px);color:#eafff0;background:rgba(10,60,30,.75);border:2px solid #7dffb0;text-shadow:0 0 14px #3f8;box-shadow:0 0 40px rgba(80,255,150,.55)}
+#escSeenFX.bad b{color:#ffe3dc;background:rgba(80,10,5,.78);border-color:#ff6a50;text-shadow:0 0 14px #f43;box-shadow:0 0 40px rgba(255,80,50,.55)}
+@keyframes escSeen{0%{opacity:0;transform:translateY(-30px) scale(.6)}12%{opacity:1;transform:translateY(0) scale(1.1)}22%{transform:scale(1)}85%{opacity:1}100%{opacity:0;transform:translateY(-12px)}}
 </style>
 </head>
 <body>
@@ -218,7 +244,7 @@ body.spec #rvBtn,body.hunter #rvBtn{display:none!important}
   <div class="col"><span class="pill" id="keys">🔑 ۰ / ۳</span><span class="pill" id="tm">۰:۰۰</span><span class="pill" id="taserStat">⚡ شوکر: ۰</span><div class="bar" title="باتری چراغ‌قوه"><b>🔦</b><div id="bat"><i></i></div></div><div class="bar" title="نفس"><b>⚡</b><div id="stam"><i></i></div></div><div style="display:flex;gap:6px"><button id="pauseBtn" class="mb" aria-label="مکث">⏸</button><button id="mute" class="mb" aria-label="صدا">🔊</button></div></div>
 </div>
 <div id="msg"></div><div id="nameTag"></div><div id="hidingFX"><div>داخل دریچه پنهان شدی<br><small>حداکثر ۱۵ ثانیه؛ بعد خودکار بیرون میای. سپس همین دریچه ۶۰ ثانیه قفل می‌شه.</small></div></div><div id="zapFX">⚡⚡</div>
-<div id="pingPill" class="pill"></div><div id="feed"></div><div id="ptags"><div class="ptag"></div><div class="ptag"></div><div class="ptag"></div></div><div id="spec"><button id="specPrev" aria-label="قبلی">◀</button><span id="specName"></span><button id="specNext" aria-label="بعدی">▶</button></div>
+<div id="pingPill" class="pill"></div><div id="feed"></div><div id="ptags"><div class="ptag"></div><div class="ptag"></div><div class="ptag"></div></div><div id="catchFX"><b></b></div><div id="escSeenFX"><b></b></div><div id="huntMarks"><div class="hmark"></div><div class="hmark"></div><div class="hmark"></div></div><div id="spec"><button id="specPrev" aria-label="قبلی">◀</button><span id="specName"></span><button id="specNext" aria-label="بعدی">▶</button></div>
 <div id="joy"><div id="knob"></div></div>
 <button id="run" title="دویدن روشن/خاموش" aria-label="دویدن روشن/خاموش" aria-label="دویدن">⚡</button>
 <button id="flBtn" aria-label="چراغ‌قوه">🔦</button>
@@ -827,6 +853,7 @@ const lampOnFlag=new Uint8Array(MW*MH).fill(1);
 
 /* ========= حالت بازی ========= */
 let px,py,pa,pitch=0,keysGot,stam,bat,flashOn,tAlive,mon,state='menu',bob=0,msgT=0,sprint=false,stepT=0,lastLock=0,shake=0,monSeen=0,scareT=0,escapeT=0,blackT=0,nextBlack=70,sweat=0;
+let VA={t:1,dir:0,v:null,i:-1};const CL={t:1};
 let isHidden=false,hideVent=null,hideStartedAt=0,hideCooldownUntil=[],crouching=false,taserAmmo=0,taserPickup=null;
 const keysDown={};let joyX=0,joyY=0,lookDX=0,lookDY=0;
 let sFwd=[1,0,0];
@@ -1125,11 +1152,14 @@ function drawKey(x,z,tm,seed){
   part(base,M4.T(.09,0,0),'box',[.26,.04,.04],G,E,.5);
   part(base,M4.T(.15,-.045,0),'box',[.04,.07,.04],G,E,.5);part(base,M4.T(.2,-.04,0),'box',[.04,.06,.04],G,E,.5);
 }
-function drawVent(x,z,tm,seed,occ){
+function drawVent(x,z,tm,seed,occ,open){
+  open=open||0;
   const base=M4.T(x,0,z),pulse=.5+.5*Math.sin(tm*2+seed);
   part(base,M4.T(0,.045,0),'box',[.88,.09,.88],[.23,.25,.24],[.02,.025,.025],.35);
   part(base,M4.T(0,.096,0),'box',[.72,.025,.72],[.018,.025,.025],[0,0,0],0);
-  for(let i=0;i<5;i++)part(base,M4.T(-.27+i*.135,.115,0),'box',[.045,.025,.7],[.42,.46,.43],[.06,.07,.07],.25);
+  const lid=cm(base,cm(M4.T(0,.115,-.4),M4.RX(-open*1.35)));   // درِ دریچه از لبه‌ی پشتش باز می‌شه
+  for(let i=0;i<5;i++)part(lid,M4.T(-.27+i*.135,0,.4),'box',[.045,.025,.7],[.42,.46,.43],[.06,.07,.07],.25);
+  part(lid,M4.T(0,-.004,.4),'box',[.78,.018,.04],[.38,.42,.39],[.05,.06,.06],.2);
   part(base,M4.T(0,.125,-.38),'box',[.22,.035,.06],[.55,.48,.28],[.12,.08,.02],.4);
   if(Math.hypot(px-x,py-z)<1.15)part(base,M4.T(0,.15,.43),'box',[.18,.018,.045],occ?[1,.25,.2]:[.3,.95,.65],occ?[.6,.08,.05]:[.05,.5,.18],pulse);
 }
@@ -1269,7 +1299,15 @@ function drawViewModel(tm,dt,cam,dir){
 function drawFrame(tm,dt){
   const asp=cv.width/cv.height,rt=state==='scare'?1:0;
   const eyeY=EYE+((HM()||(state==='spectate'&&MP.specId===-2))?.16:0)+(crouching?-.2:0)+Math.sin(bob)*.014+(shake?(Math.random()-.5)*shake*.03:0)+(state==='scare'?(Math.random()-.5)*.03:0);
-  const cam=[px,eyeY,py],cp=Math.cos(pitch),dir=[cp*Math.cos(pa),Math.sin(pitch),cp*Math.sin(pa)];
+  if(VA.dir!==0){VA.t+=dt/.8;if(VA.t>=1){VA.t=1;VA.dir=0}}
+  let cX=px,cZ=py,cY=eyeY,pIt=pitch;
+  if(VA.v&&(isHidden||VA.dir!==0)){
+    let w=isHidden?1:0;if(VA.dir!==0){const e=VA.t*VA.t*(3-2*VA.t);w=VA.dir>0?e:1-e}
+    cX=px+(VA.v.x-px)*w;cZ=py+(VA.v.y-py)*w;cY=eyeY+(.34-eyeY)*w;
+    if(VA.dir!==0)pIt=pitch+(-1.0-pitch)*Math.sin(Math.PI*VA.t)*.85;
+  }
+  if(CL.t<1){CL.t+=dt/.7;const k=Math.sin(Math.PI*Math.min(1,CL.t)),nx=cX+Math.cos(pa)*.4*k,nz2=cZ+Math.sin(pa)*.4*k;if(!blocked(nx,nz2,.12)){cX=nx;cZ=nz2}pIt-=.28*k}
+  const cam=[cX,cY,cZ],cp=Math.cos(pIt),dir=[cp*Math.cos(pa),Math.sin(pIt),cp*Math.sin(pa)];
   /* جهت چراغ‌قوه با کمی تأخیر نرم */
   const kf=Math.min(1,dt*13);sFwd=[sFwd[0]+(dir[0]-sFwd[0])*kf,sFwd[1]+(dir[1]-sFwd[1])*kf,sFwd[2]+(dir[2]-sFwd[2])*kf];const sl=Math.hypot(...sFwd)||1;const fw=[sFwd[0]/sl,sFwd[1]/sl,sFwd[2]/sl];
   const view=M4.look(cam,[cam[0]+dir[0],cam[1]+dir[1],cam[2]+dir[2]]),proj=M4.persp(FOV,asp,.04,40),VP=M4.mul(proj,view);
@@ -1312,7 +1350,7 @@ function drawFrame(tm,dt){
   /* اشیا */
   for(let i=0;i<keysPos.length;i++){const k=keysPos[i];if(!k.got&&Math.hypot(k.x-px,k.y-py)<22)drawKey(k.x,k.y,tm,i*1.7)}
   for(let i=0;i<battPos.length;i++){const b=battPos[i];if(!b.got&&Math.hypot(b.x-px,b.y-py)<22)drawBatt(b.x,b.y,tm,i*2.3)}
-  for(let i=0;i<ventSpots.length;i++)drawVent(ventSpots[i].x,ventSpots[i].y,tm,i*1.8,ventOcc(i));
+  for(let i=0;i<ventSpots.length;i++)drawVent(ventSpots[i].x,ventSpots[i].y,tm,i*1.8,ventOcc(i),ventOpenAmt(i));
   if(taserPickup&&taserPickup.active&&Math.hypot(taserPickup.x-px,taserPickup.y-py)<22)drawTaser(taserPickup.x,taserPickup.y,tm);
   drawPlayers(tm);drawCorpses(tm);
   if(Math.hypot(m.x-px,m.y-py)<30&&!HM()&&!(state==='spectate'&&MP.specId===-2))drawMonster(tm);
@@ -1381,7 +1419,7 @@ function update(dt){
     if(performance.now()-hideStartedAt>=15000){
       const vi=hideVent?ventSpots.indexOf(hideVent):-1;
       if(vi>=0)startVentCooldown(vi);
-      isHidden=false;hideVent=null;hideStartedAt=0;$('hidingFX').classList.remove('active');
+      startVentAnim(-1,hideVent);isHidden=false;hideVent=null;hideStartedAt=0;$('hidingFX').classList.remove('active');
       showMsg('۱۵ ثانیه تموم شد؛ خودکار از دریچه بیرون اومدی. کول‌داون: ۶۰ ثانیه',3200,true);
       updateActionButtons();mpSendState(true);return;
     }
@@ -1406,9 +1444,9 @@ function update(dt){
   curMv=moving;curRun=wantRun;let sp=wantRun?3.5:(crouching?1.35:2.25);
   stam=100;
   const fz=HM()&&(performance.now()<MP.hunt.freeAt||mon.stunT>0);
-  if(HM()){const H=MP.hunt;sp=fz?0:(wantRun?3.9:2.7);H.en=wantRun?Math.max(0,H.en-dt/4):Math.min(1,H.en+dt/7);if(H.en<=0)H.lock=true;else if(H.en>.3)H.lock=false;stam=H.en*100}
+  if(HM()){const H=MP.hunt;sp=fz?0:huntSpd(wantRun);H.en=wantRun?Math.max(0,H.en-dt/4):Math.min(1,H.en+dt/7);if(H.en<=0)H.lock=true;else if(H.en>.3)H.lock=false;stam=H.en*100}
   if(fz){curMv=curRun=false}
-  const dx=(Math.cos(pa)*f-Math.sin(pa)*s)*sp*dt,dy=(Math.sin(pa)*f+Math.cos(pa)*s)*sp*dt;tryMove(dx,dy);
+  if(!hunterGuard(dt,fz)){const dx=(Math.cos(pa)*f-Math.sin(pa)*s)*sp*dt,dy=(Math.sin(pa)*f+Math.cos(pa)*s)*sp*dt;tryMove(dx,dy)}
   if(moving&&!fz){bob+=dt*(wantRun?13:(crouching?4.2:8));stepT-=dt;if(stepT<=0){stepT=wantRun?.2:(crouching?.62:.3);if(crouching){nz(.055,230,1,.025,'lowpass')}else sfx.step(wantRun)}}
   /* چراغ‌قوه و باتری */
   if(flashOn&&bat>0){if(!HM())bat=Math.max(0,bat-.5*dt);if(bat<=0){flashOn=false;$('flBtn').classList.remove('on');showMsg('باتری چراغ‌قوه تموم شد! 🔋',3000,true);sfx.click()}}
@@ -1443,12 +1481,80 @@ function updateScare(dt){
   shake=1;$('redv').style.opacity=0;
   if(scareT>5.8){if(MP.on)enterSpectate();else showOver()}
 }
+const huntSpd=run=>{const f=Math.min(1,keysGot/Math.max(1,NEED_KEYS));return run?3.5+.6*f:2.45+.6*f};   // سرعت پژمانِ بازیکن با تعداد کلیدهای پیدا شده بیشتر می‌شه
+function huntCatchFX(name){
+  const el=$('catchFX'),b=el.firstChild;b.textContent='💦 گرفتیش!';const sm=document.createElement('small');sm.textContent=name;b.appendChild(sm);
+  el.classList.remove('active');void el.offsetWidth;el.classList.add('active');CL.t=0;shake=.8;
+  try{nz(.5,1500,1,.3,'bandpass');tone(300,.4,.2,'sine',70);tone(120,.3,.18,'sawtooth',60,.05)}catch(e){}
+}
+function escSeenFX(name){
+  const el=$('escSeenFX'),bad=HM();el.firstChild.textContent=bad?'😤 '+name+' از دستت فرار کرد!':'🎉 '+name+' فرار کرد!';
+  el.classList.toggle('bad',bad);el.classList.remove('active');void el.offsetWidth;el.classList.add('active');
+  try{if(bad){tone(130,.45,.16,'sawtooth',55)}else{tone(520,.14,.14,'triangle');tone(780,.16,.12,'triangle',0,.1);tone(1040,.22,.1,'triangle',0,.2)}}catch(e){}
+}
+function mpPingShare(){
+  const n=performance.now();if(!MP.on||MP.started||!MP.ping||n-(MP.pgT||0)<3000)return;MP.pgT=n;
+  const me=MP.pres[MP.cid];if(me&&Math.abs((me.pg||0)-MP.ping)<8)return;mpTrack({pg:MP.ping});
+}
+function startVentAnim(dir,v){if(!v)return;VA.t=0;VA.dir=dir;VA.v=v;VA.i=ventSpots.indexOf(v);try{tone(dir>0?150:210,.16,.12,'square',dir>0?70:320);nz(.22,700,1,.05,'bandpass')}catch(e){}}
+function ventOpenAmt(i){
+  let o=0;
+  if(VA.dir!==0&&VA.i===i)o=Math.sin(Math.PI*Math.min(1,VA.t));
+  if(MP.on&&MP.started)for(const id in MP.pl){const p=MP.pl[id];if(+id===MP.id||!p.in)continue;const vi=p.hv>=0?p.hv:p.lhv;if(vi===i){const h=p.hA||0;if(h>.02&&h<.98)o=Math.max(o,Math.sin(Math.PI*h))}}
+  return o;
+}
+/* ===== شکارچی (پژمانِ بازیکن): نشانگر کسی که می‌دوه/راه می‌ره ===== */
+function huntMarks(){
+  const els=$('huntMarks').children;let i=0;
+  if(HM()&&state==='play'&&G3.VP){
+    const AR=['⬆️','↗️','➡️','↘️','⬇️','↙️','⬅️','↖️'];
+    for(const id in MP.pl){
+      const p=MP.pl[id];if(+id===MP.id||!p.in||p.st!=='alive'||p.hid||!p.seen||i>=els.length)continue;
+      const dx=p.x-px,dz=p.y-py,d=Math.hypot(dx,dz);
+      /* دویدن: همه‌جا نشون بده · راه رفتن: فقط نزدیک · خم شده یا ایستاده: هیچی */
+      const loud=p.run||(p.mv&&!p.cr&&d<9.5);if(!loud)continue;
+      const el=els[i++];el.style.display='block';el.className='hmark'+(p.run?'':' walk');
+      let sx,sy,ar='';
+      const pj=project([p.x,1.05,p.y]);
+      if(pj&&Math.abs(pj[0])<.9&&pj[1]>-.85&&pj[1]<.8){sx=(pj[0]*.5+.5)*innerWidth;sy=(1-(pj[1]*.5+.5))*innerHeight-24}
+      else{const fw=dx*Math.cos(pa)+dz*Math.sin(pa),rt=-dx*Math.sin(pa)+dz*Math.cos(pa),rel=Math.atan2(rt,fw);sx=innerWidth*(.5+.4*Math.sin(rel));sy=innerHeight*(.5-.34*Math.cos(rel));ar=AR[((Math.round(rel/(Math.PI/4))%8)+8)%8]+' '}
+      el.textContent=ar+(p.run?'🏃 ':'👣 ')+p.name+' · '+FA(Math.round(d))+' متر';
+      el.style.left=sx+'px';el.style.top=sy+'px';
+    }
+  }
+  for(;i<els.length;i++)els[i].style.display='none';
+}
+/* ===== شکارچی نباید دم دریچه کمپ کنه؛ مثل بات خودکار می‌ره یه جای دور ===== */
+const HG={on:false,path:[],vi:-1,t:0};
+function ventOccupant(vi){if(!MP.on)return false;for(const id in MP.pl){const p=MP.pl[id];if(+id!==MP.id&&p.in&&p.st==='alive'&&p.hid&&p.hv===vi)return true}return false}
+function hunterGuard(dt,fz){
+  if(!HM()||fz||state!=='play'){HG.on=false;return false}
+  if(HG.on){HG.t+=dt;if(!ventOccupant(HG.vi)||!HG.path.length||HG.t>14)HG.on=false}
+  if(!HG.on){
+    let vi=-1,bd=4.2;
+    for(let k=0;k<ventSpots.length;k++){if(!ventOccupant(k))continue;const d=Math.hypot(px-ventSpots[k].x,py-ventSpots[k].y);if(d<bd){bd=d;vi=k}}
+    if(vi<0)return false;
+    const v=ventSpots[vi];let r=null,br=1e9;
+    for(const rr of rooms){if(Math.hypot(rr.cx-v.x,rr.cy-v.y)<11)continue;const dh=Math.hypot(rr.cx-px,rr.cy-py);if(dh<br){br=dh;r=rr}}
+    if(!r)return false;
+    const path=bfsPath(px|0,py|0,r.cx,r.cy);if(!path.length)return false;
+    HG.on=true;HG.vi=vi;HG.path=path;HG.t=0;
+    showMsg('🌀 یکی توی دریچه‌ست؛ خودکار رفتی یه جای دور تا بیاد بیرون',3200,true);
+  }
+  let c=HG.path[0],tx=(c%MW)+.5,ty=((c/MW)|0)+.5;
+  if(Math.hypot(tx-px,ty-py)<.18){HG.path.shift();if(!HG.path.length){HG.on=false;return false}c=HG.path[0];tx=(c%MW)+.5;ty=((c/MW)|0)+.5}
+  const dx=tx-px,dy=ty-py,l=Math.hypot(dx,dy)||1;
+  tryMove(dx/l*2.7*dt,dy/l*2.7*dt);
+  const want=Math.atan2(dy,dx),df=Math.atan2(Math.sin(want-pa),Math.cos(want-pa));pa+=df*Math.min(1,dt*8);
+  curMv=true;curRun=false;
+  return true;
+}
 function toggleHide(){if(HM())return;
   if(state!=='play')return;
   if(isHidden){
     const vi=hideVent?ventSpots.indexOf(hideVent):-1;
     if(vi>=0)startVentCooldown(vi);
-    isHidden=false;hideVent=null;hideStartedAt=0;$('hidingFX').classList.remove('active');
+    startVentAnim(-1,hideVent);isHidden=false;hideVent=null;hideStartedAt=0;$('hidingFX').classList.remove('active');
     showMsg('از دریچه اومدی بیرون؛ کول‌داون این دریچه ۶۰ ثانیه است',2600);updateActionButtons();mpSendState(true);return;
   }
   const v=nearbyVent();
@@ -1456,7 +1562,7 @@ function toggleHide(){if(HM())return;
   const vi=ventSpots.indexOf(v),left=(hideCooldownUntil[vi]||0)-performance.now();
   if(left>0){showMsg('این دریچه هنوز کول‌داون داره: '+Math.ceil(left/1000)+' ثانیه',2200,true);return;}
   if(ventOcc(vi)){showMsg('این دریچه پره! توی هر دریچه فقط یک نفر جا می‌شه',2400,true);return;}
-  isHidden=true;hideVent=v;hideStartedAt=performance.now();crouching=false;sprint=false;flashOn=false;$('flBtn').classList.remove('on');$('run').classList.remove('on');
+  startVentAnim(1,v);isHidden=true;hideVent=v;hideStartedAt=performance.now();crouching=false;sprint=false;flashOn=false;$('flBtn').classList.remove('on');$('run').classList.remove('on');
   joyX=joyY=lookDX=lookDY=0;for(const k in keysDown)keysDown[k]=false;
   $('hidingFX').classList.add('active');
   if(mon.state==='chase'){const target=mon.lastKnown||[px|0,py|0];mon.state='search';mon.target=target;mon.path=bfsPath(mon.x|0,mon.y|0,target[0],target[1]);mon.lostT=0;}
@@ -1537,10 +1643,10 @@ function mpSend(o){
 }
 function mpTrack(extra){
   const me=MP.pres[MP.cid]||{name:MP.myName,t:Date.now(),st:0};Object.assign(me,extra||{});MP.pres[MP.cid]=me;
-  if(MP.sch){try{MP.sch.track({name:me.name,t:me.t,st:me.st,gm:me.gm||'coop',go:me.go||null})}catch(e){}return}
-  const w=MP.ws;if(w&&w.readyState===1)w.send(JSON.stringify({topic:MP.topic,event:'presence',payload:{type:'presence',event:'track',payload:{name:me.name,t:me.t,st:me.st}},ref:String(++MP.ref)}));
+  if(MP.sch){try{MP.sch.track({name:me.name,t:me.t,st:me.st,gm:me.gm||'coop',go:me.go||null,pg:me.pg||0})}catch(e){}return}
+  const w=MP.ws;if(w&&w.readyState===1)w.send(JSON.stringify({topic:MP.topic,event:'presence',payload:{type:'presence',event:'track',payload:{name:me.name,t:me.t,st:me.st,gm:me.gm||'coop',go:me.go||null,pg:me.pg||0}},ref:String(++MP.ref)}));
 }
-const mpSorted=()=>Object.keys(MP.pres).map(c=>({c,name:MP.pres[c].name,t:MP.pres[c].t,st:MP.pres[c].st})).sort((a,b)=>a.t-b.t||(a.c<b.c?-1:1));
+const mpSorted=()=>Object.keys(MP.pres).map(c=>({c,name:MP.pres[c].name,t:MP.pres[c].t,st:MP.pres[c].st,pg:MP.pres[c].pg||0})).sort((a,b)=>a.t-b.t||(a.c<b.c?-1:1));
 function mpSlotOf(c){if(MP.started)return MP.cmap[c]==null?-1:MP.cmap[c];return mpSorted().findIndex(e=>e.c===c)}
 function mpConnect(create){
   const name=MPN($('mpName').value);
@@ -1590,7 +1696,7 @@ function mpConnectLib(lib,url,key,code){
   MP.sb=sb;MP.sch=ch;MP.ws=null;
   const readPres=()=>{
     const st=ch.presenceState(),np={};
-    for(const c in st){const ms=st[c];const v=ms&&ms[ms.length-1];if(v)np[c]={name:MPN(v.name),t:+v.t||0,st:v.st|0,gm:v.gm,go:v.go}}
+    for(const c in st){const ms=st[c];const v=ms&&ms[ms.length-1];if(v)np[c]={name:MPN(v.name),t:+v.t||0,st:v.st|0,gm:v.gm,go:v.go,pg:+v.pg||0}}
     if(MP.on&&MP.pres[MP.cid]&&!np[MP.cid])np[MP.cid]=MP.pres[MP.cid];
     MP.pres=np;
   };
@@ -1622,12 +1728,12 @@ function mpPhx(m){
       if(st==='error'&&!MP.syn)mpFail('Supabase اتصال رو رد کرد؛ آدرس/کلید رو چک کن');
       break}
     case'presence_state':{
-      MP.pres={};for(const c in(m.payload||{})){const ms=m.payload[c].metas||[];const v=ms[ms.length-1];if(v)MP.pres[c]={name:MPN(v.name),t:+v.t||0,st:v.st|0}}
+      MP.pres={};for(const c in(m.payload||{})){const ms=m.payload[c].metas||[];const v=ms[ms.length-1];if(v)MP.pres[c]={name:MPN(v.name),t:+v.t||0,st:v.st|0,gm:v.gm,go:v.go,pg:+v.pg||0}}
       if(!MP.syn){MP.syn=true;mpFirstSync()}else mpPresChanged();break}
     case'presence_diff':{
       const d=m.payload||{};
       for(const c in(d.leaves||{}))if(c!==MP.cid||!MP.on)delete MP.pres[c];
-      for(const c in(d.joins||{})){const ms=d.joins[c].metas||[];const v=ms[ms.length-1];if(v)MP.pres[c]={name:MPN(v.name),t:+v.t||0,st:v.st|0}}
+      for(const c in(d.joins||{})){const ms=d.joins[c].metas||[];const v=ms[ms.length-1];if(v)MP.pres[c]={name:MPN(v.name),t:+v.t||0,st:v.st|0,gm:v.gm,go:v.go,pg:+v.pg||0}}
       if(MP.on)mpPresChanged();break}
     case'broadcast':{
       const pl=m.payload;if(!pl||pl.event!=='g')break;
@@ -1673,7 +1779,14 @@ function mpStartGame(){
   const L=mpSorted().slice(0,3),hunt=MP.gm==='hunt';
   if(hunt&&L.length<2){mpStatus('برای مود پژمان حداقل ۲ نفر لازمه',true);return}
   let hu=-1;
-  if(hunt){const c=L.map((e,i)=>i).filter(i=>i!==MP.lastHunter);hu=c[Math.floor(Math.random()*c.length)]}
+  if(hunt){
+    const pg=i=>{const e=L[i],v=e.c===MP.cid?MP.ping:e.pg;return v>0?v:0};
+    const all=L.map((e,i)=>i),known=all.filter(i=>pg(i)>0);
+    if(known.length===all.length){
+      all.sort((a,b)=>pg(a)-pg(b));hu=all[0];
+      if(hu===MP.lastHunter&&all.length>1&&pg(all[1])-pg(all[0])<=60)hu=all[1];   // پینگ‌ها نزدیکن؛ نوبت رو عوض کن
+    }else{const c=all.filter(i=>i!==MP.lastHunter);hu=c[Math.floor(Math.random()*c.length)]}
+  }
   const seed=1+Math.floor(Math.random()*2147483000);
   const msg={t:'go',seed,players:L.map((e,i)=>({id:i,name:e.name,c:e.c})),gm:hunt?'hunt':'coop',hu};
   mpTrack({st:1,go:msg});mpSend(msg);mpGo(msg);
@@ -1707,7 +1820,7 @@ function mpLeave(){
 }
 function mpLinkUI(bad){const p=$('pingPill');if(bad){p.style.display='block';p.textContent='⚠ اتصال ضعیف… دارم دوباره وصل می‌شم';p.style.color='#ff8a7a'}else mpPingUI()}
 setInterval(()=>{if(MP.on&&MP.linkBad&&performance.now()-MP.linkBad>20000)mpDropped()},1000);
-function mpPingUI(){
+function mpPingUI(){mpPingShare();
   const p=$('pingPill');p.style.display='block';p.textContent='📶 '+MP.ping+' ms'+(MP.started&&MP.dAvg?' · تأخیر نمایش '+Math.round(MP.dAvg)+'ms':'');
   p.style.color=MP.ping<80?'#7dffb0':MP.ping<160?'#ffe58a':'#ff8a7a';
 }
@@ -1721,12 +1834,12 @@ function mpRefreshLobby(){
   if(!MP.on)return;
   $('mpCode').textContent=MP.room;$('mpCount').textContent=FA(MP.list.length)+' / ۳';
   const L=$('mpList');L.textContent='';
-  MP.list.forEach(p=>{const d=document.createElement('div');d.className='mpP';d.textContent=(p.id===MP.hostId?'👑 ':'🎮 ')+p.name+(p.id===MP.id?' (تو)':'');L.appendChild(d)});
+  MP.list.forEach(p=>{const d=document.createElement('div');d.className='mpP';const _e=mpSorted()[p.id],_pg=p.id===MP.id?MP.ping:(_e&&_e.pg);d.textContent=(p.id===MP.hostId?'👑 ':'🎮 ')+p.name+(p.id===MP.id?' (تو)':'')+(_pg?' · 📶 '+FA(Math.round(_pg))+' ms':'');L.appendChild(d)});
   $('mpStart').style.display=MP.host?'':'none';$('mpWait').style.display=MP.host?'none':'';
   {const hc=mpSorted()[0],gm=(hc&&MP.pres[hc.c]&&MP.pres[hc.c].gm)||'coop';MP.gm=gm;
    $('mpModeCoop').classList.toggle('sel',gm==='coop');$('mpModeHunt').classList.toggle('sel',gm==='hunt');
    $('mpModeCoop').disabled=$('mpModeHunt').disabled=!MP.host;
-   $('mpModeNote').textContent=gm==='hunt'?'یکی به‌صورت تصادفی «'+MONSTER+'» می‌شه و بقیه رو شکار می‌کنه (حداقل ۲ نفر)':'پژمان هوش مصنوعیه و همه با هم فرار می‌کنن'}
+   $('mpModeNote').textContent=gm==='hunt'?'بازیکنی که کمترین پینگ رو داره «'+MONSTER+'» می‌شه و بقیه (تا ۲ نفر) فرار می‌کنن · حداقل ۲ نفر':'پژمان هوش مصنوعیه و همه با هم فرار می‌کنن'}
 }
 function mpPeers(list){
   const old=MP.list;MP.list=list;
@@ -1784,7 +1897,7 @@ function mpMsg(m){
     case'rv':{if((m.id|0)===MP.id){MP.rvP=+m.p||0;MP.rvT=performance.now()}break}
     case'rvd':mpRevive(m.id|0,false,m.from);break;
     case'esc':{
-      const p=MP.pl[m.from];if(p&&p.st==='alive'){p.st='escaped';feedAdd(p.name+' از زیرزمین فرار کرد! 🎉','good')}break}
+      const p=MP.pl[m.from];if(p&&p.st==='alive'){p.st='escaped';feedAdd(p.name+' از زیرزمین فرار کرد! 🎉','good');escSeenFX(p.name)}break}
   }
 }
 function mpBlackout(){
@@ -1833,7 +1946,7 @@ function mpSendState(force){
 }
 function forceUnhide(msg){
   const vi=hideVent?ventSpots.indexOf(hideVent):-1;if(vi>=0)startVentCooldown(vi);
-  isHidden=false;hideVent=null;hideStartedAt=0;$('hidingFX').classList.remove('active');showMsg(msg,2600,true);updateActionButtons();mpSendState(true);
+  startVentAnim(-1,hideVent);isHidden=false;hideVent=null;hideStartedAt=0;$('hidingFX').classList.remove('active');showMsg(msg,2600,true);updateActionButtons();mpSendState(true);
 }
 /* درون‌یابی با زمان‌نگاری: هر بسته زمان فرستنده رو داره؛ ما ~۱۰۰ms عقب‌تر نمایش می‌دیم تا حرکت دیگران نرم باشه و نپره */
 const SS={x:0,y:0,a:0,p:0};
@@ -1911,8 +2024,8 @@ function mpTickPre(dt){
   if(HUNT()){
     const h=MP.pl[MP.hunt.hunter];
     if(mon.stunT>0)mon.stunT=Math.max(0,mon.stunT-dt);
-    if(HM()){mon.x=px;mon.y=py;mon.face=pa;mon.speed=(curMv&&mon.stunT<=0&&now>MP.hunt.freeAt)?(curRun?3.9:2.7):0}
-    else if(h&&h.seen){mon.x=h.x;mon.y=h.y;mon.face=h.a;mon.speed=(h.mv&&mon.stunT<=0)?(h.run?3.9:2.7):0}
+    if(HM()){mon.x=px;mon.y=py;mon.face=pa;mon.speed=(curMv&&mon.stunT<=0&&now>MP.hunt.freeAt)?huntSpd(curRun):0}
+    else if(h&&h.seen){mon.x=h.x;mon.y=h.y;mon.face=h.a;mon.speed=(h.mv&&mon.stunT<=0)?huntSpd(h.run):0}
     mon.walk+=dt*mon.speed*3.4;mon.path=[];
     mon.state=mon.stunT>0?'stunned':(Math.hypot(mon.x-px,mon.y-py)<10?'chase':'patrol');
   }
@@ -1960,7 +2073,7 @@ function mpCaught(id,local,cx,cy){
   const L=p.buf&&p.buf[p.buf.length-1];
   const x=isFinite(cx)?cx:(id===MP.id?px:(L?L.x:p.x)),y=isFinite(cy)?cy:(id===MP.id?py:(L?L.y:p.y));
   p.corpse={x,y,a:id===MP.id?pa:(p.a||0),t:performance.now()};p.prot=0;p.hid=false;
-  if(local)mpSend({t:'caught',id,x:r2(x),y:r2(y)});
+  if(local)mpSend({t:'caught',id,x:r2(x),y:r2(y)});if(local&&HM())huntCatchFX(p.name);
   feedAdd(p.name+' به دست '+MONSTER+(HUNT()&&MP.pl[MP.hunt.hunter]?' ('+MP.pl[MP.hunt.hunter].name+')':'')+' خیس شد 💦','bad');
   if(id===MP.id){$('rvBtn').classList.remove('on');RV.prog=0;if(state==='play')startScare()}
   else{
@@ -2291,6 +2404,7 @@ function mpTags(){
     el.style.left=((pj[0]*.5+.5)*innerWidth)+'px';el.style.top=((1-(pj[1]*.5+.5))*innerHeight)+'px';
   }
   for(;i<els.length;i++)els[i].style.display='none';
+  huntMarks();
 }
 
 /* ---------- اتصال دکمه‌ها ---------- */
