@@ -1914,7 +1914,7 @@ function mpGo(m){
   RV.hold=false;RV.prog=0;RV.target=-1;$('rvBtn').classList.remove('on');MP.rvT=0;
   MP.lastSeed=m.seed|0;MP.lastSS=0;MP.dmin=MP.nPl>=3?90:MP.nPl===2?60:90;MP.linkBad=0;
   MP.hunt={on:m.gm==='hunt'&&(m.hu|0)>=0&&!!MP.pl[m.hu|0],hunter:m.hu|0,me:false,freeAt:0,en:1,lock:false,endT:0,goneMsg:0};
-  if(MP.hunt.on){MP.hunt.me=(MP.id===MP.hunt.hunter);MP.pl[MP.hunt.hunter].st='hunter';MP.nPl=Math.max(1,MP.nPl-1);MP.lastHunter=MP.hunt.hunter;MP.hunt.freeAt=performance.now()+7000}
+  if(MP.hunt.on){MP.hunt.me=(MP.id===MP.hunt.hunter);MP.pl[MP.hunt.hunter].st='hunter';MP.nPl=Math.max(1,MP.nPl-1);MP.lastHunter=MP.hunt.hunter;MP.hunt.freeAt=performance.now()+7000;MP.dmin=50}
   MP.started=true;MP.over=false;MP.lastState='';MP.lastSend=0;MP.lastMon=0;MP.specId=-1;
   MP.nextBo=70+Math.random()*25;
   $('mp').classList.add('hidden');document.body.classList.remove('spec');$('spec').classList.remove('on');
@@ -1931,14 +1931,14 @@ function mpGo(m){
 /* ---------- وضعیت بازیکن‌ها ---------- */
 function mpSendState(force){
   if(!MP.on||!MP.started||state!=='play')return;
-  const me=MP.pl[MP.id];if(!me||me.st!=='alive')return;
+  const me=MP.pl[MP.id];if(!me||(me.st!=='alive'&&me.st!=='hunter'))return;
   const now=performance.now();
   const hv=isHidden&&hideVent?ventSpots.indexOf(hideVent):-1;
   const f=(isHidden?1:0)|(crouching?2:0)|(curRun?4:0)|(curMv?8:0)|((flashOn&&bat>0)?16:0)|(RV.prog>0?32:0);
   if(f!==MP.lastF){MP.lastF=f;force=true}
   const x=r2(px),y=r2(py),a=r2(pa),p=Math.round(pitch*10)/10;
   const key=x+','+y+','+a+','+p+','+f+','+hv;
-  if(!force){const idle=key===MP.lastState;if(now-MP.lastSend<(idle?(MP.host&&!HUNT()?80:250):(MP.nPl>=3?60:MP.nPl===2?33:100)))return}
+  if(!force){const idle=key===MP.lastState,hs=HUNT();if(now-MP.lastSend<(idle?(hs?120:(MP.host&&!HUNT()?80:250)):(hs?33:(MP.nPl>=3?60:MP.nPl===2?33:100))))return}
   MP.lastSend=now;MP.lastState=key;
   const o={t:'s',x,y,a,p,f,v:hv,T:Math.round(now)};
   if(MP.host&&!HUNT()&&mon)o.M=[r2(mon.x),r2(mon.y),r2(mon.face),{patrol:0,chase:1,search:2,stunned:3}[mon.state]||0,Math.round(mon.speed*10)/10,Math.round(mon.stunT*10)/10];
@@ -2054,7 +2054,7 @@ function mpTickPost(dt){
     if(HM()&&state==='play'&&now>H.freeAt&&mon.stunT<=0){
       for(const id in MP.pl){
         const p=MP.pl[id];if(+id===MP.id||!p.in||p.st!=='alive'||p.hid||!p.seen||p.prot>now)continue;
-        const L=p.buf&&p.buf[p.buf.length-1],qx=L?L.x+L.vx*.05:p.nx,qy=L?L.y+L.vy*.05:p.ny;
+        const L=p.buf&&p.buf[p.buf.length-1],ex=Math.min(.18,.05+(MP.ping||0)/2000),qx=L?L.x+L.vx*ex:p.nx,qy=L?L.y+L.vy*ex:p.ny;
         if(Math.hypot(qx-px,qy-py)<.8){mpCaught(+id,true,qx,qy);H.freeAt=now+1600;mon.face=Math.atan2(qy-py,qx-px);break}
       }
     }
