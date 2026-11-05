@@ -190,6 +190,15 @@ body.spec #rvBtn,body.hunter #rvBtn{display:none!important}
 /* ===== قدرت اختلال تصویری پژمان: انتخاب هدف و افکت فقط روی صفحهٔ هدف ===== */
 #glitchBtn{position:fixed;z-index:14;right:max(24px,calc(env(safe-area-inset-right) + 22px));bottom:max(118px,calc(env(safe-area-inset-bottom) + 112px));min-width:112px;height:50px;border-radius:15px;border:2px solid rgba(190,145,255,.82);background:linear-gradient(135deg,rgba(48,18,78,.96),rgba(10,18,54,.96));color:#f0dcff;font:900 14px system-ui,Tahoma,sans-serif;display:none;padding:0 12px;pointer-events:auto;box-shadow:0 0 18px rgba(155,85,255,.28)}
 #glitchBtn.on{display:block}
+/* ردیابی پژمان برای بازیکن‌ها: فعال‌سازی هر ۲٫۵ دقیقه */
+#hunterTrackBtn{position:fixed;z-index:14;right:max(24px,calc(env(safe-area-inset-right) + 22px));bottom:max(118px,calc(env(safe-area-inset-bottom) + 112px));min-width:126px;height:50px;border-radius:15px;border:2px solid rgba(105,220,255,.82);background:linear-gradient(135deg,rgba(8,48,68,.96),rgba(5,20,38,.96));color:#d7f7ff;font:900 14px system-ui,Tahoma,sans-serif;display:none;padding:0 12px;pointer-events:auto;box-shadow:0 0 18px rgba(65,190,240,.24)}
+#hunterTrackBtn.on{display:block}
+#hunterTrackBtn:disabled{opacity:.78;border-color:rgba(105,220,255,.35);color:#a8cbd4}
+#hunterTrackMark{position:fixed;z-index:17;display:none;pointer-events:none;transform:translate(-50%,-50%);filter:drop-shadow(0 2px 8px rgba(0,0,0,.95));white-space:nowrap}
+#hunterTrackMark.active{display:block}
+#hunterTrackMark .track-chip{display:flex;align-items:center;gap:7px;padding:6px 10px;border:1px solid rgba(255,90,75,.85);border-radius:13px;background:rgba(35,5,5,.84);color:#fff1e9;font:900 13px system-ui,Tahoma,sans-serif;box-shadow:0 0 16px rgba(255,55,35,.28)}
+#hunterTrackMark .track-arrow{display:inline-block;color:#ff6958;font-size:21px;line-height:1;text-shadow:0 0 9px #f32}
+#hunterTrackMark.edge .track-chip{background:rgba(25,4,4,.92)}
 #glitchBtn:disabled{opacity:.8;border-color:rgba(190,145,255,.35);color:#c5b3d7}
 #glitchPick{position:fixed;inset:0;z-index:48;display:none;align-items:center;justify-content:center;padding:18px;background:rgba(0,0,0,.78);backdrop-filter:blur(5px);pointer-events:auto}
 #glitchPick.on{display:flex}
@@ -203,12 +212,12 @@ body.spec #rvBtn,body.hunter #rvBtn{display:none!important}
 #playerGlitchFX{position:fixed;inset:0;z-index:46;display:none;pointer-events:none;opacity:0;overflow:hidden}
 #playerGlitchFX.active{display:block;animation:playerGlitchOn 5s linear both}
 #playerGlitchFX:before,#playerGlitchFX:after{content:"";position:absolute;inset:0;pointer-events:none}
-#playerGlitchFX:before{background:repeating-linear-gradient(0deg,transparent 0 6px,rgba(95,225,255,.22) 7px 8px),linear-gradient(90deg,rgba(255,30,110,.18),transparent 36%,rgba(55,220,255,.18));mix-blend-mode:screen;animation:playerGlitchScan .13s steps(2,end) infinite}
-#playerGlitchFX:after{inset:15% -8%;height:22%;background:linear-gradient(90deg,transparent,rgba(255,65,145,.42) 26%,rgba(80,220,255,.48) 70%,transparent);mix-blend-mode:screen;animation:playerGlitchSlice .29s steps(2,end) infinite}
-body.glitch-hit #c{filter:contrast(1.18) saturate(1.5) hue-rotate(12deg)}
-@keyframes playerGlitchOn{0%,100%{opacity:0}2%,8%,14%,20%,29%,37%,43%,51%,59%,67%,76%,84%,91%,97%{opacity:.94}5%,11%,17%,24%,33%,40%,47%,55%,63%,72%,80%,88%,94%{opacity:.2}}
-@keyframes playerGlitchScan{0%{transform:translateX(-3%) translateY(0);clip-path:inset(0 0 70% 0)}25%{transform:translateX(2%) translateY(9%);clip-path:inset(25% 0 38% 0)}50%{transform:translateX(-1%) translateY(-6%);clip-path:inset(58% 0 14% 0)}75%{transform:translateX(3%) translateY(4%);clip-path:inset(78% 0 0 0)}100%{transform:translateX(-2%) translateY(0);clip-path:inset(0 0 70% 0)}}
-@keyframes playerGlitchSlice{0%{transform:translate(-4%,0);top:13%;height:12%}33%{transform:translate(5%,18%);top:42%;height:18%}66%{transform:translate(-3%,-12%);top:70%;height:10%}100%{transform:translate(4%,8%);top:25%;height:16%}}
+#playerGlitchFX:before{background:repeating-linear-gradient(0deg,transparent 0 10px,rgba(125,205,225,.055) 11px 12px),linear-gradient(90deg,rgba(255,80,130,.035),transparent 42%,rgba(75,190,220,.045));mix-blend-mode:soft-light;animation:playerGlitchScan .42s steps(2,end) infinite}
+#playerGlitchFX:after{inset:15% -8%;height:8%;background:linear-gradient(90deg,transparent,rgba(255,105,155,.075) 26%,rgba(100,205,225,.085) 70%,transparent);mix-blend-mode:soft-light;animation:playerGlitchSlice .72s steps(2,end) infinite}
+body.glitch-hit #c{filter:contrast(1.025) saturate(1.045) hue-rotate(1deg)}
+@keyframes playerGlitchOn{0%,100%{opacity:0}8%,20%,34%,49%,64%,79%,92%{opacity:.30}14%,27%,42%,57%,72%,86%{opacity:.055}}
+@keyframes playerGlitchScan{0%{transform:translateX(-.7%) translateY(0);clip-path:inset(0 0 70% 0)}25%{transform:translateX(.5%) translateY(2%);clip-path:inset(25% 0 38% 0)}50%{transform:translateX(-.3%) translateY(-1.5%);clip-path:inset(58% 0 14% 0)}75%{transform:translateX(.8%) translateY(1%);clip-path:inset(78% 0 0 0)}100%{transform:translateX(-.5%) translateY(0);clip-path:inset(0 0 70% 0)}}
+@keyframes playerGlitchSlice{0%{transform:translate(-.8%,0);top:13%;height:5%}33%{transform:translate(.9%,3%);top:42%;height:7%}66%{transform:translate(-.6%,-2%);top:70%;height:4%}100%{transform:translate(.7%,2%);top:25%;height:6%}}
 
 /* ===== انیمیشن دریچه + نشانگر شکارچی ===== */
 #hidingFX.active{animation:ventDark .8s ease-out both}
@@ -272,13 +281,14 @@ body.glitch-hit #c{filter:contrast(1.18) saturate(1.5) hue-rotate(12deg)}
 <div id="hud">
   <div class="col"><span class="pill" id="keys">🔑 ۰ / ۳</span><span class="pill" id="tm">۰:۰۰</span><span class="pill" id="taserStat">⚡ شوکر: ۰</span><div class="bar" title="باتری چراغ‌قوه"><b>🔦</b><div id="bat"><i></i></div></div><div class="bar" title="نفس"><b>⚡</b><div id="stam"><i></i></div></div><div style="display:flex;gap:6px"><button id="pauseBtn" class="mb" aria-label="مکث">⏸</button><button id="mute" class="mb" aria-label="صدا">🔊</button></div></div>
 </div>
-<div id="msg"></div><div id="nameTag"></div><div id="hidingFX"><div>داخل دریچه پنهان شدی<br><small>حداکثر ۱۵ ثانیه؛ بعد خودکار بیرون میای. سپس همین دریچه ۶۰ ثانیه قفل می‌شه.</small></div></div><div id="zapFX">⚡⚡</div>
+<div id="msg"></div><div id="nameTag"></div><div id="hunterTrackMark" aria-hidden="true"><div class="track-chip"><span class="track-arrow">⬆</span><span class="track-distance">پژمان · ۰ متر</span></div></div><div id="hidingFX"><div>داخل دریچه پنهان شدی<br><small>حداکثر ۱۵ ثانیه؛ بعد خودکار بیرون میای. سپس همین دریچه ۶۰ ثانیه قفل می‌شه.</small></div></div><div id="zapFX">⚡⚡</div>
 <div id="pingPill" class="pill"></div><div id="feed"></div><div id="ptags"><div class="ptag"></div><div class="ptag"></div><div class="ptag"></div><div class="ptag"></div><div class="ptag"></div><div class="ptag"></div></div><div id="catchFX"><b></b></div><div id="escSeenFX"><b></b></div><div id="huntMarks"><div class="hmark"></div><div class="hmark"></div><div class="hmark"></div><div class="hmark"></div><div class="hmark"></div><div class="hmark"></div></div><div id="spec"><button id="specPrev" aria-label="قبلی">◀</button><span id="specName"></span><button id="specNext" aria-label="بعدی">▶</button></div>
 <div id="joy"><div id="knob"></div></div>
 <button id="run" title="دویدن روشن/خاموش" aria-label="دویدن روشن/خاموش" aria-label="دویدن">⚡</button>
 <button id="flBtn" aria-label="چراغ‌قوه">🔦</button>
 <button id="hideBtn" aria-label="پنهان شدن">🕳 پنهان</button><button id="taserBtn" aria-label="شوکر انرژی">⚡</button><button id="crouchBtn" aria-label="خم شدن">↘</button><button id="rvBtn" aria-label="زنده کردن دوست"><i></i><span>🫶 نگه دار تا زنده شه</span></button>
 <button id="glitchBtn" aria-label="اختلال تصویری روی بازیکن">🌀 اختلال</button>
+<button id="hunterTrackBtn" aria-label="ردیابی جای پژمان">📡 ردیابی پژمان</button>
 <div id="glitchPick" aria-hidden="true"><div class="glitch-card"><h2>🌀 انتخاب بازیکن</h2><p>اختلال تصویری ۵ ثانیه روی صفحهٔ بازیکن انتخاب‌شده اعمال می‌شود. هر ۶۰ ثانیه یک بار.</p><div id="glitchTargets"></div><button class="btn2" id="glitchClose">انصراف</button></div></div>
 <div id="playerGlitchFX" aria-hidden="true"></div>
 
@@ -354,7 +364,7 @@ const rnd=n=>Math.floor(Math.random()*n);
 function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
 const SB_URL='https://sabxzrwdqhxfdzxonwmw.supabase.co';   // آدرس پروژه‌ی Supabase مثلا 'https://abcd.supabase.co'
 const SB_KEY='sb_publishable_vpVUe8xUxnxSgY1fiv3p9A_eQBWY3Hp';   // anon public key (عمومیه، گذاشتنش اینجا مشکلی نداره)
-const MP={hunt:{on:false,hunter:-1,me:false,freeAt:0,en:1,lock:false},gm:'coop',lastHunter:-1,lastSeed:0,lastSS:0,linkBad:0,nPl:1,dmin:90,on:false,ws:null,id:-1,hostId:-1,host:false,room:'',name:'',pl:{},list:[],started:false,over:false,ping:0,lastSend:0,lastMon:0,lastState:'',mnet:null,specId:-1,nextBo:80,pup:null,pingIv:0,cid:'',pres:{},cmap:{},syn:false,hb:0,hbT:{},ref:0,mode:'',wantRoom:'',myName:'',glitchReadyAt:0,glitchLastReceivedAt:0};
+const MP={hunt:{on:false,hunter:-1,me:false,freeAt:0,en:1,lock:false},gm:'coop',lastHunter:-1,lastSeed:0,lastSS:0,linkBad:0,nPl:1,dmin:90,on:false,ws:null,id:-1,hostId:-1,host:false,room:'',name:'',pl:{},list:[],started:false,over:false,ping:0,lastSend:0,lastMon:0,lastState:'',mnet:null,specId:-1,nextBo:80,pup:null,pingIv:0,cid:'',pres:{},cmap:{},syn:false,hb:0,hbT:{},ref:0,mode:'',wantRoom:'',myName:'',glitchReadyAt:0,glitchLastReceivedAt:0,hunterTrackReadyAt:0,hunterTrackUntil:0};
 let playerGlitchTimer=0;
 const PCOL=[[.25,.62,1],[1,.55,.2],[.4,1,.55],[1,.35,.8],[.95,.9,.3],[.7,.5,1]],PCSS=['#7ec0ff','#ffb070','#8dffb0','#ff7ac8','#f3e36a','#b99bff'];
 let curMv=false,curRun=false,runLook=null;
@@ -924,6 +934,55 @@ function updateGlitchActionButton(){
   b.disabled=left>0;
   b.textContent=left>0?'⏳ اختلال '+FA(Math.ceil(left/1000))+'ث':'🌀 اختلال';
 }
+function updateHunterTrackButton(){
+  const b=$('hunterTrackBtn'),mark=$('hunterTrackMark');if(!b)return;
+  const visible=MP.on&&MP.started&&HUNT()&&!HM()&&state==='play'&&!MP.over;
+  b.classList.toggle('on',visible);
+  if(!visible){if(mark)mark.classList.remove('active','edge');return}
+  const left=Math.max(0,(MP.hunterTrackReadyAt||0)-performance.now());
+  b.disabled=left>0;
+  b.textContent=left>0?'⏳ ردیابی '+FA(Math.ceil(left/1000))+'ث':'📡 ردیابی پژمان';
+}
+function useHunterTrack(){
+  if(!MP.on||!MP.started||!HUNT()||HM()||state!=='play')return;
+  const now=performance.now(),left=(MP.hunterTrackReadyAt||0)-now;
+  if(left>0){showMsg('ردیابی هنوز آماده نیست: '+FA(Math.ceil(left/1000))+' ثانیه',1800,true);return}
+  const h=MP.pl[MP.hunt.hunter];
+  if(!h||!h.in||!h.seen||h.st!=='hunter'){showMsg('موقعیت پژمان هنوز دریافت نشده',1800,true);return}
+  MP.hunterTrackReadyAt=now+150000;
+  MP.hunterTrackUntil=now+9000;
+  feedAdd('📡 سیگنال پژمان دریافت شد · ۹ ثانیه','good');
+  showMsg('📡 موقعیت پژمان برای ۹ ثانیه مشخص شد؛ حتی پشت دیوار!',2600,true);
+  updateHunterTrackButton();
+}
+function updateHunterTrackMarker(){
+  const el=$('hunterTrackMark');if(!el)return;
+  const now=performance.now();
+  if(!(MP.on&&MP.started&&HUNT()&&!HM()&&state==='play'&&!MP.over&&now<(MP.hunterTrackUntil||0))){el.classList.remove('active','edge');return}
+  const h=MP.pl[MP.hunt.hunter];
+  if(!h||!h.in||!h.seen){el.classList.remove('active','edge');return}
+  const dx=h.x-px,dy=h.y-py,d=Math.hypot(dx,dy);
+  if(!isFinite(d)){el.classList.remove('active','edge');return}
+  const chip=el.querySelector('.track-distance'),arrow=el.querySelector('.track-arrow');
+  if(chip)chip.textContent='پژمان · '+FA(Math.round(d))+' متر';
+  const pj=G3.VP?project([h.x,1.48,h.y]):null;
+  if(pj&&Math.abs(pj[0])<.91&&Math.abs(pj[1])<.82){
+    el.classList.remove('edge');
+    el.style.left=((pj[0]*.5+.5)*innerWidth)+'px';
+    el.style.top=((1-(pj[1]*.5+.5))*innerHeight)+'px';
+    if(arrow)arrow.style.transform='rotate(0deg)';
+  }else{
+    el.classList.add('edge');
+    const rel=Math.atan2(-dx*Math.sin(pa)+dy*Math.cos(pa),dx*Math.cos(pa)+dy*Math.sin(pa));
+    const vx=Math.sin(rel),vy=-Math.cos(rel);
+    const sx=Math.max(35,innerWidth*.5-85),sy=Math.max(35,innerHeight*.5-72);
+    const scale=Math.min(sx/Math.max(.0001,Math.abs(vx)),sy/Math.max(.0001,Math.abs(vy)));
+    el.style.left=(innerWidth*.5+vx*scale)+'px';
+    el.style.top=(innerHeight*.5+vy*scale)+'px';
+    if(arrow)arrow.style.transform='rotate('+rel+'rad)';
+  }
+  el.classList.add('active');
+}
 function openGlitchPicker(){
   if(!HM()||state!=='play')return;
   const left=(MP.glitchReadyAt||0)-performance.now();
@@ -931,21 +990,29 @@ function openGlitchPicker(){
   const list=$('glitchTargets');list.textContent='';
   const targets=Object.values(MP.pl).filter(p=>p&&p.id!==MP.id&&p.in&&p.st==='alive').sort((a,b)=>a.id-b.id);
   if(!targets.length){const empty=document.createElement('div');empty.className='empty';empty.textContent='بازیکن زنده‌ای برای هدف‌گیری نیست.';list.appendChild(empty)}
-  else for(const p of targets){
-    const b=document.createElement('button');b.type='button';b.textContent='🎯 '+p.name+(p.hid?' · داخل دریچه':'');b.onclick=()=>sendPlayerGlitch(p.id);list.appendChild(b);
+  else {
+    const all=document.createElement('button');all.type='button';all.textContent='🌐 همهٔ بازیکنان';all.onclick=()=>sendPlayerGlitch('all');list.appendChild(all);
+    for(const p of targets){
+      const b=document.createElement('button');b.type='button';b.textContent='🎯 '+p.name+(p.hid?' · داخل دریچه':'');b.onclick=()=>sendPlayerGlitch(p.id);list.appendChild(b);
+    }
   }
   const panel=$('glitchPick');panel.classList.add('on');panel.setAttribute('aria-hidden','false');
 }
 function sendPlayerGlitch(id){
-  if(!HM()||state!=='play'||!Number.isInteger(id))return;
-  const target=MP.pl[id];if(!target||!target.in||target.st!=='alive'){closeGlitchPicker();showMsg('این بازیکن دیگه هدف معتبر نیست',1800,true);return}
+  if(!HM()||state!=='play'||(id!=='all'&&!Number.isInteger(id)))return;
+  const targets=Object.values(MP.pl).filter(p=>p&&p.id!==MP.id&&p.in&&p.st==='alive');
+  const all=id==='all',target=all?null:MP.pl[id];
+  if(all ? !targets.length : (!target||!target.in||target.st!=='alive')){
+    closeGlitchPicker();showMsg('بازیکن زنده‌ای برای هدف‌گیری نیست',1800,true);return;
+  }
   const now=performance.now(),left=(MP.glitchReadyAt||0)-now;
   if(left>0){closeGlitchPicker();showMsg('قدرت اختلال هنوز آماده نیست: '+FA(Math.ceil(left/1000))+' ثانیه',1900,true);return}
   MP.glitchReadyAt=now+60000;
-  mpSend({t:'gx',id,ms:5000});
+  mpSend(all?{t:'gx',all:true,ms:5000}:{t:'gx',id,ms:5000});
   closeGlitchPicker();
-  feedAdd('🌀 اختلال تصویری روی '+target.name+' اجرا شد','bad');
-  showMsg('🌀 اختلال روی '+target.name+' فعال شد · ۵ ثانیه',2300,true);
+  const label=all?'همهٔ بازیکنان':target.name;
+  feedAdd('🌀 اختلال تصویری روی '+label+' اجرا شد','bad');
+  showMsg('🌀 اختلال روی '+label+' فعال شد · ۵ ثانیه',2300,true);
   updateGlitchActionButton();
 }
 function applyPlayerGlitch(){
@@ -957,7 +1024,7 @@ function applyPlayerGlitch(){
 }
 function updateActionButtons(){
   if(isHidden||state!=='play')$('rvBtn').classList.remove('on');
-  updateGlitchActionButton();
+  updateGlitchActionButton();updateHunterTrackButton();
   const near=nearbyVent();const hb=$('hideBtn'),tb=$('taserBtn'),cb=$('crouchBtn');
   const vi=near?ventSpots.indexOf(near):-1,cd=vi>=0?Math.max(0,(hideCooldownUntil[vi]||0)-performance.now()):0;
   const occ=!!near&&!isHidden&&ventOcc(vi);hb.classList.toggle('on',(!!near&&!occ)||isHidden);
@@ -1904,6 +1971,8 @@ function loop(t){
   else if(state==='escape'){updateEscape(dt);updateLamps(dt)}
   else{updateLamps(dt);pa+=state==='menu'?dt*.12:0;monsterAnim(dt)}
   mpTickPost(dt);drawFrame(tm,dt);mpTags();
+  if(t-(MP.trackHudT||0)>250){MP.trackHudT=t;updateHunterTrackButton()}
+  updateHunterTrackMarker();
   if(state==='play'||state==='spectate'){
     const tag=$('nameTag');
     const m=mon,hp=[m.x,1.7*MS,m.y],pj=project(hp);
@@ -2120,7 +2189,7 @@ function mpStartGame(){
 }
 
 function mpCleanup(){
-  const w=MP.ws;MP.ws=null;MP.on=false;MP.started=false;MP.over=false;MP.pl={};MP.hunt={on:false,hunter:-1,me:false,freeAt:0,en:1,lock:false};MP.glitchReadyAt=0;MP.glitchLastReceivedAt=0;closeGlitchPicker();clearTimeout(playerGlitchTimer);$('playerGlitchFX').classList.remove('active');document.body.classList.remove('glitch-hit');MP.linkBad=0;document.body.classList.remove('hunter');MP.list=[];MP.mnet=null;MP.mbuf=[];MP.moff=null;MP.pup=null;MP.pres={};MP.cmap={};if(MP.sch){try{MP.sb.removeChannel(MP.sch)}catch(e){}MP.sch=null;MP.sb=null}try{if(w&&w.readyState===1)w.send(JSON.stringify({topic:MP.topic,event:'phx_leave',payload:{},ref:'9'}))}catch(e){}
+  const w=MP.ws;MP.ws=null;MP.on=false;MP.started=false;MP.over=false;MP.pl={};MP.hunt={on:false,hunter:-1,me:false,freeAt:0,en:1,lock:false};MP.glitchReadyAt=0;MP.glitchLastReceivedAt=0;MP.hunterTrackReadyAt=0;MP.hunterTrackUntil=0;closeGlitchPicker();clearTimeout(playerGlitchTimer);$('playerGlitchFX').classList.remove('active');document.body.classList.remove('glitch-hit');MP.linkBad=0;document.body.classList.remove('hunter');MP.list=[];MP.mnet=null;MP.mbuf=[];MP.moff=null;MP.pup=null;MP.pres={};MP.cmap={};if(MP.sch){try{MP.sb.removeChannel(MP.sch)}catch(e){}MP.sch=null;MP.sb=null}try{if(w&&w.readyState===1)w.send(JSON.stringify({topic:MP.topic,event:'phx_leave',payload:{},ref:'9'}))}catch(e){}
   clearInterval(MP.pingIv);MP.pingIv=0;
   document.body.classList.remove('mpon','spec');$('spec').classList.remove('on');$('pingPill').style.display='none';
   try{w&&w.close()}catch(e){}
@@ -2205,13 +2274,19 @@ function mpMsg(m){
     case's':mpOnState(m);break;
     case'gx':{
       if(!MP.started||!HUNT()||m.from!==MP.hunt.hunter)break;
-      const id=Number(m.id),target=MP.pl[id],now=performance.now();
-      if(!Number.isInteger(id)||!target||target.st!=='alive')break;
+      const now=performance.now(),me=MP.pl[MP.id],all=m.all===true;
+      if(!me||!me.in||me.st!=='alive'||MP.id===MP.hunt.hunter)break;
       if(MP.glitchLastReceivedAt&&now-MP.glitchLastReceivedAt<59000)break;
+      const id=Number(m.id),target=all?null:MP.pl[id];
+      if(all){
+        const alive=Object.values(MP.pl).some(p=>p&&p.id!==MP.hunt.hunter&&p.in&&p.st==='alive');
+        if(!alive)break;
+      }else if(!Number.isInteger(id)||!target||target.st!=='alive')break;
       MP.glitchLastReceivedAt=now;
       const hunter=MP.pl[MP.hunt.hunter];
-      feedAdd('🌀 '+(hunter?hunter.name:'پژمان')+' روی '+target.name+' اختلال تصویری اجرا کرد','bad');
-      if(id===MP.id){applyPlayerGlitch();showMsg('🌀 اختلال تصویری! ۵ ثانیه',2600,true)}
+      const label=all?'همهٔ بازیکنان':target.name;
+      feedAdd('🌀 '+(hunter?hunter.name:'پژمان')+' روی '+label+' اختلال تصویری اجرا کرد','bad');
+      if(all||id===MP.id){applyPlayerGlitch();showMsg('🌀 اختلال تصویری! ۵ ثانیه',2600,true)}
       break;
     }
     case'vc':{const i=m.i|0;if(i>=0&&i<ventSpots.length)startVentCooldown(i,false);break;}
@@ -2254,7 +2329,7 @@ function mpGo(m){
   RV.hold=false;RV.prog=0;RV.target=-1;$('rvBtn').classList.remove('on');MP.rvT=0;
   MP.lastSeed=m.seed|0;MP.lastSS=0;MP.dmin=MP.nPl>=5?75:MP.nPl===4?65:MP.nPl>=3?55:MP.nPl===2?40:60;MP.linkBad=0;
   MP.hunt={on:m.gm==='hunt'&&(m.hu|0)>=0&&!!MP.pl[m.hu|0],hunter:m.hu|0,me:false,freeAt:0,en:1,lock:false,endT:0,goneMsg:0};
-  MP.glitchReadyAt=0;MP.glitchLastReceivedAt=0;closeGlitchPicker();
+  MP.glitchReadyAt=0;MP.glitchLastReceivedAt=0;MP.hunterTrackReadyAt=0;MP.hunterTrackUntil=0;closeGlitchPicker();
   if(MP.hunt.on){MP.hunt.me=(MP.id===MP.hunt.hunter);MP.pl[MP.hunt.hunter].st='hunter';MP.nPl=Math.max(1,MP.nPl-1);MP.lastHunter=MP.hunt.hunter;MP.hunt.freeAt=performance.now()+7000;MP.dmin=MP.nPl>=4?55:35}
   MP.started=true;MP.over=false;MP.lastState='';MP.lastSend=0;MP.lastMon=0;MP.specId=-1;
   MP.nextBo=70+Math.random()*25;
@@ -2549,7 +2624,7 @@ function updateSpectate(dt){
 }
 function mpResults(){
   if(state==='over'&&MP.over)return;
-  MP.over=true;state='over';closeGlitchPicker();updateGlitchActionButton();document.body.classList.remove('spec','hunter');$('spec').classList.remove('on');
+  MP.over=true;state='over';MP.hunterTrackUntil=0;closeGlitchPicker();updateGlitchActionButton();updateHunterTrackButton();document.body.classList.remove('spec','hunter');$('spec').classList.remove('on');
   ['foamFX','scareCaption','pejmanDrips','escapeFX','hidingFX'].forEach(i=>$(i).classList.remove('active'));
   $('redv').style.opacity=0;$('nameTag').style.display='none';
   const ps=Object.values(MP.pl),hu=HUNT()?MP.pl[MP.hunt.hunter]:null;
@@ -2850,6 +2925,7 @@ const fb=$('flBtn');fb.addEventListener('touchstart',e=>{e.preventDefault();e.st
 const hb=$('hideBtn');hb.addEventListener('touchstart',e=>{e.preventDefault();e.stopPropagation();toggleHide()},{passive:false});hb.addEventListener('click',()=>{if(!IS_MOB)toggleHide()});
 const tb=$('taserBtn');tb.addEventListener('touchstart',e=>{e.preventDefault();e.stopPropagation();useTaser()},{passive:false});tb.addEventListener('click',()=>{if(!IS_MOB)useTaser()});
 $('glitchBtn').addEventListener('click',openGlitchPicker);
+$('hunterTrackBtn').addEventListener('click',useHunterTrack);
 $('glitchClose').addEventListener('click',closeGlitchPicker);
 $('glitchPick').addEventListener('click',e=>{if(e.target===$('glitchPick'))closeGlitchPicker()});
 const cb=$('crouchBtn');cb.addEventListener('touchstart',e=>{e.preventDefault();e.stopPropagation();toggleCrouch()},{passive:false});cb.addEventListener('click',()=>{if(!IS_MOB)toggleCrouch()});
@@ -2870,7 +2946,7 @@ function begin(seed){
   const clip=$('scareAudio');if(clip){clip.pause();try{clip.currentTime=0}catch(e){}}
   if(master)master.gain.value=muted?0:.9;
   $('foamFX').classList.remove('active');$('scareCaption').classList.remove('active');$('pejmanDrips').classList.remove('active');$('escapeFX').classList.remove('active');$('hidingFX').classList.remove('active');$('zapFX').classList.remove('active');closeGlitchPicker();
-  $('playerGlitchFX').classList.remove('active');document.body.classList.remove('glitch-hit');clearTimeout(playerGlitchTimer);
+  $('playerGlitchFX').classList.remove('active');document.body.classList.remove('glitch-hit');clearTimeout(playerGlitchTimer);MP.hunterTrackUntil=0;const _htm=$('hunterTrackMark');if(_htm)_htm.classList.remove('active','edge');
   NEED_KEYS=(MP.on&&MP.started)?keysForN(MP.nPl||1):4;{const _t=(MP.on&&MP.started)?(MP.nTot||1):1;setMapSize(_t>=5?71:61,_t>=5?47:41)}reset(seed);state='play';$('start').classList.add('hidden');$('over').classList.add('hidden');$('pz').classList.add('hidden');
   $('over').style.background='';$('ot').style.color='';$('again').textContent='دوباره تلاش کن';
   setTimeout(()=>{joyHome()},400);
