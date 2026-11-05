@@ -22,5 +22,6 @@ window.EXTRA_GAMES=[
   {"id": "subway", "icon": "🎮", "name": "مترو رانر ۳بعدی", "desc": "بازی جدید", "color": "#35f2ff"},
   {"id": "traffic", "icon": "🚗", "name": "Neon Traffic", "desc": "بین ماشین‌ها جاخالی بده؛ سرعت مدام بیشتر می‌شه", "color": "#35f2ff"},
   {"id": "voicerunner", "icon": "🎮", "name": "🎤 صداپرش", "desc": "بازی جدید", "color": "#35f2ff"},
-  {"id": "zirzamin", "icon": "🎮", "name": "فرار از زیرزمین شهر فرش", "desc": "بازی جدید", "color": "#35f2ff"}
+  {"id": "zirzamin", "icon": "🎮", "name": "فرار از زیرزمین شهر فرش", "desc": "بازی جدید", "color": "#35f2ff"},
+  {"id": "فرار از جنگل شهر فرش", "icon": "🎮", "name": "فرار از جنگل شهر فرش", "desc": "بازی جدید", "color": "#35f2ff"}
 ];
