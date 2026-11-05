@@ -304,6 +304,7 @@ body.glitch-hit #c{filter:contrast(1.025) saturate(1.045) hue-rotate(1deg)}
 <div id="over" class="scr hidden">
   <h1 id="ot"></h1><p id="od"></p>
   <button class="btn" id="again">دوباره تلاش کن</button>
+  <button class="btn" id="toForest" style="display:none;background:linear-gradient(180deg,#2f8f4a,#1b5a2c)">🌲 برو به بازی جنگل</button>
   <button class="btn2" id="homeB">🕹 بازگشت به آرکید</button>
   <button class="btn2" id="gsB">⚙️ گرافیک و دکمه‌ها</button>
 </div>
@@ -1217,7 +1218,7 @@ function startScare(){
 function showOver(){
   state='over';
   $('foamFX').classList.remove('active');$('scareCaption').classList.remove('active');$('pejmanDrips').classList.remove('active');$('redv').style.opacity=0;
-  $('ot').textContent='💦 پژمان گیرت انداخت!';$('od').textContent='موج آب زلال پژمان پاشید روت! 💦 — زمان زنده‌ماندن: '+fmt(tAlive)+' — کلید: '+FA(keysGot)+' از '+FA(NEED_KEYS);
+  $('toForest').style.display='none';$('ot').textContent='💦 پژمان گیرت انداخت!';$('od').textContent='موج آب زلال پژمان پاشید روت! 💦 — زمان زنده‌ماندن: '+fmt(tAlive)+' — کلید: '+FA(keysGot)+' از '+FA(NEED_KEYS);
   $('over').classList.remove('hidden');const o=$('over');o.classList.remove('shake');void o.offsetWidth;o.classList.add('shake');
   arcadeNotify('finish',0,false);if(document.pointerLockElement)document.exitPointerLock();
 }
@@ -1439,7 +1440,7 @@ function startFilm(){FILM.st=1;try{
 function win(){
   if(state!=='play')return;FILM.st=0;mpMyEscape();state='escape';escapeT=0;sfx.win();if(monG)monG.gain.value=0;
   $('over').style.background='radial-gradient(ellipse at center,rgba(10,70,30,.92),#000)';$('ot').style.color='#7dffb0';$('ot').textContent='🎉 فرار کردی!';
-  $('od').textContent='از زیرزمین شهر فرش بیرون اومدی؛ زمان: '+fmt(tAlive);$('again').textContent='یه دور دیگه';
+  $('od').textContent='از زیرزمین شهر فرش بیرون اومدی؛ زمان: '+fmt(tAlive);$('again').textContent='یه دور دیگه';try{if(window.parent!==window)$('toForest').style.display='inline-block'}catch(e){}
   $('nameTag').style.display='none';$('escapeFX').classList.remove('active');try{startFilm()}catch(e){console.error(e);FILM.st=2}
   arcadeNotify('finish',1,true);if(document.pointerLockElement)document.exitPointerLock();
 }
@@ -2196,7 +2197,7 @@ function mpCleanup(){
 }
 function mpResetScreens(){
   ['foamFX','scareCaption','pejmanDrips','escapeFX','hidingFX','zapFX'].forEach(i=>$(i).classList.remove('active'));
-  $('over').classList.add('hidden');$('over').style.background='';$('ot').style.color='';$('again').style.display='';$('again').textContent='دوباره تلاش کن';
+  $('over').classList.add('hidden');$('toForest').style.display='none';$('over').style.background='';$('ot').style.color='';$('again').style.display='';$('again').textContent='دوباره تلاش کن';
   $('redv').style.opacity=0;$('nameTag').style.display='none';
   if(document.pointerLockElement)document.exitPointerLock();
   if(master)master.gain.value=muted?0:.9;
@@ -2947,11 +2948,12 @@ function begin(seed){
   if(master)master.gain.value=muted?0:.9;
   $('foamFX').classList.remove('active');$('scareCaption').classList.remove('active');$('pejmanDrips').classList.remove('active');$('escapeFX').classList.remove('active');$('hidingFX').classList.remove('active');$('zapFX').classList.remove('active');closeGlitchPicker();
   $('playerGlitchFX').classList.remove('active');document.body.classList.remove('glitch-hit');clearTimeout(playerGlitchTimer);MP.hunterTrackUntil=0;const _htm=$('hunterTrackMark');if(_htm)_htm.classList.remove('active','edge');
-  NEED_KEYS=(MP.on&&MP.started)?keysForN(MP.nPl||1):4;{const _t=(MP.on&&MP.started)?(MP.nTot||1):1;setMapSize(_t>=5?71:61,_t>=5?47:41)}reset(seed);state='play';$('start').classList.add('hidden');$('over').classList.add('hidden');$('pz').classList.add('hidden');
+  NEED_KEYS=(MP.on&&MP.started)?keysForN(MP.nPl||1):4;{const _t=(MP.on&&MP.started)?(MP.nTot||1):1;setMapSize(_t>=5?71:61,_t>=5?47:41)}reset(seed);state='play';$('start').classList.add('hidden');$('over').classList.add('hidden');$('toForest').style.display='none';$('pz').classList.add('hidden');
   $('over').style.background='';$('ot').style.color='';$('again').textContent='دوباره تلاش کن';
   setTimeout(()=>{joyHome()},400);
   arcadeNotify('start');
 }
+$('toForest').onclick=()=>{try{window.parent.postMessage({source:'nova-arcade-embed',game:'zirzamin',type:'goto',target:'forest'},'*')}catch(e){}};
 $('go').onclick=()=>begin();$('again').onclick=()=>{if(MP.on){if(MP.host){mpSend({t:'lobby'});mpBackToLobby({});mpTrack({st:0,go:null})}}else begin()};
 const goHome=()=>{try{if(window.parent!==window)window.parent.postMessage({source:'nova-arcade-embed',game:'zirzamin',type:'home',score:0,won:false},'*');else location.reload()}catch(e){}};
 ['homeA','homeB','homeC'].forEach(i=>$(i).onclick=goHome);
