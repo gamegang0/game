@@ -1304,7 +1304,7 @@ function win(){
   if(state!=='play')return;FILM.st=0;mpMyEscape();state='escape';escapeT=0;sfx.win();if(monG)monG.gain.value=0;
   $('over').style.background='radial-gradient(ellipse at center,rgba(10,70,30,.92),#000)';$('ot').style.color='#7dffb0';$('ot').textContent='🎉 فرار کردی!';
   $('od').textContent='از زیرزمین شهر فرش بیرون اومدی؛ زمان: '+fmt(tAlive);$('again').textContent='یه دور دیگه';
-  $('nameTag').style.display='none';$('escapeFX').classList.remove('active');try{carCineStart()}catch(e){console.error(e);CAR.done=true}
+  $('nameTag').style.display='none';$('escapeFX').classList.remove('active');try{startFilm()}catch(e){console.error(e);FILM.st=2}
   arcadeNotify('finish',1,true);if(document.pointerLockElement)document.exitPointerLock();
 }
 function updateEscape(dt){
