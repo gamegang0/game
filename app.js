@@ -770,7 +770,7 @@ const resultFX={
 };
 
 /* ================= embedded arcade games ================= */
-const GAME_V=11; /* هر بار بازی رو آپدیت کردی این عدد رو یکی زیاد کن تا کش مرورگر پاک بشه */
+const GAME_V=12; /* هر بار بازی رو آپدیت کردی این عدد رو یکی زیاد کن تا کش مرورگر پاک بشه */
 function loadEmbedGame(id){
   const u=id+'.html?v='+GAME_V;
   try{gameFrame.setAttribute('allow','microphone; autoplay; fullscreen')}catch(e){} /* برای بازی‌های صدایی مثل صداپرش */

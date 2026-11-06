@@ -2006,7 +2006,111 @@ function startVentCooldown(i,broadcast=true){if(i<0)return;hideCooldownUntil[i]=
 
 /* ---------- شبکه: Supabase Realtime (Broadcast + Presence) با پروتکل Phoenix، بدون هیچ کتابخونه‌ای ---------- */
 const HOSTONLY=new Set(['m','caught','bo','go','lobby','ss']);
-function mpSend(o){
+/* ====================== شبکه‌ی مستقیم بین بازیکن‌ها (P2P) ======================
+   حرکت‌ها و حرکت‌ِ هیولا مستقیم بین بازیکن‌ها (WebRTC) رد و بدل می‌شه تا از سقف پیام‌های Supabase رد نشیم؛
+   Supabase فقط برای پیدا کردن همدیگه و پیام‌های کم‌تکرار می‌مونه. اگه ارتباط مستقیم برقرار نشد، خودکار با Supabase (با سقف نرخ) ادامه می‌ده. */
+const NET={pc:{},early:{},seen:new Set(),seenQ:[],seq:0,
+  ice:[{urls:['stun:stun.l.google.com:19302','stun:stun1.l.google.com:19302','stun:stun2.l.google.com:19302']},{urls:'stun:stun.cloudflare.com:3478'}]};
+const nclamp=(v,a,b)=>v<a?a:v>b?b:v;
+const dminEff=()=>NET.allOk()?Math.min(MP.dmin,40):MP.dmin;
+NET.ok=()=>typeof RTCPeerConnection!=='undefined';
+NET.relevant=()=>Object.keys(MP.pres).filter(c=>c!==MP.cid&&!MP.pres[c].off);
+NET.okPeers=()=>NET.relevant().filter(c=>NET.pc[c]&&NET.pc[c].ok);
+NET.allOk=()=>{const r=NET.relevant();return r.length>0&&r.every(c=>NET.pc[c]&&NET.pc[c].ok)};
+NET.needSb=()=>{const r=NET.relevant();return r.length>0&&!r.every(c=>NET.pc[c]&&NET.pc[c].ok)};
+NET.tag=()=>{const r=NET.relevant();if(!r.length||!NET.ok())return '';const k=NET.okPeers().length;return k===r.length?' · P2P ✓':k>0?' · P2P '+k+'/'+r.length:''};
+NET.dup=o=>{const k=o.c+':'+o.i;if(NET.seen.has(k))return true;NET.seen.add(k);NET.seenQ.push(k);if(NET.seenQ.length>500)NET.seen.delete(NET.seenQ.shift());return false};
+NET.sigTo=(cid,k,d)=>{mpSendSb({t:'sig',to:cid,k,d})};
+NET.sync=function(){
+  if(!NET.ok()||!MP.on)return;
+  for(const c of NET.relevant()){const S=NET.pc[c];if((!S||S.dead)&&MP.cid<c&&!(S&&S.wait>performance.now()))NET.connect(c)}
+  for(const c of Object.keys(NET.pc))if(!MP.pres[c])NET.close(c);
+};
+NET.mk=function(cid){
+  const pc=new RTCPeerConnection({iceServers:NET.ice});
+  const S={cid,pc,u:null,r:null,ok:false,dead:false,tries:0,pend:[],t0:performance.now(),rtt:0};
+  NET.pc[cid]=S;
+  pc.onicecandidate=e=>{if(e.candidate)NET.sigTo(cid,'ice',e.candidate.toJSON?e.candidate.toJSON():e.candidate)};
+  pc.oniceconnectionstatechange=()=>{const st=pc.iceConnectionState;if(st==='failed'||st==='closed')NET.fail(S);else if(st==='disconnected')setTimeout(()=>{if(pc.iceConnectionState==='disconnected')NET.fail(S)},4000)};
+  pc.ondatachannel=e=>NET.chan(S,e.channel);
+  return S;
+};
+NET.connect=function(cid){
+  const old=NET.pc[cid];const S=NET.mk(cid);if(old)S.tries=old.tries||0;
+  try{
+    S.u=S.pc.createDataChannel('u',{ordered:false,maxRetransmits:0});S.r=S.pc.createDataChannel('r',{ordered:true});NET.chan(S,S.u);NET.chan(S,S.r);
+    S.pc.createOffer().then(o=>S.pc.setLocalDescription(o)).then(()=>NET.sigTo(cid,'offer',{type:S.pc.localDescription.type,sdp:S.pc.localDescription.sdp})).catch(()=>NET.fail(S));
+  }catch(e){NET.fail(S)}
+  return S;
+};
+NET.chan=function(S,ch){
+  if(ch.label==='u')S.u=ch;else S.r=ch;
+  ch.onopen=()=>{if(S.u&&S.r&&S.u.readyState==='open'&&S.r.readyState==='open'&&!S.ok){S.ok=true;S.okT=performance.now();NET.upd()}};
+  ch.onclose=()=>{if(S.ok){S.ok=false;NET.upd()}};
+  ch.onmessage=e=>NET.onMsg(S,e.data);
+};
+NET.sig=function(o){
+  if(!NET.ok()||o.to!==MP.cid||typeof o.k!=='string')return;
+  const cid=o.c;let S=NET.pc[cid];
+  if(o.k==='offer'){
+    if(S)NET.close(cid);
+    S=NET.mk(cid);
+    S.pc.setRemoteDescription(o.d).then(()=>S.pc.createAnswer()).then(a=>S.pc.setLocalDescription(a))
+      .then(()=>{NET.sigTo(cid,'answer',{type:S.pc.localDescription.type,sdp:S.pc.localDescription.sdp});NET.flush(S)}).catch(()=>NET.fail(S));
+  }else if(o.k==='answer'){
+    if(S&&!S.dead)S.pc.setRemoteDescription(o.d).then(()=>NET.flush(S)).catch(()=>NET.fail(S));
+  }else if(o.k==='ice'){
+    if(!S||S.dead){(NET.early[cid]||(NET.early[cid]=[])).push(o.d);return}
+    if(S.pc.remoteDescription)S.pc.addIceCandidate(o.d).catch(()=>{});else S.pend.push(o.d);
+  }
+};
+NET.flush=function(S){const e=NET.early[S.cid];if(e){S.pend.push(...e);delete NET.early[S.cid]}for(const c of S.pend.splice(0))S.pc.addIceCandidate(c).catch(()=>{})};
+NET.fail=function(S){
+  if(S.dead)return;S.dead=true;const was=S.ok;S.ok=false;try{S.pc.close()}catch(e){}
+  if(was)NET.upd();
+  S.wait=performance.now()+3500*(S.tries+1);S.tries++;                 // بعد از چند ثانیه دوباره امتحان کن (اگه من پیشنهاد‌دهنده‌ام)
+};
+NET.close=function(cid){const S=NET.pc[cid];if(!S)return;S.dead=true;S.ok=false;try{S.pc.close()}catch(e){}delete NET.pc[cid];NET.upd()};
+NET.closeAll=function(){for(const c of Object.keys(NET.pc))NET.close(c);NET.early={}};
+NET.sendP=function(o){
+  const oks=NET.okPeers();if(!oks.length)return 0;
+  o.c=MP.cid;const msg=JSON.stringify(o);
+  for(const c of oks){const ch=NET.pc[c].u;try{if(ch&&ch.readyState==='open')ch.send(msg)}catch(e){}}
+  return oks.length;
+};
+NET.route=function(o){
+  if(!NET.ok()||o.t==='sig')return false;
+  const oks=NET.okPeers();if(!oks.length)return false;
+  const hot=(o.t==='s'||o.t==='m');
+  if(!hot)o.i=++NET.seq;                                              // برای حذف پیام‌های تکراری (هم P2P هم Supabase)
+  o.c=MP.cid;const msg=JSON.stringify(o);
+  for(const c of oks){const ch=hot?NET.pc[c].u:NET.pc[c].r;try{if(ch&&ch.readyState==='open')ch.send(msg)}catch(e){}}
+  return hot?NET.allOk():false;                                       // حرکت‌ها اگه همه‌ی طرف‌ها مستقیم وصل‌ان، اصلاً از Supabase نمی‌رن
+};
+NET.onMsg=function(S,data){
+  let o;try{o=JSON.parse(data)}catch(e){return}
+  if(!o||typeof o.t!=='string')return;
+  if(o.t==='np'){try{S.u.send(JSON.stringify({t:'nq',n:o.n}))}catch(e){}return}
+  if(o.t==='nq'){const d=performance.now()-(+o.n||0);if(d>=0&&d<3000){S.rtt=S.rtt?S.rtt*.7+d*.3:d}NET.updPing();return}
+  o.c=S.cid;mpRecv(o);
+};
+NET.updPing=function(){
+  if(!NET.allOk())return;
+  const r=NET.relevant().map(c=>NET.pc[c].rtt).filter(v=>v>0);if(!r.length)return;
+  MP.ping=Math.round(r.reduce((a,b)=>a+b,0)/r.length);mpPingUI();
+};
+NET.upd=function(){try{mpPingUI()}catch(e){}};
+setInterval(()=>{
+  if(!MP.on||!NET.ok())return;
+  const now=performance.now();
+  for(const c of Object.keys(NET.pc)){const S=NET.pc[c];
+    if(!S.ok&&!S.dead&&now-S.t0>12000)NET.fail(S);                    // وصل نشد؛ بعداً دوباره
+    if(S.ok&&S.u&&S.u.readyState==='open')try{S.u.send(JSON.stringify({t:'np',n:now}))}catch(e){}}
+  NET.sync();
+},2000);
+
+function mpSend(o){if(NET.route(o))return;mpSendSb(o)}
+function mpSendSb(o){
   if(MP.sch){if(!MP.on)return;o.c=MP.cid;try{MP.sch.send({type:'broadcast',event:'g',payload:o})}catch(e){}return}
   const w=MP.ws;if(!MP.on||!w||w.readyState!==1)return;
   o.c=MP.cid;
@@ -2056,6 +2160,8 @@ function mpConnect(create){
 /* ---------- اتصال با کتابخونه‌ی رسمی Supabase (همون که آرکید استفاده می‌کنه) ---------- */
 function mpRecv(o){
   if(!MP.on||!o||typeof o.t!=='string'||typeof o.c!=='string')return;
+  if(o.t==='sig'){NET.sig(o);return}
+  if(o.i!=null&&NET.dup(o))return;
   o.from=mpSlotOf(o.c);if(o.from<0)return;
   if(HOSTONLY.has(o.t)&&o.from!==MP.hostId&&!(o.t==='caught'&&HUNT()&&o.from===MP.hunt.hunter))return;
   mpMsg(o);
@@ -2095,7 +2201,7 @@ function mpConnectLib(lib,url,key,code,attempt){
       if(MP.linkBad){MP.linkBad=0;mpLinkUI(false);mpTrack();if(MP.started)mpSendState(true)}
       setTimeout(()=>{if(MP.sch===ch&&!MP.syn){readPres();MP.syn=true;mpFirstSync()}},900);
       clearInterval(MP.pingIv);
-      MP.pingIv=setInterval(()=>{if(MP.on)mpSend({t:'pp',n:performance.now()})},3000);
+      MP.pingIv=setInterval(()=>{if(MP.on&&!NET.allOk())mpSend({t:'pp',n:performance.now()})},6000);
     }else if(status==='CHANNEL_ERROR'||status==='TIMED_OUT'||status==='CLOSED'){
       const why=(err&&(err.message||String(err)))||status;
       if(MP.on&&done){if(!MP.linkBad){MP.linkBad=performance.now();mpLinkUI(true)}}   // کتابخونه خودش دوباره وصل می‌شه؛ فوراً بیرونت نمی‌کنیم
@@ -2163,6 +2269,7 @@ function mpPresChanged(){
     if(L.length){const oh=MP.pl[MP.hostId],keep=oh&&oh.in&&oh.gone&&performance.now()-oh.gone<10000&&MP.hostId!==MP.id;if(!keep){const _f=L.find(e=>!e.off)||L[0];MP.hostId=MP.cmap[_f.c]}MP.host=(MP.hostId===MP.id)}
     if(MP.host&&!was)mpBecameHost();
   }
+  try{NET.sync()}catch(e){}
   mpRefreshLobby();
 }
 function mpSetMode(g){
@@ -2182,7 +2289,7 @@ function mpStartGame(){
   mpTrack({st:1,go:msg});mpSend(msg);mpGo(msg);
 }
 
-function mpCleanup(){
+function mpCleanup(){try{NET.closeAll()}catch(e){}
   const w=MP.ws;MP.ws=null;MP.on=false;MP.started=false;MP.over=false;MP.pl={};MP.hunt={on:false,hunter:-1,me:false,freeAt:0,en:1,lock:false};MP.glitchReadyAt=0;MP.glitchLastReceivedAt=0;MP.hunterTrackReadyAt=0;MP.hunterTrackUntil=0;closeGlitchPicker();clearTimeout(playerGlitchTimer);$('playerGlitchFX').classList.remove('active');document.body.classList.remove('glitch-hit');MP.linkBad=0;document.body.classList.remove('hunter');MP.list=[];MP.mnet=null;MP.mbuf=[];MP.moff=null;MP.pup=null;MP.pres={};MP.cmap={};if(MP.sch){try{MP.sb.removeChannel(MP.sch)}catch(e){}MP.sch=null;MP.sb=null}try{if(w&&w.readyState===1)w.send(JSON.stringify({topic:MP.topic,event:'phx_leave',payload:{},ref:'9'}))}catch(e){}
   clearInterval(MP.pingIv);MP.pingIv=0;
   document.body.classList.remove('mpon','spec');$('spec').classList.remove('on');$('pingPill').style.display='none';
@@ -2211,7 +2318,7 @@ function mpLeave(){
 function mpLinkUI(bad){const p=$('pingPill');if(bad){p.style.display='block';p.textContent='⚠ اتصال ضعیف… دارم دوباره وصل می‌شم';p.style.color='#ff8a7a'}else mpPingUI()}
 setInterval(()=>{if(MP.on&&MP.linkBad&&performance.now()-MP.linkBad>90000)mpDropped()},1000);
 function mpPingUI(){
-  const p=$('pingPill');p.style.display='block';p.textContent='📶 '+MP.ping+' ms'+(MP.started&&MP.dAvg?' · تأخیر نمایش '+Math.round(MP.dAvg)+'ms':'');
+  const p=$('pingPill');p.style.display='block';p.textContent='📶 '+MP.ping+' ms'+(MP.started&&MP.dAvg?' · تأخیر نمایش '+Math.round(MP.dAvg)+'ms':'')+NET.tag();
   p.style.color=MP.ping<80?'#7dffb0':MP.ping<160?'#ffe58a':'#ff8a7a';
 }
 
@@ -2261,8 +2368,8 @@ function mpBackToLobby(m){
 function mpMsg(m){
   if(!m||typeof m.t!=='string')return;
   switch(m.t){
-    case'pp':mpSend({t:'pg',n:m.n});break;
-    case'pg':{const d=Math.round(performance.now()-(+m.n||0));if(d>=0&&d<5000){MP.ping=d;mpPingUI()}break}
+    case'pp':mpSend({t:'pg',n:m.n,to:m.c});break;
+    case'pg':{if(m.to!==MP.cid)break;const d=Math.round(performance.now()-(+m.n||0));if(d>=0&&d<5000){if(!NET.allOk())MP.ping=d;mpPingUI()}break}
     case'go':mpGo(m);break;
     case'lobby':mpBackToLobby(m);break;
     case's':mpOnState(m);break;
@@ -2348,22 +2455,26 @@ function mpSendState(force){
   if(f!==MP.lastF){MP.lastF=f;force=true}
   const x=r2(px),y=r2(py),a=r2(pa),p=Math.round(pitch*10)/10;
   const key=x+','+y+','+a+','+p+','+f+','+hv;
+  const hs=HUNT(),_n=Math.max(2,Object.keys(MP.pl).length);
+  const okAny=NET.okPeers().length>0,needSb=NET.needSb()||!okAny;
+  const rS=nclamp(110/_n/(_n-1),4,30),minS=1000/rS;                       // سقف نرخ پیام‌های Supabase (وقتی همه مستقیم وصل نیستن)
+  const idle=key===MP.lastState,monMov=MP.host&&!hs&&mon&&mon.speed>.05;
+  const drOK=(L,dtX,th,ath)=>{if(!L||dtX>=th[2])return false;const e=Math.min(.4,(now-L.t)/1000),ex=L.x+L.vx*e,ey=L.y+L.vy*e;return Math.hypot(x-ex,y-ey)<th[0]&&Math.abs(angW(a-L.a))<ath&&Math.abs(p-L.p)<.2};
+  let doP=okAny,doS=needSb;
   if(!force){
-    const idle=key===MP.lastState,hs=HUNT(),_n=Object.keys(MP.pl).length,dtS=now-MP.lastSend;
-    const minI=_n>=5?60:_n===4?50:_n===3?40:33;
-    if(dtS<(idle?(MP.host&&!hs?50:150):minI))return;
-    const monMov=MP.host&&!hs&&mon&&mon.speed>.05;
-    if(!idle&&!monMov){                                  // پیش‌بینی مسیر: اگه گیرنده‌ها با همون سرعت قبلی درست حدس می‌زنن، چیزی نفرست
-      const L=MP.drL;
-      if(L&&dtS<150){const e=Math.min(.4,(now-L.t)/1000),ex=L.x+L.vx*e,ey=L.y+L.vy*e;
-        if(Math.hypot(x-ex,y-ey)<(_n>=5?.14:.09)&&Math.abs(angW(a-L.a))<(_n>=5?.22:.14)&&Math.abs(p-L.p)<.2)return}
-    }
+    const dtP=now-(MP.lsP||0),dtS=now-(MP.lsS||0);
+    if(doP){if(dtP<(idle?(MP.host&&!hs?50:150):33)||(!idle&&!monMov&&drOK(MP.drP,dtP,[.09,0,150],.14)))doP=false}
+    if(doS){if(dtS<(idle?(MP.host&&!hs?Math.max(50,minS):Math.max(150,minS*1.5)):minS)||(!idle&&!monMov&&drOK(MP.drS,dtS,[.12,0,Math.max(150,minS*1.6)],.2)))doS=false}
+    if(!doP&&!doS)return;
   }
-  {const L=MP.drL;let vx=0,vy=0;if(L&&(f&8)){const dd=(now-L.t)/1000;if(dd>.01&&dd<.5){vx=(x-L.x)/dd;vy=(y-L.y)/dd;const sp=Math.hypot(vx,vy);if(sp>4.5){vx*=4.5/sp;vy*=4.5/sp}}}MP.drL={x,y,a,p,t:now,vx,vy}}
+  const nxt=L=>{let vx=0,vy=0;if(L&&(f&8)){const dd=(now-L.t)/1000;if(dd>.01&&dd<.5){vx=(x-L.x)/dd;vy=(y-L.y)/dd;const sp=Math.hypot(vx,vy);if(sp>4.5){vx*=4.5/sp;vy*=4.5/sp}}}return{x,y,a,p,t:now,vx,vy}};
+  if(doP){MP.drP=nxt(MP.drP);MP.lsP=now}
+  if(doS){MP.drS=nxt(MP.drS);MP.lsS=now}
   MP.lastSend=now;MP.lastState=key;
   const o={t:'s',x,y,a,p,f,v:hv,T:Math.round(now)};
-  if(MP.host&&!HUNT()&&mon)o.M=[r2(mon.x),r2(mon.y),r2(mon.face),{patrol:0,chase:1,search:2,stunned:3}[mon.state]||0,Math.round(mon.speed*10)/10,Math.round(mon.stunT*10)/10];
-  mpSend(o);
+  if(MP.host&&!hs&&mon)o.M=[r2(mon.x),r2(mon.y),r2(mon.face),{patrol:0,chase:1,search:2,stunned:3}[mon.state]||0,Math.round(mon.speed*10)/10,Math.round(mon.stunT*10)/10];
+  if(doP)NET.sendP(o);
+  if(doS)mpSendSb(o);
 }
 function forceUnhide(msg){
   const vi=hideVent?ventSpots.indexOf(hideVent):-1;if(vi>=0)startVentCooldown(vi);
@@ -2427,18 +2538,18 @@ function mpTickPre(dt){
   for(const id in MP.pl){const p=MP.pl[id];if(p.in&&p.gone&&now-p.gone>10000){p.in=false;if(p.st==='alive')p.st='left';feedAdd(p.name+' از بازی خارج شد','bad')}}
   for(const id in MP.pl){
     if(+id===MP.id)continue;const p=MP.pl[id];if(!p.in||!p.seen||!p.buf||!p.buf.length)continue;
-    const D=p.D||(p.D=MP.dmin+8),rt=now-(p.off||0)-D,last=p.buf[p.buf.length-1];
+    const D=p.D||(p.D=dminEff()+8),rt=now-(p.off||0)-D,last=p.buf[p.buf.length-1];
     const r=snapSample(p.buf,rt,SS,p.mv);
-    {const tg=Math.min(200,MP.dmin+(p.jit||0)*1.7);   // تأخیر نمایش = حداقل لازم + دو برابر نوسان واقعی شبکه؛ بعد از هر نوسان سریع برمی‌گرده پایین
-     if(r===2&&p.mv&&rt-last.t>15)p.D=Math.min(260,D+dt*120);else p.D=Math.max(MP.dmin,D+Math.max(-dt*110,Math.min(dt*100,tg-D)))}
+    {const tg=Math.min(200,dminEff()+(p.jit||0)*1.7);   // تأخیر نمایش = حداقل لازم + دو برابر نوسان واقعی شبکه؛ بعد از هر نوسان سریع برمی‌گرده پایین
+     if(r===2&&p.mv&&rt-last.t>15)p.D=Math.min(260,D+dt*120);else p.D=Math.max(dminEff(),D+Math.max(-dt*110,Math.min(dt*100,tg-D)))}
     p.x=SS.x;p.y=SS.y;p.a=SS.a;p.pt=Math.max(-1.3,Math.min(1.3,SS.p));
     const cut=rt-400;while(p.buf.length>2&&p.buf[1].t<cut)p.buf.shift();
   }
   if(!MP.host&&MP.mbuf&&MP.mbuf.length&&mon){
     const D=MP.mD||(MP.mD=90),rt=now-(MP.moff||0)-D,last=MP.mbuf[MP.mbuf.length-1];
     const r=snapSample(MP.mbuf,rt,SS,mon.speed>0);
-    {const tg=Math.min(220,MP.dmin+8+(MP.mjit||0)*1.7);
-     if(r===2&&mon.speed>0&&rt-last.t>15)MP.mD=Math.min(320,D+dt*120);else MP.mD=Math.max(MP.dmin+5,D+Math.max(-dt*110,Math.min(dt*100,tg-D)))}
+    {const tg=Math.min(220,dminEff()+8+(MP.mjit||0)*1.7);
+     if(r===2&&mon.speed>0&&rt-last.t>15)MP.mD=Math.min(320,D+dt*120);else MP.mD=Math.max(dminEff()+5,D+Math.max(-dt*110,Math.min(dt*100,tg-D)))}
     mon.x=SS.x;mon.y=SS.y;mon.face=SS.a;mon.walk+=dt*mon.speed*3.4;
     const cut=rt-500;while(MP.mbuf.length>2&&MP.mbuf[1].t<cut)MP.mbuf.shift();
   }
@@ -2464,7 +2575,7 @@ function mpTickPost(dt){
   if(MP.host&&!MP.over){
     if(!hunt)monsterAI(dt);
     if(tAlive>MP.nextBo){MP.nextBo=tAlive+90+Math.random()*40;mpSend({t:'bo'});mpBlackout()}
-    if(!hunt&&state!=='play'&&now-MP.lastMon>=80){
+    if(!hunt&&state!=='play'&&now-MP.lastMon>=(NET.needSb()?160:50)){
       MP.lastMon=now;
       mpSend({t:'m',x:r2(mon.x),y:r2(mon.y),f:r2(mon.face),s:{patrol:0,chase:1,search:2,stunned:3}[mon.state]||0,sp:Math.round(mon.speed*10)/10,u:Math.round(mon.stunT*10)/10,T:Math.round(now)});
     }
