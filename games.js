@@ -7,6 +7,7 @@ window.EXTRA_GAMES=[
   {"id": "colorseq", "icon": "🎨", "name": "حافظه رنگی", "desc": "رنگ‌ها رو حفظ کن و دقیقاً به همون ترتیب بزن", "color": "#ff6bcb"},
   {"id": "dino", "icon": "🦖", "name": "دایناسور", "desc": "از روی کاکتوس‌ها بپر", "color": "#1dd1a1"},
   {"id": "doodle", "icon": "🎮", "name": "پرش دودل", "desc": "بازی جدید", "color": "#35f2ff"},
+  {"id": "empire", "icon": "🎮", "name": "EMPIRE WAR", "desc": "بازی جدید", "color": "#35f2ff"},
   {"id": "flappy", "icon": "🐦", "name": "فلپی‌برد", "desc": "پرنده رو بالا نگه دار، سکه جمع کن و اسکین‌های اسطوره‌ای باز کن", "color": "#48dbfb"},
   {"id": "forest", "icon": "🎮", "name": "فرار از جنگل شهر فرش", "desc": "بازی جدید", "color": "#35f2ff"},
   {"id": "hokm", "icon": "🎮", "name": "حکم دو نفره آنلاین", "desc": "بازی جدید", "color": "#35f2ff"},
