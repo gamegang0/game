@@ -212,12 +212,12 @@ body.spec #rvBtn,body.hunter #rvBtn{display:none!important}
 #playerGlitchFX{position:fixed;inset:0;z-index:46;display:none;pointer-events:none;opacity:0;overflow:hidden}
 #playerGlitchFX.active{display:block;animation:playerGlitchOn 5s linear both}
 #playerGlitchFX:before,#playerGlitchFX:after{content:"";position:absolute;inset:0;pointer-events:none}
-#playerGlitchFX:before{background:repeating-linear-gradient(0deg,transparent 0 10px,rgba(125,205,225,.055) 11px 12px),linear-gradient(90deg,rgba(255,80,130,.035),transparent 42%,rgba(75,190,220,.045));mix-blend-mode:soft-light;animation:playerGlitchScan .42s steps(2,end) infinite}
-#playerGlitchFX:after{inset:15% -8%;height:8%;background:linear-gradient(90deg,transparent,rgba(255,105,155,.075) 26%,rgba(100,205,225,.085) 70%,transparent);mix-blend-mode:soft-light;animation:playerGlitchSlice .72s steps(2,end) infinite}
-body.glitch-hit #c{filter:contrast(1.025) saturate(1.045) hue-rotate(1deg)}
-@keyframes playerGlitchOn{0%,100%{opacity:0}8%,20%,34%,49%,64%,79%,92%{opacity:.30}14%,27%,42%,57%,72%,86%{opacity:.055}}
-@keyframes playerGlitchScan{0%{transform:translateX(-.7%) translateY(0);clip-path:inset(0 0 70% 0)}25%{transform:translateX(.5%) translateY(2%);clip-path:inset(25% 0 38% 0)}50%{transform:translateX(-.3%) translateY(-1.5%);clip-path:inset(58% 0 14% 0)}75%{transform:translateX(.8%) translateY(1%);clip-path:inset(78% 0 0 0)}100%{transform:translateX(-.5%) translateY(0);clip-path:inset(0 0 70% 0)}}
-@keyframes playerGlitchSlice{0%{transform:translate(-.8%,0);top:13%;height:5%}33%{transform:translate(.9%,3%);top:42%;height:7%}66%{transform:translate(-.6%,-2%);top:70%;height:4%}100%{transform:translate(.7%,2%);top:25%;height:6%}}
+#playerGlitchFX:before{background:repeating-linear-gradient(0deg,rgba(15,10,35,.10) 0 2px,rgba(120,220,255,.24) 3px 4px,transparent 5px 8px),repeating-linear-gradient(90deg,transparent 0 18px,rgba(255,35,125,.24) 19px 23px,transparent 24px 39px),linear-gradient(90deg,rgba(255,0,90,.25),rgba(0,220,255,.18),rgba(170,0,255,.24));mix-blend-mode:screen;animation:playerGlitchScan .16s steps(2,end) infinite}
+#playerGlitchFX:after{inset:-8% -12%;height:116%;background:repeating-linear-gradient(0deg,transparent 0 13px,rgba(255,255,255,.22) 14px 17px,rgba(255,0,110,.28) 18px 22px,transparent 23px 37px),repeating-linear-gradient(90deg,transparent 0 34px,rgba(0,220,255,.25) 35px 49px,transparent 50px 73px);mix-blend-mode:screen;animation:playerGlitchSlice .23s steps(2,end) infinite}
+body.glitch-hit #c{filter:contrast(1.18) saturate(1.35) hue-rotate(8deg)}
+@keyframes playerGlitchOn{0%,100%{opacity:.08}5%,13%,22%,31%,40%,49%,58%,67%,76%,85%,94%{opacity:.72}9%,18%,27%,36%,45%,54%,63%,72%,81%,90%{opacity:.38}}
+@keyframes playerGlitchScan{0%{transform:translateX(-3%) translateY(0) skewX(-3deg);clip-path:inset(0 0 55% 0)}25%{transform:translateX(4%) translateY(5%) skewX(4deg);clip-path:inset(18% 0 35% 0)}50%{transform:translateX(-5%) translateY(-4%) skewX(-5deg);clip-path:inset(42% 0 18% 0)}75%{transform:translateX(6%) translateY(3%) skewX(3deg);clip-path:inset(65% 0 0 0)}100%{transform:translateX(-3%) translateY(0);clip-path:inset(0 0 55% 0)}}
+@keyframes playerGlitchSlice{0%{transform:translate(-4%,0) skewX(-7deg);top:4%;height:19%}33%{transform:translate(5%,4%) skewX(8deg);top:31%;height:24%}66%{transform:translate(-6%,-3%) skewX(-5deg);top:58%;height:20%}100%{transform:translate(4%,2%) skewX(7deg);top:78%;height:18%}}
 
 /* ===== انیمیشن دریچه + نشانگر شکارچی ===== */
 #hidingFX.active{animation:ventDark .8s ease-out both}
@@ -304,7 +304,6 @@ body.glitch-hit #c{filter:contrast(1.025) saturate(1.045) hue-rotate(1deg)}
 <div id="over" class="scr hidden">
   <h1 id="ot"></h1><p id="od"></p>
   <button class="btn" id="again">دوباره تلاش کن</button>
-  <button class="btn" id="toForest" style="display:none;background:linear-gradient(180deg,#2f8f4a,#1b5a2c)">🌲 برو به بازی جنگل</button>
   <button class="btn2" id="homeB">🕹 بازگشت به آرکید</button>
   <button class="btn2" id="gsB">⚙️ گرافیک و دکمه‌ها</button>
 </div>
@@ -985,19 +984,9 @@ function updateHunterTrackMarker(){
   el.classList.add('active');
 }
 function openGlitchPicker(){
+  // قدرت پژمان بدون منوی انتخاب هدف، مستقیم روی همهٔ بازیکنان زنده اجرا می‌شود.
   if(!HM()||state!=='play')return;
-  const left=(MP.glitchReadyAt||0)-performance.now();
-  if(left>0){showMsg('قدرت اختلال هنوز آماده نیست: '+FA(Math.ceil(left/1000))+' ثانیه',1900,true);return}
-  const list=$('glitchTargets');list.textContent='';
-  const targets=Object.values(MP.pl).filter(p=>p&&p.id!==MP.id&&p.in&&p.st==='alive').sort((a,b)=>a.id-b.id);
-  if(!targets.length){const empty=document.createElement('div');empty.className='empty';empty.textContent='بازیکن زنده‌ای برای هدف‌گیری نیست.';list.appendChild(empty)}
-  else {
-    const all=document.createElement('button');all.type='button';all.textContent='🌐 همهٔ بازیکنان';all.onclick=()=>sendPlayerGlitch('all');list.appendChild(all);
-    for(const p of targets){
-      const b=document.createElement('button');b.type='button';b.textContent='🎯 '+p.name+(p.hid?' · داخل دریچه':'');b.onclick=()=>sendPlayerGlitch(p.id);list.appendChild(b);
-    }
-  }
-  const panel=$('glitchPick');panel.classList.add('on');panel.setAttribute('aria-hidden','false');
+  sendPlayerGlitch('all');
 }
 function sendPlayerGlitch(id){
   if(!HM()||state!=='play'||(id!=='all'&&!Number.isInteger(id)))return;
@@ -1218,7 +1207,7 @@ function startScare(){
 function showOver(){
   state='over';
   $('foamFX').classList.remove('active');$('scareCaption').classList.remove('active');$('pejmanDrips').classList.remove('active');$('redv').style.opacity=0;
-  $('toForest').style.display='none';$('ot').textContent='💦 پژمان گیرت انداخت!';$('od').textContent='موج آب زلال پژمان پاشید روت! 💦 — زمان زنده‌ماندن: '+fmt(tAlive)+' — کلید: '+FA(keysGot)+' از '+FA(NEED_KEYS);
+  $('ot').textContent='💦 پژمان گیرت انداخت!';$('od').textContent='موج آب زلال پژمان پاشید روت! 💦 — زمان زنده‌ماندن: '+fmt(tAlive)+' — کلید: '+FA(keysGot)+' از '+FA(NEED_KEYS);
   $('over').classList.remove('hidden');const o=$('over');o.classList.remove('shake');void o.offsetWidth;o.classList.add('shake');
   arcadeNotify('finish',0,false);if(document.pointerLockElement)document.exitPointerLock();
 }
@@ -1440,7 +1429,7 @@ function startFilm(){FILM.st=1;try{
 function win(){
   if(state!=='play')return;FILM.st=0;mpMyEscape();state='escape';escapeT=0;sfx.win();if(monG)monG.gain.value=0;
   $('over').style.background='radial-gradient(ellipse at center,rgba(10,70,30,.92),#000)';$('ot').style.color='#7dffb0';$('ot').textContent='🎉 فرار کردی!';
-  $('od').textContent='از زیرزمین شهر فرش بیرون اومدی؛ زمان: '+fmt(tAlive);$('again').textContent='یه دور دیگه';try{if(window.parent!==window)$('toForest').style.display='inline-block'}catch(e){}
+  $('od').textContent='از زیرزمین شهر فرش بیرون اومدی؛ زمان: '+fmt(tAlive);$('again').textContent='یه دور دیگه';
   $('nameTag').style.display='none';$('escapeFX').classList.remove('active');try{startFilm()}catch(e){console.error(e);FILM.st=2}
   arcadeNotify('finish',1,true);if(document.pointerLockElement)document.exitPointerLock();
 }
@@ -2197,7 +2186,7 @@ function mpCleanup(){
 }
 function mpResetScreens(){
   ['foamFX','scareCaption','pejmanDrips','escapeFX','hidingFX','zapFX'].forEach(i=>$(i).classList.remove('active'));
-  $('over').classList.add('hidden');$('toForest').style.display='none';$('over').style.background='';$('ot').style.color='';$('again').style.display='';$('again').textContent='دوباره تلاش کن';
+  $('over').classList.add('hidden');$('over').style.background='';$('ot').style.color='';$('again').style.display='';$('again').textContent='دوباره تلاش کن';
   $('redv').style.opacity=0;$('nameTag').style.display='none';
   if(document.pointerLockElement)document.exitPointerLock();
   if(master)master.gain.value=muted?0:.9;
@@ -2948,12 +2937,11 @@ function begin(seed){
   if(master)master.gain.value=muted?0:.9;
   $('foamFX').classList.remove('active');$('scareCaption').classList.remove('active');$('pejmanDrips').classList.remove('active');$('escapeFX').classList.remove('active');$('hidingFX').classList.remove('active');$('zapFX').classList.remove('active');closeGlitchPicker();
   $('playerGlitchFX').classList.remove('active');document.body.classList.remove('glitch-hit');clearTimeout(playerGlitchTimer);MP.hunterTrackUntil=0;const _htm=$('hunterTrackMark');if(_htm)_htm.classList.remove('active','edge');
-  NEED_KEYS=(MP.on&&MP.started)?keysForN(MP.nPl||1):4;{const _t=(MP.on&&MP.started)?(MP.nTot||1):1;setMapSize(_t>=5?71:61,_t>=5?47:41)}reset(seed);state='play';$('start').classList.add('hidden');$('over').classList.add('hidden');$('toForest').style.display='none';$('pz').classList.add('hidden');
+  NEED_KEYS=(MP.on&&MP.started)?keysForN(MP.nPl||1):4;{const _t=(MP.on&&MP.started)?(MP.nTot||1):1;setMapSize(_t>=5?71:61,_t>=5?47:41)}reset(seed);state='play';$('start').classList.add('hidden');$('over').classList.add('hidden');$('pz').classList.add('hidden');
   $('over').style.background='';$('ot').style.color='';$('again').textContent='دوباره تلاش کن';
   setTimeout(()=>{joyHome()},400);
   arcadeNotify('start');
 }
-$('toForest').onclick=()=>{try{window.parent.postMessage({source:'nova-arcade-embed',game:'zirzamin',type:'goto',target:'forest'},'*')}catch(e){}};
 $('go').onclick=()=>begin();$('again').onclick=()=>{if(MP.on){if(MP.host){mpSend({t:'lobby'});mpBackToLobby({});mpTrack({st:0,go:null})}}else begin()};
 const goHome=()=>{try{if(window.parent!==window)window.parent.postMessage({source:'nova-arcade-embed',game:'zirzamin',type:'home',score:0,won:false},'*');else location.reload()}catch(e){}};
 ['homeA','homeB','homeC'].forEach(i=>$(i).onclick=goHome);

@@ -770,7 +770,7 @@ const resultFX={
 };
 
 /* ================= embedded arcade games ================= */
-const GAME_V=10; /* هر بار بازی رو آپدیت کردی این عدد رو یکی زیاد کن تا کش مرورگر پاک بشه */
+const GAME_V=11; /* هر بار بازی رو آپدیت کردی این عدد رو یکی زیاد کن تا کش مرورگر پاک بشه */
 function loadEmbedGame(id){
   const u=id+'.html?v='+GAME_V;
   try{gameFrame.setAttribute('allow','microphone; autoplay; fullscreen')}catch(e){} /* برای بازی‌های صدایی مثل صداپرش */
@@ -1384,7 +1384,7 @@ function openGame(id){
   document.body.classList.remove('memoryFS');
   document.body.classList.toggle('mkfs',id==='markhor'||id==='amirshahi'||id==='cityrun'||!!(Games[id]&&Games[id].fs));
   if(id==='markhor'||id==='amirshahi'||(Games[id]&&Games[id].portrait))lockPortrait();
-  const _land=!!(cur&&cur.landscape)||id==='zirzamin';
+  const _land=!!(cur&&cur.landscape)||id==='zirzamin'||id==='forest';
   if(_land){zfsEnter();lockLandscape()}else zfsLeave();
   $('menu').hidden=true;$('play').hidden=false;
   $('bs').textContent=FA(Store.best(id));$('bw').hidden=!!cur.norec;$('info').textContent='';$('bp').textContent='⏸';$('bp').hidden=!!(cur.embed||cur.nopause);
@@ -1413,7 +1413,7 @@ Games.hokm={id:'hokm',embed:true,norec:false,enter(){},update(){},draw(){},down(
 Games.chaharbarg={id:'chaharbarg',embed:true,norec:false,enter(){},update(){},draw(){},down(){},up(){},key(){return false},playing(){return embedRunStarted},idle(){return !embedRunStarted}};
 Games.cityrun={id:'cityrun',embed:true,norec:false,enter(){},update(){},draw(){},down(){},up(){},key(){return false},playing(){return embedRunStarted},idle(){return !embedRunStarted}};
 /* ساخت خودکار بازی‌های جدید از games.js */
-META.filter(m=>m.embed&&!Games[m.id]).forEach(m=>{Games[m.id]={id:m.id,embed:true,norec:false,fs:!!m.fs,noFX:!!m.noFX,portrait:!!m.portrait,enter(){},update(){},draw(){},down(){},up(){},key(){return false},playing(){return embedRunStarted},idle(){return !embedRunStarted}};});
+META.filter(m=>m.embed&&!Games[m.id]).forEach(m=>{Games[m.id]={id:m.id,embed:true,norec:false,fs:!!m.fs,landscape:!!m.landscape,noFX:!!m.noFX,portrait:!!m.portrait,enter(){},update(){},draw(){},down(){},up(){},key(){return false},playing(){return embedRunStarted},idle(){return !embedRunStarted}};});
 /* ================= input ================= */
 const px=e=>{const r=cv.getBoundingClientRect();return(e.clientX-r.left)/r.width*W};
 const py=e=>{const r=cv.getBoundingClientRect();return(e.clientY-r.top)/r.height*H};
