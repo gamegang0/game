@@ -6,6 +6,7 @@ const $=id=>document.getElementById(id);
 window.EXTRA_GAMES=window.EXTRA_GAMES||[];
 if(!window.EXTRA_GAMES.some(x=>x&&x.id==='zirzamin'))window.EXTRA_GAMES.push({id:'zirzamin',icon:'🕳️',name:'زیرزمین شهر فرش',desc:'در بک‌رومز گیر افتادی؛ کلیدها رو پیدا کن و از دست پژمان فرار کن',color:'#e0b53a',embed:true,fs:true,landscape:true,noFX:true});
 if(!window.EXTRA_GAMES.some(x=>x&&x.id==='forest'))window.EXTRA_GAMES.push({id:'forest',icon:'🌲',name:'جنگل شهر فرش',desc:'از زیرزمین فرار کردی؛ حالا شبِ جنگله! ۴ تیکه‌ی گوشی رو پیدا کن، به خونه‌ی چوبی برس و از دست عمو پورنگ فرار کن (قفل: اول باید از زیرزمین فرار کنی)',color:'#3fbf6a',embed:true,fs:true,landscape:true,noFX:true});
+if(!window.EXTRA_GAMES.some(x=>x&&x.id==='parking'))window.EXTRA_GAMES.push({id:'parking',icon:'🅿️',name:'پارکینگ شهر لوازم خانگی',desc:'تو پارکینگ زیرزمینی گیر افتادی! قطعه‌های کامیون (موتور، رادیاتور، فرمون، بنزین…) رو پیدا کن، تعمیرش کن و فرار کن؛ اما کاپیتان مهران (سبیلو) با چوب دنبالته. تو ماشین‌ها قایم شو! (قفل: اول باید از جنگل شهر فرش فرار کنی)',color:'#d9a21e',embed:true,fs:true,landscape:true,noFX:true});
 if(!window.EXTRA_GAMES.some(x=>x&&x.id==='voicerunner'))window.EXTRA_GAMES.push({id:'voicerunner',icon:'🎤',name:'صداپرش',desc:'با صدات بازی کن! آروم حرف بزن = راه رفتن، داد بزن = پرش؛ ۱۰۰ مرحله',color:'#ffd23f',embed:true,noFX:true});
 try{localStorage.removeItem('arcade_photo');localStorage.removeItem('arcade_photo_ok')}catch(e){}
 const cv=$('c'),ctx=cv.getContext('2d');
@@ -770,7 +771,7 @@ const resultFX={
 };
 
 /* ================= embedded arcade games ================= */
-const GAME_V=12; /* هر بار بازی رو آپدیت کردی این عدد رو یکی زیاد کن تا کش مرورگر پاک بشه */
+const GAME_V=13; /* هر بار بازی رو آپدیت کردی این عدد رو یکی زیاد کن تا کش مرورگر پاک بشه */
 function loadEmbedGame(id){
   const u=id+'.html?v='+GAME_V;
   try{gameFrame.setAttribute('allow','microphone; autoplay; fullscreen')}catch(e){} /* برای بازی‌های صدایی مثل صداپرش */
@@ -784,6 +785,10 @@ let embedRunStarted=false;
 /* ===== قفل بازی جنگل: فقط کسی که از زیرزمین فرار کرده می‌تونه بازیش کنه ===== */
 const FOREST_KEY='arcade_forest_v1';
 function forestUnlocked(){try{if(localStorage.getItem(FOREST_KEY)==='1')return true}catch(e){}try{if(typeof Store!=='undefined'&&Store.isAdmin&&Store.isAdmin())return true}catch(e){}return false}
+const PARKING_KEY='arcade_parking_v1';
+function parkingUnlocked(){try{if(localStorage.getItem(PARKING_KEY)==='1')return true}catch(e){}try{if(typeof Store!=='undefined'&&Store.isAdmin&&Store.isAdmin())return true}catch(e){}return false}
+function parkingLockedMsg(){arcToast('🔒 اول باید از «جنگل شهر فرش» فرار کنی تا پارکینگ باز بشه')}
+function unlockParking(){const was=parkingUnlocked();try{localStorage.setItem(PARKING_KEY,'1')}catch(e){}if(!was){arcToast('🅿️ بازی «پارکینگ شهر لوازم خانگی» باز شد!');try{if(!$('menu').hidden)renderMenu()}catch(e){}}}
 function arcToast(t){try{let el=document.getElementById('arcToast');if(!el){el=document.createElement('div');el.id='arcToast';el.style.cssText='position:fixed;left:50%;top:max(16px,env(safe-area-inset-top));transform:translateX(-50%);z-index:99999;max-width:88vw;padding:12px 18px;border-radius:16px;background:rgba(10,14,20,.94);border:1px solid rgba(255,255,255,.25);color:#fff;font:800 15px/1.7 inherit;text-align:center;box-shadow:0 10px 40px rgba(0,0,0,.6);pointer-events:none;transition:opacity .3s;opacity:0';document.body.appendChild(el)}
   el.textContent=t;el.style.opacity='1';clearTimeout(el._t);el._t=setTimeout(()=>{el.style.opacity='0'},3600)}catch(e){}}
 function forestLockedMsg(){arcToast('🔒 اول باید از «زیرزمین شهر فرش» فرار کنی تا بازی جنگل باز بشه')}
@@ -819,8 +824,10 @@ window.addEventListener('message',e=>{
     goHome();
   }else if(d.type==='goto'){
     if(d.target==='forest'){if(forestUnlocked()){goHome();openGame('forest')}else forestLockedMsg()}
+    else if(d.target==='parking'){if(parkingUnlocked()){goHome();openGame('parking')}else parkingLockedMsg()}
   }else if(d.type==='finish'){
     if(cur.id==='zirzamin'&&d.won===true)unlockForest();
+    if(cur.id==='forest'&&d.won===true)unlockParking();
     if(!embedRunStarted){embedRunStarted=true;Shell.begin();}
     Shell.finish(n,(d.fx==='win'||d.fx==='lose'||d.fx==='none')?d.fx:((cur.id==='markhor'||cur.id==='amirshahi'||cur.id==='cityrun'||cur.noFX)?'none':(d.won===true?'win':'lose')));embedRunStarted=false;
   }
@@ -856,7 +863,7 @@ const META=[
 /* بازی‌های جدید از games.js میان */
 (window.EXTRA_GAMES||[]).forEach(g=>{if(g&&g.id&&!META.some(m=>m.id===g.id))META.push(Object.assign({embed:true},g))});
 /* ---- لوگوی هر بازی متناسب با اسمش (جایگزین 🎮) ---- */
-const ICON_BY_ID={dino:'🦖',snake:'🐍',breakoutpro:'🧱',pong:'🏓',ninja:'🥷',memory:'🧠',colorseq:'🎨',flappy:'🐦',soccer:'⚽',pancake:'🥞',traffic:'🚦',pacman:'🟡',doodle:'🪂',voicerunner:'🎤',amirshahi:'⚽',markhor:'🐍',cityrun:'🏙️',laserheist:'🕵️',skyball:'🔮',subway:'🚇',hokm:'🃏',chaharbarg:'🃏',zirzamin:'🕳️',forest:'🌲'};
+const ICON_BY_ID={dino:'🦖',snake:'🐍',breakoutpro:'🧱',pong:'🏓',ninja:'🥷',memory:'🧠',colorseq:'🎨',flappy:'🐦',soccer:'⚽',pancake:'🥞',traffic:'🚦',pacman:'🟡',doodle:'🪂',voicerunner:'🎤',amirshahi:'⚽',markhor:'🐍',cityrun:'🏙️',laserheist:'🕵️',skyball:'🔮',subway:'🚇',hokm:'🃏',chaharbarg:'🃏',zirzamin:'🕳️',forest:'🌲',parking:'🅿️'};
 const ICON_KEYWORDS=[
   [/فوتبال|ساکر|گل‌?زنی|پنالتی/,'⚽'],[/بسکتبال/,'🏀'],[/والیبال/,'🏐'],[/تنیس/,'🎾'],[/بیلیارد|اسنوکر/,'🎱'],[/بولینگ/,'🎳'],[/گلف/,'⛳'],[/بوکس|مشت/,'🥊'],[/کشتی|مبارزه|جنگ‌?جو/,'🥋'],
   [/پینگ|پونگ|راکت/,'🏓'],[/دایناسور|دینو/,'🦖'],[/مار(?!خور)|اسنیک/,'🐍'],[/مارخور/,'🩸'],[/آجر|بریک|توپ‌?و‌?آجر/,'🧱'],[/نینجا|سامورایی/,'🥷'],[/حافظه|مموری/,'🧠'],[/رنگ/,'🎨'],
@@ -883,7 +890,7 @@ const TABS=[{id:'total',icon:'👑',name:'مجموع'},...META.filter(m=>!m.nore
 function weekLeftText(){const T=12600000,n=Date.now()+T,d=Math.floor(n/864e5),nx=((Math.floor((d-1)/7)+1)*7+1)*864e5-T,m=Math.max(0,nx-Date.now()),dd=Math.floor(m/864e5),hh=Math.floor(m%864e5/36e5);return '⏳ ریست هفتگی رتبه‌ها (جمعه): '+(dd?FA(dd)+' روز و ':'')+FA(hh)+' ساعت دیگر'}
 const TOTAL_NOTE='مجموع بهترین امتیاز هر نفر توی همه‌ی بازی‌ها';
 const GAME_CATEGORY={
-  zirzamin:'action',forest:'action',
+  zirzamin:'action',forest:'action',parking:'action',
   breakoutpro:'classic',pong:'sports',dino:'runner',ninja:'action',memory:'puzzle',colorseq:'puzzle',
   flappy:'runner',snake:'classic',soccer:'sports',pancake:'runner',traffic:'runner',pacman:'action',
   doodle:'runner',voicerunner:'runner',amirshahi:'sports',markhor:'action',cityrun:'runner',laserheist:'puzzle',skyball:'action',subway:'runner',hokm:'classic',chaharbarg:'classic'
@@ -1315,8 +1322,9 @@ function renderMenu(){
     const badge=(m.id==='dino'?'🦖 DINO RUN':m.id==='snake'?'🐍 SNAKE LAB':m.id==='breakoutpro'?'🧱 BRICK STORM':m.id==='pong'?'🏓 DUEL ARENA':m.id==='ninja'?'🍉 NINJA MODE':m.id==='memory'?'🃏 MEMORY LAB':m.id==='colorseq'?'🎨 COLOR MEMORY':m.id==='soccer'?'⚽ SOCCER STAR':m.id==='pancake'?'🥞 PANCAKE TOWER':m.id==='traffic'?'🚦 NEON TRAFFIC':m.id==='markhor'?'🩸 MARKHOR':m.id==='amirshahi'?'👑 AMIR SHAHI':m.id==='cityrun'?'🏙️ CITY RUN':m.id==='hokm'?'🃏 PASUR':m.id==='laserheist'?'🕵️ LASER HEIST':m.id==='skyball'?'🔮 SKY BALL':m.id==='subway'?'🚇 SUBWAY RUN':m.id==='zirzamin'?'🕳️ BACKROOMS':'🐦 SKY RUN');
     const metaTxt=m.id==='hokm'?'🌐 آنلاین · لیدربورد':`🏆 ${FA(g.best)} · ${FA(g.plays)} بازی`;
     b.innerHTML=`<span class="arcadeScene"><span class="arcadeStars"></span><span class="arcadeBadge">${badge} · LIVE</span><span class="arcadeIcon">${m.icon}</span></span><span class="arcadeInfo"><span class="arcadeName">${m.name}</span><span class="arcadeDesc">${m.desc}</span><span class="arcadeMeta"><span>${metaTxt}</span><span class="arcadePlay">▶ بازی کن</span></span></span>`;
+    if(m.id==='parking'&&!parkingUnlocked()){b.classList.add('lockedGame');const pl2=b.querySelector('.arcadePlay');if(pl2)pl2.textContent='🔒 قفل'}
     if(m.id==='forest'&&!forestUnlocked()){b.classList.add('lockedGame');const pl=b.querySelector('.arcadePlay');if(pl)pl.textContent='🔒 قفل'}
-    b.onclick=()=>{audio();if(m.id==='forest'&&!forestUnlocked()){forestLockedMsg();return}if(m.norec){sfx.ui();if(m.pick)openPasurMenu();else openGame(m.id)}else openGameRank(m)};
+    b.onclick=()=>{audio();if(m.id==='parking'&&!parkingUnlocked()){parkingLockedMsg();return}if(m.id==='forest'&&!forestUnlocked()){forestLockedMsg();return}if(m.norec){sfx.ui();if(m.pick)openPasurMenu();else openGame(m.id)}else openGameRank(m)};
     box.appendChild(b);
   }
   hello();
@@ -1378,13 +1386,14 @@ async function lockPortrait(){
 function unlockPortrait(){try{if(screen.orientation&&screen.orientation.unlock)screen.orientation.unlock()}catch(e){}}
 function openGame(id){
   if(id==='forest'&&!forestUnlocked()){forestLockedMsg();return}
+  if(id==='parking'&&!parkingUnlocked()){parkingLockedMsg();return}
   resultFX.clear();
   cur=Games[id];paused=false;In.x=W/2;lastShown=-1;embedRunStarted=false;
   document.body.classList.add('playing');
   document.body.classList.remove('memoryFS');
   document.body.classList.toggle('mkfs',id==='markhor'||id==='amirshahi'||id==='cityrun'||!!(Games[id]&&Games[id].fs));
   if(id==='markhor'||id==='amirshahi'||(Games[id]&&Games[id].portrait))lockPortrait();
-  const _land=!!(cur&&cur.landscape)||id==='zirzamin'||id==='forest';
+  const _land=!!(cur&&cur.landscape)||id==='zirzamin'||id==='forest'||id==='parking';
   if(_land){zfsEnter();lockLandscape()}else zfsLeave();
   $('menu').hidden=true;$('play').hidden=false;
   $('bs').textContent=FA(Store.best(id));$('bw').hidden=!!cur.norec;$('info').textContent='';$('bp').textContent='⏸';$('bp').hidden=!!(cur.embed||cur.nopause);
