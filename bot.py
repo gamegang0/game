@@ -14,12 +14,42 @@ db.execute("""CREATE TABLE IF NOT EXISTS players(
     id INTEGER PRIMARY KEY, name TEXT, coins INTEGER DEFAULT 100,
     last_mine REAL DEFAULT 0, last_daily REAL DEFAULT 0,
     wins INTEGER DEFAULT 0, losses INTEGER DEFAULT 0)""")
-for col in ("xp INTEGER DEFAULT 0", "sword INTEGER DEFAULT 0",
-            "armor INTEGER DEFAULT 0", "last_steal REAL DEFAULT 0"):
+for col in (
+    "xp INTEGER DEFAULT 0", "sword INTEGER DEFAULT 0",
+    "armor INTEGER DEFAULT 0", "last_steal REAL DEFAULT 0",
+    "account_no TEXT", "thief INTEGER DEFAULT 0", "guard INTEGER DEFAULT 0"
+):
     try:
         db.execute(f"ALTER TABLE players ADD COLUMN {col}")
     except sqlite3.OperationalError:
         pass
+
+# شماره حساب بازی برای بازیکنان قدیمی هم ساخته می‌شود؛ شماره‌ها یکتا هستند.
+def make_account_number():
+    while True:
+        number = str(random.randint(10_000_000, 99_999_999))
+        exists = db.execute(
+            "SELECT 1 FROM players WHERE account_no=?", (number,)
+        ).fetchone()
+        if not exists:
+            return number
+
+for old_player in db.execute(
+    "SELECT id FROM players WHERE account_no IS NULL OR account_no=''"
+).fetchall():
+    db.execute(
+        "UPDATE players SET account_no=? WHERE id=?",
+        (make_account_number(), old_player["id"])
+    )
+db.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_players_account_no ON players(account_no)")
+db.execute("""CREATE TABLE IF NOT EXISTS coin_transactions(
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    sender_id INTEGER NOT NULL,
+    receiver_id INTEGER NOT NULL,
+    amount INTEGER NOT NULL,
+    kind TEXT NOT NULL,
+    created_at REAL NOT NULL
+)""")
 db.commit()
 
 duels = {}
@@ -29,6 +59,7 @@ last_action = {}
 MINE_COOLDOWN = 60
 DAILY_COOLDOWN = 24 * 3600
 STEAL_COOLDOWN = 300
+TRANSFER_FEE_PERCENT = 0
 DAILY_REWARD = 200
 ARENA_MAX = 200
 MAX_UPGRADE = 10
@@ -102,6 +133,7 @@ def main_markup():
     kb.add(btn("👤 پروفایل", "m:profile"), btn("🏆 برترین‌ها", "m:top"))
     kb.add(btn("🛒 فروشگاه", "m:shop"), btn("🎰 اسلات", "m:slots"))
     kb.add(btn("🎲 تاس", "m:dice"), btn("⚔️ آرنا", "m:arena"))
+    kb.add(btn("🏦 بانک و شماره حساب", "m:bank"), btn("🧾 تاریخچه", "m:history"))
     kb.add(btn("❓ راهنما", "m:help"))
     if CHANNEL_URL:
         kb.add(types.InlineKeyboardButton("📢 کانال ما", url=CHANNEL_URL))
@@ -133,11 +165,29 @@ def bet_markup(prefix, amounts):
 # ---------- منطق بازی ----------
 def get_player(user):
     with lock:
-        db.execute("INSERT OR IGNORE INTO players(id, name) VALUES(?, ?)",
-                   (user.id, user.first_name))
+        current = db.execute(
+            "SELECT account_no FROM players WHERE id=?", (user.id,)
+        ).fetchone()
+        if not current:
+            db.execute(
+                "INSERT OR IGNORE INTO players(id, name, account_no) VALUES(?, ?, ?)",
+                (user.id, user.first_name, make_account_number())
+            )
+        elif not current["account_no"]:
+            db.execute(
+                "UPDATE players SET account_no=? WHERE id=?",
+                (make_account_number(), user.id)
+            )
         db.execute("UPDATE players SET name=? WHERE id=?", (user.first_name, user.id))
         db.commit()
         return db.execute("SELECT * FROM players WHERE id=?", (user.id,)).fetchone()
+
+
+def get_by_account(account_no):
+    with lock:
+        return db.execute(
+            "SELECT * FROM players WHERE account_no=?", (str(account_no),)
+        ).fetchone()
 
 
 def get_by_id(uid):
@@ -224,8 +274,8 @@ def run_fight(chat_id, a_id, b_id, bet):
 
 
 def price(kind, p):
-    base = 300 if kind == "sword" else 200
-    return base * (p[kind] + 1)
+    bases = {"sword": 300, "armor": 200, "thief": 250, "guard": 250}
+    return bases[kind] * (p[kind] + 1)
 
 
 def do_mine(user):
@@ -268,19 +318,157 @@ def do_profile(user):
     p = get_player(user)
     body = (f"👤 <b>{nm(p)}</b>  {rank_title(p)}\n"
             f"💰 سکه: <b>{p['coins']}</b>\n"
+            f"🏦 شماره حساب: <code>{p['account_no']}</code>\n"
             f"⭐ سطح {level(p)}  {xp_bar(p['xp'])}  {p['xp'] % 100}/100\n"
-            f"💪 قدرت: <b>{power(p)}</b>  (⚔️{p['sword']} 🛡{p['armor']})\n"
+            f"💪 قدرت دوئل: <b>{power(p)}</b>  (⚔️{p['sword']} 🛡{p['armor']})\n"
+            f"🥷 دزد: سطح {p['thief']}  |  🛡 نگهبان: سطح {p['guard']}\n"
             f"🏅 برد: {p['wins']} | 💀 باخت: {p['losses']}")
     return card("پروفایل", body)
+
+
+def do_bank(user):
+    p = get_player(user)
+    return card("بانک و شماره حساب",
+                f"👤 صاحب حساب: <b>{nm(p)}</b>\n"
+                f"🏦 شماره حساب بازی: <code>{p['account_no']}</code>\n"
+                f"💰 موجودی: <b>{p['coins']}</b> سکه\n\n"
+                "📤 انتقال سکه:\n<code>/transfer شماره_حساب مبلغ</code>\n"
+                "🥷 تلاش برای دزدی:\n<code>/steal شماره_حساب</code>\n"
+                "🧾 مشاهده گردش حساب: <code>/history</code>\n\n"
+                "این شماره فقط حساب داخل بازی است و به حساب بانکی واقعی ارتباطی ندارد.")
+
+
+def do_history(user):
+    p = get_player(user)
+    with lock:
+        rows = db.execute("""SELECT t.*,
+            CASE WHEN t.sender_id=? THEN receiver.name ELSE sender.name END AS other_name
+            FROM coin_transactions t
+            LEFT JOIN players sender ON sender.id=t.sender_id
+            LEFT JOIN players receiver ON receiver.id=t.receiver_id
+            WHERE t.sender_id=? OR t.receiver_id=?
+            ORDER BY t.id DESC LIMIT 8""", (p["id"], p["id"], p["id"])).fetchall()
+    if not rows:
+        return card("تاریخچه حساب", "هنوز انتقال یا عملیات دزدی ثبت نشده است.")
+    lines = []
+    for row in rows:
+        other = esc(row["other_name"] or "بازیکن")
+        sent = row["sender_id"] == p["id"]
+        if row["kind"] == "steal":
+            label = "🥷 دزدی موفق از" if sent else "🚨 دزدیده شد از حساب شما توسط"
+        else:
+            label = "📤 انتقال به" if sent else "📥 دریافت از"
+        sign = "-" if sent else "+"
+        lines.append(f"{label} <b>{other}</b> — {sign}{row['amount']} سکه")
+    return card("۸ عملیات اخیر حساب", "\n".join(lines))
 
 
 def do_top():
     with lock:
         rows = db.execute("SELECT * FROM players ORDER BY coins DESC LIMIT 10").fetchall()
     medals = ["🥇", "🥈", "🥉"] + ["🔹"] * 7
-    lines = [f"{medals[i]} <b>{nm(r)}</b> — {r['coins']} 💰 (سطح {level(r)})"
+    lines = [f"{medals[i]} <b>{nm(r)}</b> — {r['coins']} 💰 (سطح {level(r)})\n"
+             f"🏦 حساب: <code>{r['account_no']}</code>"
              for i, r in enumerate(rows)]
     return card("برترین‌ها", "\n".join(lines) if lines else "هنوز کسی بازی نکرده.")
+
+
+def do_transfer(user, account_no, amount):
+    me = get_player(user)
+    if not str(account_no).isdigit() or len(str(account_no)) != 8:
+        return "❌ شماره حساب باید دقیقاً ۸ رقم باشد."
+    if amount <= 0 or amount > 999_999_999:
+        return "❌ مبلغ انتقال معتبر نیست."
+    with lock:
+        target = db.execute(
+            "SELECT * FROM players WHERE account_no=?", (str(account_no),)
+        ).fetchone()
+        if not target:
+            return "❌ این شماره حساب در بازی وجود ندارد."
+        if target["id"] == me["id"]:
+            return "❌ نمی‌توانی به حساب خودت سکه انتقال بدهی."
+        db.execute("BEGIN IMMEDIATE")
+        try:
+            paid = db.execute(
+                "UPDATE players SET coins=coins-? WHERE id=? AND coins>=?",
+                (amount, me["id"], amount)
+            )
+            if paid.rowcount != 1:
+                db.rollback()
+                return "❌ موجودی‌ات برای این انتقال کافی نیست."
+            received = amount - (amount * TRANSFER_FEE_PERCENT // 100)
+            db.execute("UPDATE players SET coins=coins+? WHERE id=?",
+                       (received, target["id"]))
+            db.execute("""INSERT INTO coin_transactions
+                (sender_id, receiver_id, amount, kind, created_at)
+                VALUES(?, ?, ?, 'transfer', ?)""",
+                (me["id"], target["id"], received, time.time()))
+            db.commit()
+        except Exception:
+            db.rollback()
+            raise
+    return (f"✅ انتقال انجام شد!\n📤 فرستادی: <b>{amount}</b> سکه\n"
+            f"📥 دریافتِ {nm(target)}: <b>{received}</b> سکه\n"
+            f"🏦 مقصد: <code>{target['account_no']}</code>")
+
+
+def do_steal(user, target):
+    me = get_player(user)
+    if not target:
+        return "❌ حساب مقصد پیدا نشد. شماره حساب را بررسی کن."
+    if target["id"] == me["id"]:
+        return "❌ از حساب خودت نمی‌توانی دزدی کنی!"
+    with lock:
+        me = db.execute("SELECT * FROM players WHERE id=?", (me["id"],)).fetchone()
+        victim = db.execute("SELECT * FROM players WHERE id=?", (target["id"],)).fetchone()
+        wait = STEAL_COOLDOWN - (time.time() - me["last_steal"])
+        if wait > 0:
+            return f"⏳ {int(wait)} ثانیه دیگر برای عملیات بعدی صبر کن."
+        if victim["coins"] <= 0:
+            return "😅 این حساب موجودی قابل سرقت ندارد."
+
+        # هر تلاش، حتی وقتی نگهبان قوی‌تر است، زمان انتظار دارد.
+        db.execute("UPDATE players SET last_steal=? WHERE id=?", (time.time(), me["id"]))
+        if me["thief"] <= victim["guard"]:
+            db.execute("UPDATE players SET xp=xp+2 WHERE id=?", (victim["id"],))
+            db.commit()
+            return (f"🛡 نگهبان {nm(victim)} جلوی دزدی را گرفت!\n"
+                    f"🥷 سطح دزد تو: <b>{me['thief']}</b>\n"
+                    f"🛡 سطح نگهبان مقصد: <b>{victim['guard']}</b>\n"
+                    "برای عبور باید سطح دزدت از سطح نگهبان بیشتر باشد.")
+
+        # مبلغ با موجودی هدف و سطح دزد تغییر می‌کند و در هر بار تصادفی است.
+        max_take = min(victim["coins"], max(1, victim["coins"] // 4), 20 + me["thief"] * 25)
+        min_take = max(1, max_take // 3)
+        amount = random.randint(min_take, max_take)
+        db.execute("UPDATE players SET coins=coins-? WHERE id=?", (amount, victim["id"]))
+        db.execute("UPDATE players SET coins=coins+?, xp=xp+3 WHERE id=?",
+                   (amount, me["id"]))
+        db.execute("""INSERT INTO coin_transactions
+            (sender_id, receiver_id, amount, kind, created_at)
+            VALUES(?, ?, ?, 'steal', ?)""",
+            (me["id"], victim["id"], amount, time.time()))
+        db.commit()
+    return (f"🥷 <b>دزدی موفق بود!</b>\n"
+            f"از حساب {nm(victim)} مقدار تصادفی <b>{amount}</b> سکه برداشتی.\n"
+            f"🏦 شماره حساب هدف: <code>{victim['account_no']}</code>\n"
+            f"⭐ سطح دزد تو: {me['thief']} | 🛡 نگهبان هدف: {victim['guard']}")
+
+
+def resolve_steal_target(m):
+    parts = (m.text or "").split()
+    if len(parts) >= 2:
+        account_no = parts[1]
+        if not account_no.isdigit() or len(account_no) != 8:
+            return None, "فرمت درست: <code>/steal شماره_حساب</code> (شماره حساب ۸ رقمی)"
+        target = get_by_account(account_no)
+        if not target:
+            return None, "❌ این شماره حساب پیدا نشد."
+        return target, None
+    u = reply_target(m)
+    if u:
+        return get_player(u), None
+    return None, "شماره حساب را وارد کن: <code>/steal 12345678</code> یا روی پیام بازیکن ریپلای کن."
 
 
 def do_dice(user, chat_id, bet):
@@ -349,7 +537,8 @@ def menu_text(user):
     p = get_player(user)
     return card("بازی سکه",
                 f"👤 <b>{nm(p)}</b>  {rank_title(p)}\n"
-                f"💰 {p['coins']}    ⭐ سطح {level(p)}\n\n"
+                f"💰 {p['coins']}    ⭐ سطح {level(p)}\n"
+                f"🏦 حساب: <code>{p['account_no']}</code>\n\n"
                 "یکی از دکمه‌های شیشه‌ای رو بزن 👇")
 
 
@@ -358,15 +547,19 @@ HELP_TEXT = card("راهنما", (
     "🎁 /daily — جایزه روزانه\n"
     "👤 /profile — سطح، قدرت و تجهیزات\n"
     "🏆 /top — برترین‌ها\n"
-    "🛒 /shop — خرید شمشیر و زره\n"
+    "🛒 /shop — خرید شمشیر، زره، دزد و نگهبان\n"
+    "🏦 /bank — نمایش شماره حساب بازی\n"
+    "📤 /transfer 12345678 100 — انتقال ۱۰۰ سکه به شماره حساب مقصد\n"
+    "🧾 /history — ۸ عملیات بانکی اخیر\n"
     f"🎲 /dice 50 — تاس بنداز؛ اگه از ربات بیشتر بیاری شرطت دو برابر می‌شه\n"
     f"🎰 /slots — اسلات ({SLOT_COST} سکه، جکپات ۲۰ برابر)\n"
     f"🎯 /arena 50 — دوئل با بازیکن رندوم (تا {ARENA_MAX} سکه)\n\n"
     "👇 این‌ها باید روی پیام یه نفر <b>ریپلای</b> بشن:\n"
     "⚔️ /duel 50 — دوئل تاسی\n"
-    "🥷 /steal — دزدی\n"
+    "🥷 /steal 12345678 — تلاش برای دزدی از شماره حساب (یا ریپلای)\n"
     f"🎁 /give 50 — سکه دادن ({GIVE_TAX_PERCENT}٪ مالیات)\n\n"
-    "💡 ریپلای: روی پیام طرف انگشتت رو نگه دار و Reply رو بزن.\n"
+    "💡 هر بازیکن یک شماره حساب ۸ رقمی دارد؛ در لیدربورد هم نمایش داده می‌شود.\n"
+    "🛡 برای دزدی، سطح دزد باید از سطح نگهبان مقصد بیشتر باشد؛ مبلغ سرقت تصادفی است.\n"
     "💪 امتیاز دوئل = تاس × ۵ + قدرت، پس شمشیر و زره بخر!"))
 
 
@@ -402,6 +595,29 @@ def cmd_top(m):
     reply(m, do_top(), back_markup())
 
 
+@bot.message_handler(commands=["bank", "account"])
+def cmd_bank(m):
+    reply(m, do_bank(m.from_user), back_markup())
+
+
+@bot.message_handler(commands=["history"])
+def cmd_history(m):
+    reply(m, do_history(m.from_user), back_markup())
+
+
+@bot.message_handler(commands=["transfer", "send"])
+def cmd_transfer(m):
+    parts = (m.text or "").split()
+    if len(parts) != 3:
+        return reply(m, "فرمت درست: <code>/transfer شماره_حساب مبلغ</code>\nمثال: <code>/transfer 12345678 100</code>")
+    account_no, raw_amount = parts[1], parts[2]
+    if not account_no.isdigit() or len(account_no) != 8:
+        return reply(m, "❌ شماره حساب باید دقیقاً ۸ رقم باشد.")
+    if not raw_amount.isdigit() or len(raw_amount) > MAX_DIGITS or int(raw_amount) <= 0:
+        return reply(m, "❌ مبلغ باید عددی مثبت و حداکثر ۹ رقم باشد.")
+    reply(m, do_transfer(m.from_user, account_no, int(raw_amount)), back_markup())
+
+
 @bot.message_handler(commands=["dice", "gamble"])
 def cmd_dice(m):
     bet = parse_amount(m)
@@ -434,29 +650,10 @@ def reply_target(m):
 
 @bot.message_handler(commands=["steal"])
 def cmd_steal(m):
-    target = reply_target(m)
-    if not target:
-        return reply(m, "روی پیام کسی که می‌خوای ازش بدزدی ریپلای کن و بنویس /steal")
-    me = get_player(m.from_user)
-    victim = get_player(target)
-    wait = STEAL_COOLDOWN - (time.time() - me["last_steal"])
-    if wait > 0:
-        return reply(m, f"⏳ {int(wait)} ثانیه دیگه می‌تونی دوباره بدزدی.")
-    with lock:
-        db.execute("UPDATE players SET last_steal=? WHERE id=?", (time.time(), me["id"]))
-        db.commit()
-    if victim["coins"] < 20:
-        return reply(m, "😅 این بازیکن اونقدر سکه نداره که ارزش دزدی داشته باشه.")
-    chance = min(0.6, max(0.2, 0.4 + (power(me) - power(victim)) * 0.03))
-    if random.random() < chance:
-        amount = max(1, min(60, victim["coins"] // 10))
-        add(victim["id"], -amount)
-        add(me["id"], amount, 3)
-        reply(m, f"🥷 موفق شدی! <b>{amount}</b> سکه از {nm(victim)} دزدیدی.")
-    else:
-        fine = min(20, me["coins"])
-        add(me["id"], -fine)
-        reply(m, f"🚨 گیر افتادی و <b>{fine}</b> سکه جریمه شدی!")
+    target, error = resolve_steal_target(m)
+    if error:
+        return reply(m, error)
+    reply(m, do_steal(m.from_user, target), back_markup())
 
 
 @bot.message_handler(commands=["give"])
@@ -536,6 +733,10 @@ def menu_router(c):
             edit(c, do_profile(user), back_markup())
         elif arg == "top":
             edit(c, do_top(), back_markup())
+        elif arg == "bank":
+            edit(c, do_bank(user), back_markup())
+        elif arg == "history":
+            edit(c, do_history(user), back_markup())
         elif arg == "help":
             edit(c, HELP_TEXT, back_markup())
         elif arg == "shop":
@@ -560,16 +761,22 @@ def menu_router(c):
 
 # ---------- فروشگاه ----------
 def shop_text(p):
-    return card("فروشگاه",
-                f"💰 سکه‌ت: <b>{p['coins']}</b>   💪 قدرت: <b>{power(p)}</b>\n"
-                "⚔️ شمشیر: +۲ قدرت\n🛡 زره: +۱ قدرت\n"
-                "(امتیاز دوئل = تاس × ۵ + قدرت)")
+    return card("فروشگاه و ارتقا",
+                f"💰 سکه‌ت: <b>{p['coins']}</b>   💪 قدرت دوئل: <b>{power(p)}</b>\n\n"
+                f"⚔️ شمشیر: سطح {p['sword']} (+۲ قدرت)\n"
+                f"🛡 زره: سطح {p['armor']} (+۱ قدرت)\n"
+                f"🥷 دزد: سطح {p['thief']} (برای عبور از نگهبان)\n"
+                f"🧱 نگهبان: سطح {p['guard']} (دفاع از شماره حساب)\n\n"
+                "برای سرقت، سطح دزد باید حداقل یک سطح از نگهبان مقصد بالاتر باشد.\n"
+                "مبلغ هر سرقت موفق به‌صورت تصادفی تعیین می‌شود.")
 
 
 def shop_markup(p):
     kb = types.InlineKeyboardMarkup()
-    kb.add(btn(f"⚔️ شمشیر (سطح {p['sword']}) — {price('sword', p)} سکه", "buy:sword"))
-    kb.add(btn(f"🛡 زره (سطح {p['armor']}) — {price('armor', p)} سکه", "buy:armor"))
+    kb.add(btn(f"⚔️ شمشیر {p['sword']} — {price('sword', p)} سکه", "buy:sword"))
+    kb.add(btn(f"🛡 زره {p['armor']} — {price('armor', p)} سکه", "buy:armor"))
+    kb.add(btn(f"🥷 ارتقای دزد {p['thief']} — {price('thief', p)} سکه", "buy:thief"))
+    kb.add(btn(f"🧱 ارتقای نگهبان {p['guard']} — {price('guard', p)} سکه", "buy:guard"))
     kb.add(btn("🔙 منو", "m:menu"))
     return kb
 
@@ -583,7 +790,7 @@ def cmd_shop(m):
 @bot.callback_query_handler(func=lambda c: c.data.startswith("buy:"))
 def buy(c):
     kind = c.data.split(":")[1]
-    if kind not in ("sword", "armor"):
+    if kind not in ("sword", "armor", "thief", "guard"):
         return bot.answer_callback_query(c.id)
     with lock:
         p = get_player(c.from_user)
@@ -607,13 +814,16 @@ if __name__ == "__main__":
             types.BotCommand("mine", "⛏ جمع کردن سکه"),
             types.BotCommand("daily", "🎁 جایزه روزانه"),
             types.BotCommand("profile", "👤 پروفایل"),
-            types.BotCommand("top", "🏆 برترین‌ها"),
-            types.BotCommand("shop", "🛒 فروشگاه"),
+            types.BotCommand("top", "🏆 برترین‌ها + شماره حساب"),
+            types.BotCommand("bank", "🏦 شماره حساب و موجودی"),
+            types.BotCommand("transfer", "📤 انتقال سکه با شماره حساب"),
+            types.BotCommand("history", "🧾 تاریخچه انتقال و دزدی"),
+            types.BotCommand("shop", "🛒 فروشگاه و ارتقای دزد/نگهبان"),
             types.BotCommand("dice", "🎲 تاس (مثلاً /dice 50)"),
             types.BotCommand("slots", "🎰 اسلات"),
             types.BotCommand("arena", "🎯 آرنا (مثلاً /arena 50)"),
             types.BotCommand("duel", "⚔️ دوئل (ریپلای + /duel 50)"),
-            types.BotCommand("steal", "🥷 دزدی (ریپلای)"),
+            types.BotCommand("steal", "🥷 دزدی با شماره حساب"),
             types.BotCommand("give", "🎁 سکه دادن (ریپلای + /give 50)"),
             types.BotCommand("help", "❓ راهنما"),
         ])
