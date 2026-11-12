@@ -45,6 +45,8 @@ def restore_from_telegram():
 
 
 restore_from_telegram()
+if not os.environ.get("DB_PATH"):
+    print("⚠️ DB_PATH تنظیم نشده؛ اگر هاست دیسک دائمی ندارد، با هر آپدیت دیتابیس پاک می‌شود.")
 
 lock = threading.RLock()
 db = sqlite3.connect(DB_PATH, check_same_thread=False)
@@ -121,6 +123,12 @@ def backup_to_telegram(force=False):
     """یه کپی از دیتابیس برای ادمین می‌فرسته و پین می‌کنه (فقط اگه تغییر کرده باشه)."""
     if not ADMIN_ID:
         return False
+    # دیتابیس خالی (مثلاً بازیابی ناموفق) نباید جای بکاپِ سالم را بگیرد.
+    with lock:
+        has_players = db.execute("SELECT 1 FROM players LIMIT 1").fetchone()
+    if not has_players:
+        print("⚠️ دیتابیس خالی است؛ بکاپ ارسال نشد تا بکاپ قبلی خراب نشود.")
+        return False
     snap = os.path.join(os.path.dirname(os.path.abspath(DB_PATH)), "game_backup.db")
     try:
         if os.path.exists(snap):
@@ -173,7 +181,9 @@ SLOT_COST = 20
 GIVE_TAX_PERCENT = 5
 MAX_DIGITS = 9
 FARM_BASE_INCOME = 50          # هر سطح مزرعه، ۵۰ سکه در ساعت
-FARM_UPGRADE_COST = 50         # هزینه ثابت هر ارتقا
+FARM_UPGRADE_COST = 100        # هزینه ثابت هر ارتقا
+FARM_UPGRADE_XP = 50           # امتیاز (XP) که با هر ارتقا گرفته می‌شود
+FARM_INCOME_STEP = 50          # افزایش درآمد ساعتی با هر ارتقا
 FARM_MAX_LEVEL = 1_000_000
 ADMIN_SESSION_SECONDS = 600
 ADMIN_MAX_ATTEMPTS = 5
@@ -477,7 +487,7 @@ def collect_farm_income(uid, now=None):
 def farm_markup(p):
     kb = types.InlineKeyboardMarkup()
     kb.add(btn("💰 دریافت درآمدِ آماده‌شده", "farm:collect"))
-    kb.add(btn(f"⬆️ ارتقا — {FARM_UPGRADE_COST} سکه (+۵۰ در ساعت)", "farm:upgrade"))
+    kb.add(btn(f"⬆️ ارتقا — {FARM_UPGRADE_COST} سکه (+{FARM_INCOME_STEP} سکه/ساعت، +{FARM_UPGRADE_XP} امتیاز)", "farm:upgrade"))
     kb.add(btn("🔙 منو", "m:menu"))
     return kb
 
@@ -495,7 +505,7 @@ def farm_page(user):
         f"💵 درآمد هر ساعت: <b>{p['farm_level'] * FARM_BASE_INCOME}</b> سکه\n"
         f"💰 موجودی فعلی: <b>{p['coins']}</b> سکه\n"
         f"⬆️ هزینه هر ارتقا: <b>{FARM_UPGRADE_COST}</b> سکه\n"
-        f"📈 هر ارتقا: <b>+۵۰ سکه در ساعت</b>\n"
+        f"📈 هر ارتقا: <b>+{FARM_INCOME_STEP} سکه در ساعت</b> و <b>+{FARM_UPGRADE_XP} امتیاز</b>\n"
     )
     if collected:
         body += f"\n✅ درآمد {hours} ساعت گذشته دریافت شد: <b>+{collected}</b> سکه\n"
@@ -520,10 +530,11 @@ def upgrade_farm(uid):
         if p["coins"] < FARM_UPGRADE_COST:
             db.rollback()
             return f"❌ برای ارتقا {FARM_UPGRADE_COST} سکه لازم داری. موجودی: {p['coins']} سکه."
-        db.execute("UPDATE players SET coins=coins-?, farm_level=farm_level+1 WHERE id=?",
-                   (FARM_UPGRADE_COST, uid))
+        db.execute("UPDATE players SET coins=coins-?, farm_level=farm_level+1, xp=xp+? WHERE id=?",
+                   (FARM_UPGRADE_COST, FARM_UPGRADE_XP, uid))
         db.commit()
-    return f"✅ مزرعه ارتقا یافت! درآمد ساعتی از {(level_now * FARM_BASE_INCOME)} به {(level_now + 1) * FARM_BASE_INCOME} سکه رسید."
+    return (f"✅ مزرعه ارتقا یافت! درآمد ساعتی از {(level_now * FARM_BASE_INCOME)} به {(level_now + 1) * FARM_BASE_INCOME} سکه رسید.\n"
+            f"⭐ <b>+{FARM_UPGRADE_XP}</b> امتیاز گرفتی.")
 
 
 def do_profile(user):
@@ -1059,6 +1070,7 @@ def admin_flow_input(m):
         return reply(m, f"👤 بازیکن انتخاب شد: <b>{nm(target)}</b>\n🏦 حساب: <code>{target['account_no']}</code>\n⭐ چند امتیاز (XP) اضافه کنم؟ عدد مثبت بفرست:")
 
     if state["step"] == "amount":
+        raw = raw.translate(str.maketrans("۰۱۲۳۴۵۶۷۸۹", "0123456789")).replace(",", "").replace("٬", "")
         if not raw.isdigit() or len(raw) > 19 or int(raw) <= 0:
             return reply(m, "❌ مقدار باید عدد مثبت باشد. دوباره مقدار XP را بفرست:")
         amount = int(raw)
