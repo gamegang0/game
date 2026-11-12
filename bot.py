@@ -17,7 +17,8 @@ db.execute("""CREATE TABLE IF NOT EXISTS players(
 for col in (
     "xp INTEGER DEFAULT 0", "sword INTEGER DEFAULT 0",
     "armor INTEGER DEFAULT 0", "last_steal REAL DEFAULT 0",
-    "account_no TEXT", "thief INTEGER DEFAULT 0", "guard INTEGER DEFAULT 0"
+    "account_no TEXT", "thief INTEGER DEFAULT 0", "guard INTEGER DEFAULT 0",
+    "custom_name INTEGER DEFAULT 0"
 ):
     try:
         db.execute(f"ALTER TABLE players ADD COLUMN {col}")
@@ -50,11 +51,20 @@ db.execute("""CREATE TABLE IF NOT EXISTS coin_transactions(
     kind TEXT NOT NULL,
     created_at REAL NOT NULL
 )""")
+# هر بازیکن فقط یک‌بار می‌تواند با لینک دعوت عضو شود.
+db.execute("""CREATE TABLE IF NOT EXISTS referrals(
+    referred_id INTEGER PRIMARY KEY,
+    referrer_id INTEGER NOT NULL,
+    created_at REAL NOT NULL
+)""")
+db.execute("CREATE INDEX IF NOT EXISTS idx_referrals_referrer ON referrals(referrer_id)")
 db.commit()
 
 duels = {}
 duel_counter = 0
 last_action = {}
+bank_transfer_state = {}  # user_id -> {step, account_no, amount}
+name_setup_state = set()  # کاربرانی که باید نام نمایشی انتخاب کنند
 
 MINE_COOLDOWN = 60
 DAILY_COOLDOWN = 24 * 3600
@@ -134,6 +144,7 @@ def main_markup():
     kb.add(btn("🛒 فروشگاه", "m:shop"), btn("🎰 اسلات", "m:slots"))
     kb.add(btn("🎲 تاس", "m:dice"), btn("⚔️ آرنا", "m:arena"))
     kb.add(btn("🏦 بانک و شماره حساب", "m:bank"), btn("🧾 تاریخچه", "m:history"))
+    kb.add(btn("🎟 دعوت دوستان +۵۰۰ سکه", "m:referral"))
     kb.add(btn("❓ راهنما", "m:help"))
     if CHANNEL_URL:
         kb.add(types.InlineKeyboardButton("📢 کانال ما", url=CHANNEL_URL))
@@ -178,7 +189,8 @@ def get_player(user):
                 "UPDATE players SET account_no=? WHERE id=?",
                 (make_account_number(), user.id)
             )
-        db.execute("UPDATE players SET name=? WHERE id=?", (user.first_name, user.id))
+        db.execute("UPDATE players SET name=CASE WHEN COALESCE(custom_name, 0)=0 THEN ? ELSE name END WHERE id=?",
+                   (user.first_name, user.id))
         db.commit()
         return db.execute("SELECT * FROM players WHERE id=?", (user.id,)).fetchone()
 
@@ -332,7 +344,7 @@ def do_bank(user):
                 f"👤 صاحب حساب: <b>{nm(p)}</b>\n"
                 f"🏦 شماره حساب بازی: <code>{p['account_no']}</code>\n"
                 f"💰 موجودی: <b>{p['coins']}</b> سکه\n\n"
-                "📤 انتقال سکه:\n<code>/transfer شماره_حساب مبلغ</code>\n"
+                "📤 برای انتقال، دکمه «انتقال سکه» را بزن؛ شماره حساب و مبلغ را جداگانه وارد و در پایان تأیید کن.\n"
                 "🥷 تلاش برای دزدی:\n<code>/steal شماره_حساب</code>\n"
                 "🧾 مشاهده گردش حساب: <code>/history</code>\n\n"
                 "این شماره فقط حساب داخل بازی است و به حساب بانکی واقعی ارتباطی ندارد.")
@@ -356,11 +368,28 @@ def do_history(user):
         sent = row["sender_id"] == p["id"]
         if row["kind"] == "steal":
             label = "🥷 دزدی موفق از" if sent else "🚨 دزدیده شد از حساب شما توسط"
+            sign = "-" if sent else "+"
+        elif row["kind"] == "guard_fine":
+            label = "🧾 جریمه دزدی پرداخت‌شده به" if sent else "🛡 پاداش نگهبانی از طرف"
+            sign = "-" if sent else "+"
+        elif row["kind"] == "referral":
+            lines.append(f"🎟 پاداش دعوت یک زیرمجموعه — +{row['amount']} سکه")
+            continue
         else:
             label = "📤 انتقال به" if sent else "📥 دریافت از"
-        sign = "-" if sent else "+"
+            sign = "-" if sent else "+"
         lines.append(f"{label} <b>{other}</b> — {sign}{row['amount']} سکه")
     return card("۸ عملیات اخیر حساب", "\n".join(lines))
+
+
+def top_markup():
+    kb = types.InlineKeyboardMarkup()
+    with lock:
+        rows = db.execute("SELECT id, name, account_no FROM players ORDER BY coins DESC LIMIT 10").fetchall()
+    for i, row in enumerate(rows, 1):
+        kb.add(btn(f"📋 کپی حساب نفر {i}", f"copyacct:{row['id']}"))
+    kb.add(btn("🔙 منو", "m:menu"))
+    return kb
 
 
 def do_top():
@@ -407,9 +436,85 @@ def do_transfer(user, account_no, amount):
         except Exception:
             db.rollback()
             raise
-    return (f"✅ انتقال انجام شد!\n📤 فرستادی: <b>{amount}</b> سکه\n"
-            f"📥 دریافتِ {nm(target)}: <b>{received}</b> سکه\n"
+    # پیام رسید انتقال برای گیرنده؛ اگر هنوز ربات را باز نکرده باشد، خطا نادیده گرفته می‌شود.
+    sender = get_by_id(me["id"])
+    try:
+        bot.send_message(
+            target["id"],
+            f"📥 <b>واریز جدید به حساب شما</b>\n"
+            f"از طرف <b>{nm(sender)}</b> مبلغ <b>{received}</b> سکه به شما انتقال داده شد.\n"
+            f"🏦 شماره حساب شما: <code>{target['account_no']}</code>\n"
+            f"💰 موجودی جدید: <b>{get_by_id(target['id'])['coins']}</b> سکه",
+            parse_mode="HTML"
+        )
+    except Exception:
+        pass
+    return (f"✅ انتقال انجام شد!\n📤 به <b>{nm(target)}</b> فرستادی: <b>{amount}</b> سکه\n"
+            f"📥 مبلغ واریزشده: <b>{received}</b> سکه\n"
             f"🏦 مقصد: <code>{target['account_no']}</code>")
+
+
+
+def register_referral(new_user_id, payload):
+    """برای حساب تازه‌ساخته‌شده، یک معرف ثبت و ۵۰۰ سکه پاداش پرداخت می‌کند."""
+    if not payload or not payload.startswith("ref_"):
+        return None
+    raw_id = payload[4:]
+    if not raw_id.isdigit():
+        return None
+    referrer_id = int(raw_id)
+    if referrer_id == new_user_id:
+        return None
+
+    with lock:
+        referrer = db.execute("SELECT id FROM players WHERE id=?", (referrer_id,)).fetchone()
+        if not referrer:
+            return None
+        try:
+            db.execute("BEGIN IMMEDIATE")
+            db.execute(
+                "INSERT INTO referrals(referred_id, referrer_id, created_at) VALUES(?, ?, ?)",
+                (new_user_id, referrer_id, time.time())
+            )
+            db.execute("UPDATE players SET coins=coins+500 WHERE id=?", (referrer_id,))
+            db.execute(
+                "INSERT INTO coin_transactions(sender_id, receiver_id, amount, kind, created_at) "
+                "VALUES(0, ?, 500, 'referral', ?)",
+                (referrer_id, time.time())
+            )
+            db.commit()
+        except sqlite3.IntegrityError:
+            db.rollback()
+            return None
+        except Exception:
+            db.rollback()
+            raise
+    return get_by_id(referrer_id)
+
+
+def referral_text(user):
+    p = get_player(user)
+    try:
+        username = bot.get_me().username
+    except Exception:
+        username = None
+    with lock:
+        count = db.execute(
+            "SELECT COUNT(*) AS n FROM referrals WHERE referrer_id=?", (p["id"],)
+        ).fetchone()["n"]
+    if not username:
+        link_line = "فعلاً ساخت لینک دعوت ممکن نشد؛ کمی بعد دوباره امتحان کن."
+    else:
+        link = f"https://t.me/{username}?start=ref_{p['id']}"
+        link_line = f"🔗 لینک اختصاصی تو:\n<code>{link}</code>"
+    return card("دعوت دوستان", (
+        "با لینک اختصاصی‌ات دوستانت را به بازی دعوت کن.\n"
+        "🎁 به‌ازای هر بازیکن جدیدی که برای اولین بار با لینک تو وارد شود، "
+        "<b>۵۰۰ سکه</b> می‌گیری.\n\n"
+        f"👥 تعداد زیرمجموعه‌ها: <b>{count}</b>\n"
+        f"💰 پاداش کل: <b>{count * 500}</b> سکه\n\n{link_line}\n\n"
+        "⚠️ هر حساب جدید فقط یک‌بار برای یک معرف ثبت می‌شود؛ ورود دوباره یا لینک خودت پاداش ندارد."
+    ))
 
 
 def do_steal(user, target):
@@ -430,12 +535,43 @@ def do_steal(user, target):
         # هر تلاش، حتی وقتی نگهبان قوی‌تر است، زمان انتظار دارد.
         db.execute("UPDATE players SET last_steal=? WHERE id=?", (time.time(), me["id"]))
         if me["thief"] <= victim["guard"]:
-            db.execute("UPDATE players SET xp=xp+2 WHERE id=?", (victim["id"],))
+            # نگهبان دزد را می‌گیرد؛ جریمه تصادفی از دزد کم و به صاحب حساب می‌رسد.
+            fine = random.randint(1, min(60, me["coins"])) if me["coins"] > 0 else 0
+            db.execute("UPDATE players SET xp=xp+2, coins=coins+? WHERE id=?",
+                       (fine, victim["id"]))
+            if fine:
+                db.execute("UPDATE players SET coins=coins-? WHERE id=?", (fine, me["id"]))
+                db.execute("""INSERT INTO coin_transactions
+                    (sender_id, receiver_id, amount, kind, created_at)
+                    VALUES(?, ?, ?, 'guard_fine', ?)""",
+                    (me["id"], victim["id"], fine, time.time()))
             db.commit()
-            return (f"🛡 نگهبان {nm(victim)} جلوی دزدی را گرفت!\n"
-                    f"🥷 سطح دزد تو: <b>{me['thief']}</b>\n"
-                    f"🛡 سطح نگهبان مقصد: <b>{victim['guard']}</b>\n"
-                    "برای عبور باید سطح دزدت از سطح نگهبان بیشتر باشد.")
+            thief_name = nm(me)
+            thief_account = me["account_no"]
+            victim_id = victim["id"]
+            victim_name = nm(victim)
+            victim_account = victim["account_no"]
+            thief_level = me["thief"]
+            guard_level = victim["guard"]
+            # اطلاع خصوصی به صاحب حساب؛ اگر هنوز ربات را استارت نکرده باشد خطا نادیده گرفته می‌شود.
+            try:
+                bot.send_message(
+                    victim_id,
+                    f"🚨 <b>تلاش برای دزدی از حساب شما خنثی شد!</b>\n"
+                    f"🛡 نگهبان تو دزد را گرفت.\n"
+                    f"👤 بازیکن مهاجم: <b>{thief_name}</b>\n"
+                    f"🏦 شماره حساب مهاجم: <code>{thief_account}</code>\n"
+                    f"💸 جریمه‌ای که از او کم شد: <b>{fine}</b> سکه\n"
+                    f"💰 این مبلغ به حساب تو اضافه شد. موجودی جدید: <b>{get_by_id(victim_id)['coins']}</b> سکه",
+                    parse_mode="HTML"
+                )
+            except Exception:
+                pass
+            return (f"🛡 <b>دزد دستگیر شد!</b> نگهبان {victim_name} جلوی دزدی را گرفت.\n"
+                    f"🏦 شماره حساب بازیکنی که قصد دزدی داشت: <code>{thief_account}</code>\n"
+                    f"💸 جریمه تصادفی پرداخت کردی: <b>{fine}</b> سکه\n"
+                    f"📥 این مبلغ به حساب {victim_name} رسید.\n"
+                    f"🥷 سطح دزد تو: <b>{thief_level}</b> | 🛡 سطح نگهبان مقصد: <b>{guard_level}</b>")
 
         # مبلغ با موجودی هدف و سطح دزد تغییر می‌کند و در هر بار تصادفی است.
         max_take = min(victim["coins"], max(1, victim["coins"] // 4), 20 + me["thief"] * 25)
@@ -551,6 +687,7 @@ HELP_TEXT = card("راهنما", (
     "🏦 /bank — نمایش شماره حساب بازی\n"
     "📤 /transfer 12345678 100 — انتقال ۱۰۰ سکه به شماره حساب مقصد\n"
     "🧾 /history — ۸ عملیات بانکی اخیر\n"
+    "🎟 /invite — لینک دعوت دوستان؛ هر عضو جدید ۵۰۰ سکه پاداش دارد\n"
     f"🎲 /dice 50 — تاس بنداز؛ اگه از ربات بیشتر بیاری شرطت دو برابر می‌شه\n"
     f"🎰 /slots — اسلات ({SLOT_COST} سکه، جکپات ۲۰ برابر)\n"
     f"🎯 /arena 50 — دوئل با بازیکن رندوم (تا {ARENA_MAX} سکه)\n\n"
@@ -559,14 +696,61 @@ HELP_TEXT = card("راهنما", (
     "🥷 /steal 12345678 — تلاش برای دزدی از شماره حساب (یا ریپلای)\n"
     f"🎁 /give 50 — سکه دادن ({GIVE_TAX_PERCENT}٪ مالیات)\n\n"
     "💡 هر بازیکن یک شماره حساب ۸ رقمی دارد؛ در لیدربورد هم نمایش داده می‌شود.\n"
-    "🛡 برای دزدی، سطح دزد باید از سطح نگهبان مقصد بیشتر باشد؛ مبلغ سرقت تصادفی است.\n"
+    "🛡 اگر نگهبان دزد را بگیرد، جریمه تصادفی از دزد کم و به صاحب حساب داده می‌شود.\n"
+    "🎟 با /invite لینک دعوت بگیر؛ برای هر بازیکن جدید ۵۰۰ سکه پاداش می‌گیری.\n"
     "💪 امتیاز دوئل = تاس × ۵ + قدرت، پس شمشیر و زره بخر!"))
 
 
 # ---------- دستورات ----------
 @bot.message_handler(commands=["start", "menu"])
 def cmd_start(m):
+    # پارامتر ref فقط هنگام اولین ساخت حساب بررسی می‌شود.
+    with lock:
+        is_new_player = db.execute(
+            "SELECT 1 FROM players WHERE id=?", (m.from_user.id,)
+        ).fetchone() is None
+    p = get_player(m.from_user)
+    if is_new_player:
+        parts = (m.text or "").split(maxsplit=1)
+        payload = parts[1].strip() if len(parts) > 1 else ""
+        referrer = register_referral(m.from_user.id, payload)
+        if referrer:
+            try:
+                bot.send_message(
+                    referrer["id"],
+                    f"🎉 یک زیرمجموعه جدید با لینک تو وارد بازی شد!\n"
+                    f"👤 نام تلگرامی: <b>{esc(m.from_user.first_name)}</b>\n"
+                    "💰 پاداش دعوت: <b>۵۰۰ سکه</b>",
+                    parse_mode="HTML"
+                )
+            except Exception:
+                pass
+    if not p["custom_name"]:
+        name_setup_state.add(m.from_user.id)
+        return reply(m, "👋 خوش اومدی! برای ساخت حساب بازی، اسم نمایشی دلخواهت رو بفرست.\n"
+                        "این اسم در پروفایل و لیدربورد نمایش داده می‌شه.")
     reply(m, menu_text(m.from_user), main_markup())
+
+
+@bot.message_handler(func=lambda m: m.from_user and m.from_user.id in name_setup_state,
+                     content_types=["text"])
+def first_name_setup(m):
+    uid = m.from_user.id
+    chosen = (m.text or "").strip()
+    if chosen.startswith("/"):
+        return reply(m, "اول یک اسم نمایشی بفرست تا حسابت ساخته بشه.")
+    if not chosen or len(chosen) > 24 or len(chosen) < 2:
+        return reply(m, "❌ اسم باید بین ۲ تا ۲۴ کاراکتر باشه. دوباره بفرست.")
+    with lock:
+        db.execute("UPDATE players SET name=?, custom_name=1 WHERE id=?", (chosen, uid))
+        db.commit()
+    name_setup_state.discard(uid)
+    reply(m, menu_text(m.from_user), main_markup())
+
+
+@bot.message_handler(commands=["invite"])
+def cmd_invite(m):
+    reply(m, referral_text(m.from_user), back_markup())
 
 
 @bot.message_handler(commands=["help"])
@@ -592,12 +776,15 @@ def cmd_daily(m):
 
 @bot.message_handler(commands=["top"])
 def cmd_top(m):
-    reply(m, do_top(), back_markup())
+    reply(m, do_top(), top_markup())
 
 
 @bot.message_handler(commands=["bank", "account"])
 def cmd_bank(m):
-    reply(m, do_bank(m.from_user), back_markup())
+    kb = types.InlineKeyboardMarkup()
+    kb.add(btn("📤 انتقال سکه", "bankstart"))
+    kb.add(btn("🧾 تاریخچه حساب", "m:history"), btn("🔙 منو", "m:menu"))
+    reply(m, do_bank(m.from_user), kb)
 
 
 @bot.message_handler(commands=["history"])
@@ -616,6 +803,46 @@ def cmd_transfer(m):
     if not raw_amount.isdigit() or len(raw_amount) > MAX_DIGITS or int(raw_amount) <= 0:
         return reply(m, "❌ مبلغ باید عددی مثبت و حداکثر ۹ رقم باشد.")
     reply(m, do_transfer(m.from_user, account_no, int(raw_amount)), back_markup())
+
+
+@bot.message_handler(func=lambda m: m.from_user and m.from_user.id in bank_transfer_state,
+                     content_types=["text"])
+def bank_transfer_input(m):
+    uid = m.from_user.id
+    state = bank_transfer_state.get(uid)
+    if not state:
+        return
+    raw = (m.text or "").strip()
+    if raw.startswith("/"):
+        bank_transfer_state.pop(uid, None)
+        return reply(m, "فرایند انتقال لغو شد؛ از منو دوباره وارد بانک شو.", back_markup())
+    if state["step"] == "account":
+        if not raw.isdigit() or len(raw) != 8:
+            return reply(m, "❌ شماره حساب باید دقیقاً ۸ رقم باشد. دوباره شماره حساب را بفرست.")
+        target = get_by_account(raw)
+        if not target:
+            return reply(m, "❌ این شماره حساب پیدا نشد. شماره را دوباره وارد کن.")
+        if target["id"] == uid:
+            return reply(m, "❌ نمی‌توانی به حساب خودت انتقال بدهی. شماره مقصد دیگری بفرست.")
+        state["account_no"] = raw
+        state["step"] = "amount"
+        return reply(m, f"✅ مقصد: <b>{nm(target)}</b>\n🏦 <code>{raw}</code>\nحالا مبلغ سکه را به عدد وارد کن:")
+    if state["step"] == "amount":
+        if not raw.isdigit() or len(raw) > MAX_DIGITS or int(raw) <= 0:
+            return reply(m, "❌ مبلغ باید عدد مثبت و حداکثر ۹ رقم باشد. دوباره مبلغ را وارد کن.")
+        amount = int(raw)
+        me = get_player(m.from_user)
+        target = get_by_account(state["account_no"])
+        if not target:
+            bank_transfer_state.pop(uid, None)
+            return reply(m, "❌ حساب مقصد دیگر پیدا نمی‌شود؛ انتقال لغو شد.")
+        if me["coins"] < amount:
+            return reply(m, f"❌ موجودی کافی نیست. موجودی تو: {me['coins']} سکه. مبلغ دیگری وارد کن.")
+        state["amount"] = amount
+        state["step"] = "confirm"
+        kb = types.InlineKeyboardMarkup()
+        kb.add(btn("✅ تأیید انتقال", "bankconfirm"), btn("❌ لغو", "bankcancel"))
+        return reply(m, card("تأیید انتقال", f"📤 از حساب تو: <b>{amount}</b> سکه\n📥 گیرنده: <b>{nm(target)}</b>\n🏦 شماره مقصد: <code>{state['account_no']}</code>\n\nبا تأیید، سکه‌ها منتقل می‌شوند."), kb)
 
 
 @bot.message_handler(commands=["dice", "gamble"])
@@ -714,6 +941,41 @@ def duel_answer(c):
     say(chat, run_fight(chat, challenger, target, bet), back_markup())
 
 
+@bot.callback_query_handler(func=lambda c: c.data.startswith("copyacct:"))
+def copy_account_button(c):
+    try:
+        target_id = int(c.data.split(":", 1)[1])
+    except ValueError:
+        return bot.answer_callback_query(c.id, "شماره حساب نامعتبر است.")
+    target = get_by_id(target_id)
+    if not target or not target["account_no"]:
+        return bot.answer_callback_query(c.id, "حساب پیدا نشد.")
+    bot.answer_callback_query(c.id, "شماره حساب ارسال شد.")
+    say(c.message.chat.id,
+        f"🏦 شماره حساب {nm(target)} برای کپی:\n<code>{target['account_no']}</code>")
+
+
+@bot.callback_query_handler(func=lambda c: c.data in ("bankstart", "bankconfirm", "bankcancel"))
+def bank_flow_callback(c):
+    uid = c.from_user.id
+    if c.data == "bankstart":
+        bank_transfer_state[uid] = {"step": "account"}
+        bot.answer_callback_query(c.id)
+        return say(c.message.chat.id, "🏦 شماره حساب ۸ رقمی مقصد را بفرست:", back_markup())
+    if c.data == "bankcancel":
+        bank_transfer_state.pop(uid, None)
+        bot.answer_callback_query(c.id, "انتقال لغو شد.")
+        return edit(c, "❌ انتقال لغو شد.", back_markup())
+    state = bank_transfer_state.get(uid)
+    if not state or state.get("step") != "confirm":
+        return bot.answer_callback_query(c.id, "درخواست انتقال معتبر نیست؛ دوباره از بانک شروع کن.")
+    account_no, amount = state["account_no"], state["amount"]
+    bank_transfer_state.pop(uid, None)
+    bot.answer_callback_query(c.id, "در حال انجام انتقال...")
+    result = do_transfer(c.from_user, account_no, amount)
+    return edit(c, result, back_markup())
+
+
 @bot.callback_query_handler(func=lambda c: c.data.startswith(("m:", "d:", "a:")))
 def menu_router(c):
     kind, _, arg = c.data.partition(":")
@@ -732,11 +994,16 @@ def menu_router(c):
         elif arg == "profile":
             edit(c, do_profile(user), back_markup())
         elif arg == "top":
-            edit(c, do_top(), back_markup())
+            edit(c, do_top(), top_markup())
         elif arg == "bank":
-            edit(c, do_bank(user), back_markup())
+            kb = types.InlineKeyboardMarkup()
+            kb.add(btn("📤 انتقال سکه", "bankstart"))
+            kb.add(btn("🧾 تاریخچه حساب", "m:history"), btn("🔙 منو", "m:menu"))
+            edit(c, do_bank(user), kb)
         elif arg == "history":
             edit(c, do_history(user), back_markup())
+        elif arg == "referral":
+            edit(c, referral_text(user), back_markup())
         elif arg == "help":
             edit(c, HELP_TEXT, back_markup())
         elif arg == "shop":
@@ -818,6 +1085,7 @@ if __name__ == "__main__":
             types.BotCommand("bank", "🏦 شماره حساب و موجودی"),
             types.BotCommand("transfer", "📤 انتقال سکه با شماره حساب"),
             types.BotCommand("history", "🧾 تاریخچه انتقال و دزدی"),
+            types.BotCommand("invite", "🎟 لینک دعوت و پاداش ۵۰۰ سکه‌ای"),
             types.BotCommand("shop", "🛒 فروشگاه و ارتقای دزد/نگهبان"),
             types.BotCommand("dice", "🎲 تاس (مثلاً /dice 50)"),
             types.BotCommand("slots", "🎰 اسلات"),
