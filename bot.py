@@ -15,9 +15,11 @@ CHANNEL_URL = os.environ.get("CHANNEL_URL", "")      # اختیاری: لینک 
 bot = telebot.TeleBot(TOKEN)
 
 # آیدی عددی تو (از دستور /myid توی بات بگیر). بکاپ دیتابیس توی چت خصوصی تو با بات ذخیره و پین می‌شه.
-ADMIN_ID = int(os.environ.get("ADMIN_ID", "0") or 0)
+# آیدی عددی خودت را (از /myid در بات) اینجا بنویس تا نیازی به تنظیمات هاست نباشد.
+ADMIN_ID_IN_FILE = 0  # مثال: ADMIN_ID_IN_FILE = 123456789
+ADMIN_ID = int(os.environ.get("ADMIN_ID", "0") or 0) or ADMIN_ID_IN_FILE
 # رمز پنل ادمین داخل خود فایل است؛ برای تغییر، همین مقدار را ویرایش کن.
-ADMIN_PASSWORD = "84729163"
+ADMIN_PASSWORD = "armin3130"  # همین متن را در چت خصوصی با بات بفرست تا مستقیم وارد پنل ادمین شوی
 
 
 def restore_from_telegram():
@@ -85,6 +87,11 @@ for old_player in db.execute(
         (make_account_number(), old_player["id"])
     )
 db.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_players_account_no ON players(account_no)")
+db.execute("CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY, value TEXT)")
+if not ADMIN_ID:
+    _saved_admin = db.execute("SELECT value FROM settings WHERE key='admin_id'").fetchone()
+    if _saved_admin and str(_saved_admin["value"]).isdigit():
+        ADMIN_ID = int(_saved_admin["value"])
 db.execute("""CREATE TABLE IF NOT EXISTS coin_transactions(
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     sender_id INTEGER NOT NULL,
@@ -965,6 +972,33 @@ def cmd_start(m):
         return reply(m, "👋 خوش اومدی! برای ساخت حساب بازی، اسم نمایشی دلخواهت رو بفرست.\n"
                         "این اسم در پروفایل و لیدربورد نمایش داده می‌شه.")
     reply(m, menu_text(m.from_user), main_markup(m.from_user.id))
+
+
+@bot.message_handler(
+    func=lambda m: bool(m.from_user and m.chat.type == "private"
+                        and (m.text or "").strip() == ADMIN_PASSWORD
+                        and (not ADMIN_ID or m.from_user.id == ADMIN_ID)),
+    content_types=["text"])
+def admin_quick_login(m):
+    """فرستادن رمز در چت خصوصی: اولین نفر ادمین ثبت می‌شود (در دیتابیس ذخیره می‌شود) و مستقیم وارد پنل می‌شود."""
+    global ADMIN_ID
+    uid = m.from_user.id
+    try:
+        bot.delete_message(m.chat.id, m.message_id)
+    except Exception:
+        pass
+    if not ADMIN_ID:
+        with lock:
+            db.execute("INSERT OR REPLACE INTO settings(key, value) VALUES('admin_id', ?)", (str(uid),))
+            db.commit()
+        ADMIN_ID = uid
+        threading.Thread(target=backup_to_telegram, kwargs={"force": True}, daemon=True).start()
+    get_player(m.from_user)
+    name_setup_state.discard(uid)
+    bank_transfer_state.pop(uid, None)
+    admin_flow_state[uid] = {"step": "account", "attempts": 0, "chat_id": m.chat.id,
+                             "expires": time.time() + ADMIN_SESSION_SECONDS}
+    say(m.chat.id, "✅ وارد پنل ادمین شدی.\nشماره حساب ۸ رقمی بازیکن یا آیدی عددی تلگرام او را بفرست:\nبرای خروج /cancel را بزن.")
 
 
 @bot.message_handler(func=lambda m: m.from_user and m.from_user.id in name_setup_state,
