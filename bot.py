@@ -3,7 +3,13 @@ import telebot
 from telebot import types
 
 TOKEN = os.environ.get("BOT_TOKEN") or "PUT_YOUR_TOKEN_HERE"
-DB_PATH = os.environ.get("DB_PATH", "game.db")       # روی سرور با Volume مثلاً /data/game.db
+# مسیر دیتابیس را ثابت نگه دار تا با هر آپدیت اطلاعات بازیکنان پاک نشود.
+# در Render یک Persistent Disk با Mount Path برابر /data وصل کن؛
+# سپس دیتابیس همیشه در /data/game.db می‌ماند.
+_default_db = "/data/game.db" if os.path.isdir("/data") else "game.db"
+DB_PATH = os.environ.get("DB_PATH", _default_db)
+_db_dir = os.path.dirname(os.path.abspath(DB_PATH))
+os.makedirs(_db_dir, exist_ok=True)
 CHANNEL_URL = os.environ.get("CHANNEL_URL", "")      # اختیاری: لینک کانال برای دکمه‌ی شیشه‌ای
 bot = telebot.TeleBot(TOKEN)
 
