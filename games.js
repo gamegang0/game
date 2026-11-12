@@ -16,7 +16,6 @@ window.EXTRA_GAMES=[
   {"id": "ninja", "icon": "🍉", "name": "نینجای میوه", "desc": "میوه‌ها رو ببر، مراقب بمب باش", "color": "#ff4d6d"},
   {"id": "pacman", "icon": "🎮", "name": "پک‌من", "desc": "بازی جدید", "color": "#35f2ff"},
   {"id": "pancake", "icon": "🥞", "name": "پنکیک تاور", "desc": "پنکیک‌ها رو دقیق روی هم بنداز و تا بی‌نهایت بالا برو", "color": "#ffb347"},
-  {"id": "parking", "icon": "🎮", "name": "فرار از پارکینگ شهر لوازم خانگی", "desc": "بازی جدید", "color": "#35f2ff"},
   {"id": "pong", "icon": "🏓", "name": "پینگ‌پنگ", "desc": "مقابل بات؛ هرچی سخت‌تر ببری، امتیاز بیشتر", "color": "#48dbfb"},
   {"id": "skyball", "icon": "🎮", "name": "SKY BALL", "desc": "بازی جدید", "color": "#35f2ff"},
   {"id": "snake", "icon": "🐍", "name": "مار", "desc": "سیب بخور، بلندتر شو و به خودت نخور", "color": "#7dffb0"},
