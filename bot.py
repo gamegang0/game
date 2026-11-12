@@ -83,8 +83,8 @@ SLOT_COST = 20
 GIVE_TAX_PERCENT = 5
 MAX_DIGITS = 9
 FARM_BASE_INCOME = 100          # درآمد ساعتی مزرعه در سطح صفر
-FARM_UPGRADE_INCOME = 100      # افزایش درآمد ساعتی با هر ارتقا
-FARM_UPGRADE_COST = 50         # هزینه ثابت هر ارتقا
+FARM_UPGRADE_INCOME = 50       # افزایش درآمد ساعتی با هر ارتقا
+FARM_UPGRADE_COST = 50         # هزینه پایه؛ هر ارتقا ۵۰ سکه گران‌تر می‌شود
 MAX_SQLITE_INT = 9_223_372_036_854_775_807
 LINE = "━━━━━━━━━━━━━━"
 FACES = "⚀⚁⚂⚃⚄⚅"
@@ -343,6 +343,11 @@ def farm_income_per_hour(p):
     return FARM_BASE_INCOME + int(p["farm_level"]) * FARM_UPGRADE_INCOME
 
 
+def farm_upgrade_cost(level):
+    """هزینه ارتقای بعدی: سطح صفر ۵۰، سطح یک ۱۰۰، سطح دو ۱۵۰ و ..."""
+    return FARM_UPGRADE_COST * (int(level) + 1)
+
+
 def farm_pending(p, now=None):
     """سکه‌های آماده‌ی برداشت و تعداد ساعت‌های کامل سپری‌شده را محاسبه می‌کند."""
     now = time.time() if now is None else now
@@ -364,16 +369,18 @@ def farm_text(user):
         f"💰 درآمد فعلی: <b>{rate}</b> سکه در ساعت\n"
         f"📦 درآمد آماده‌ی برداشت: <b>{pending}</b> سکه ({hours} ساعت کامل)\n"
         f"⏳ تا درآمد ساعت بعد: <b>{remaining // 60}</b> دقیقه\n"
-        f"🪙 هزینه‌ی هر ارتقا: <b>{FARM_UPGRADE_COST}</b> سکه\n"
+        f"🪙 هزینه‌ی ارتقای بعدی: <b>{farm_upgrade_cost(p['farm_level'])}</b> سکه\n"
         f"⬆️ هر ارتقا: <b>+{FARM_UPGRADE_INCOME}</b> سکه درآمد در ساعت\n\n"
         "درآمد در زمان خاموش بودن ربات هم با ثبت زمان در پایگاه داده جمع می‌شود."
     ))
 
 
-def farm_markup():
+def farm_markup(user):
+    p = get_player(user)
+    cost = farm_upgrade_cost(p["farm_level"])
     kb = types.InlineKeyboardMarkup()
     kb.add(btn("💰 برداشت درآمد", "farm:collect"))
-    kb.add(btn(f"⬆️ ارتقای مزرعه ({FARM_UPGRADE_COST} سکه)", "farm:upgrade"))
+    kb.add(btn(f"⬆️ ارتقای مزرعه ({cost} سکه)", "farm:upgrade"))
     kb.add(btn("🔙 منو", "m:menu"))
     return kb
 
@@ -753,7 +760,7 @@ HELP_TEXT = card("راهنما", (
     f"🎁 /give 50 — سکه دادن ({GIVE_TAX_PERCENT}٪ مالیات)\n\n"
     "💡 هر بازیکن یک شماره حساب ۸ رقمی دارد؛ در لیدربورد هم نمایش داده می‌شود.\n"
     "🛡 اگر نگهبان دزد را بگیرد، جریمه تصادفی از دزد کم و به صاحب حساب داده می‌شود.\n"
-    "🌾 مزرعه از سطح صفر ۱۰۰ سکه در ساعت می‌دهد؛ هر ارتقا ۵۰ سکه هزینه دارد و درآمد ساعتی را ۱۰۰ سکه افزایش می‌دهد.\n"
+    "🌾 مزرعه از سطح صفر ۱۰۰ سکه در ساعت می‌دهد؛ درآمد ساعتی با هر ارتقا ۵۰ سکه بیشتر می‌شود و هزینه ارتقاها به‌ترتیب ۵۰، ۱۰۰، ۱۵۰ و ... سکه است.\n"
     "🎟 با /invite لینک دعوت بگیر؛ برای هر بازیکن جدید ۵۰۰ سکه پاداش می‌گیری.\n"
     "💪 امتیاز دوئل = تاس × ۵ + قدرت، پس شمشیر و زره بخر!"))
 
@@ -828,7 +835,7 @@ def cmd_mine(m):
 
 @bot.message_handler(commands=["farm"])
 def cmd_farm(m):
-    reply(m, farm_text(m.from_user), farm_markup())
+    reply(m, farm_text(m.from_user), farm_markup(m.from_user))
 
 
 @bot.message_handler(commands=["daily"])
@@ -1154,22 +1161,23 @@ def farm_callback(c):
                 if not earned:
                     db.rollback()
                     bot.answer_callback_query(c.id, "هنوز یک ساعت کامل نگذشته است.")
-                    return edit(c, farm_text(c.from_user), farm_markup())
+                    return edit(c, farm_text(c.from_user), farm_markup(c.from_user))
                 db.commit()
                 message = f"✅ درآمد مزرعه برداشت شد: +{earned} سکه ({hours} ساعت)."
             else:
                 # اگر درآمد آماده وجود داشته باشد، آن را با نرخ قبلی ثبت می‌کنیم.
                 current = db.execute("SELECT coins FROM players WHERE id=?", (uid,)).fetchone()
-                if int(current["coins"]) < FARM_UPGRADE_COST:
+                upgrade_cost = farm_upgrade_cost(p["farm_level"])
+                if int(current["coins"]) < upgrade_cost:
                     db.commit()
-                    bot.answer_callback_query(c.id, "برای ارتقا ۵۰ سکه لازم داری.")
-                    return edit(c, farm_text(c.from_user), farm_markup())
+                    bot.answer_callback_query(c.id, f"برای ارتقای بعدی {upgrade_cost} سکه لازم داری.")
+                    return edit(c, farm_text(c.from_user), farm_markup(c.from_user))
                 db.execute(
                     "UPDATE players SET coins=coins-?, farm_level=farm_level+1 WHERE id=?",
-                    (FARM_UPGRADE_COST, uid)
+                    (upgrade_cost, uid)
                 )
                 db.commit()
-                message = (f"✅ مزرعه ارتقا یافت!\nهزینه: {FARM_UPGRADE_COST} سکه\n"
+                message = (f"✅ مزرعه ارتقا یافت!\nهزینه: {upgrade_cost} سکه\n"
                            f"درآمد قبلی تسویه‌شده: +{earned} سکه\n"
                            f"درآمد ساعتی جدید: {farm_income_per_hour(get_by_id(uid))} سکه")
         except Exception:
@@ -1178,7 +1186,7 @@ def farm_callback(c):
 
     bot.answer_callback_query(c.id, "انجام شد.")
     p = get_by_id(uid)
-    edit(c, message + "\n\n" + farm_text(c.from_user), farm_markup())
+    edit(c, message + "\n\n" + farm_text(c.from_user), farm_markup(c.from_user))
 
 
 @bot.callback_query_handler(func=lambda c: c.data.startswith(("m:", "d:", "a:")))
@@ -1210,7 +1218,7 @@ def menu_router(c):
         elif arg == "referral":
             edit(c, referral_text(user), back_markup())
         elif arg == "farm":
-            edit(c, farm_text(user), farm_markup())
+            edit(c, farm_text(user), farm_markup(user))
         elif arg == "admin":
             bank_transfer_state.pop(user.id, None)
             admin_state[user.id] = {"step": "password"}
