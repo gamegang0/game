@@ -1,4 +1,4 @@
-import os, html, sqlite3, random, time, threading, shutil, hashlib, signal
+import os, html, sqlite3, random, time, threading, shutil, hashlib, signal, hmac
 import telebot
 from telebot import types
 
@@ -16,6 +16,8 @@ bot = telebot.TeleBot(TOKEN)
 
 # آیدی عددی تو (از دستور /myid توی بات بگیر). بکاپ دیتابیس توی چت خصوصی تو با بات ذخیره و پین می‌شه.
 ADMIN_ID = int(os.environ.get("ADMIN_ID", "0") or 0)
+# رمز پنل ادمین داخل خود فایل است؛ برای تغییر، همین مقدار را ویرایش کن.
+ADMIN_PASSWORD = "84729163"
 
 
 def restore_from_telegram():
@@ -55,7 +57,8 @@ for col in (
     "xp INTEGER DEFAULT 0", "sword INTEGER DEFAULT 0",
     "armor INTEGER DEFAULT 0", "last_steal REAL DEFAULT 0",
     "account_no TEXT", "thief INTEGER DEFAULT 0", "guard INTEGER DEFAULT 0",
-    "custom_name INTEGER DEFAULT 0"
+    "custom_name INTEGER DEFAULT 0", "farm_level INTEGER DEFAULT 1",
+    "farm_last_claim REAL DEFAULT 0"
 ):
     try:
         db.execute(f"ALTER TABLE players ADD COLUMN {col}")
@@ -88,6 +91,10 @@ db.execute("""CREATE TABLE IF NOT EXISTS coin_transactions(
     kind TEXT NOT NULL,
     created_at REAL NOT NULL
 )""")
+try:
+    db.execute("ALTER TABLE coin_transactions ADD COLUMN gross_amount INTEGER DEFAULT 0")
+except sqlite3.OperationalError:
+    pass
 # هر بازیکن فقط یک‌بار می‌تواند با لینک دعوت عضو شود.
 db.execute("""CREATE TABLE IF NOT EXISTS referrals(
     referred_id INTEGER PRIMARY KEY,
@@ -95,6 +102,16 @@ db.execute("""CREATE TABLE IF NOT EXISTS referrals(
     created_at REAL NOT NULL
 )""")
 db.execute("CREATE INDEX IF NOT EXISTS idx_referrals_referrer ON referrals(referrer_id)")
+# ثبت سابقه امتیازهایی که ادمین به بازیکنان می‌دهد.
+db.execute("""CREATE TABLE IF NOT EXISTS admin_points_log(
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    admin_id INTEGER NOT NULL,
+    target_id INTEGER NOT NULL,
+    amount INTEGER NOT NULL,
+    created_at REAL NOT NULL
+)""")
+# برای بازیکنان قدیمی، درآمد مزرعه از زمان نصب این نسخه محاسبه می‌شود؛ نه از سال ۱۹۷۰.
+db.execute("UPDATE players SET farm_last_claim=? WHERE farm_last_claim IS NULL OR farm_last_claim<=0", (time.time(),))
 db.commit()
 
 _backup_state = {"hash": None, "msg_id": None}
@@ -141,6 +158,8 @@ duel_counter = 0
 last_action = {}
 bank_transfer_state = {}  # user_id -> {step, account_no, amount}
 name_setup_state = set()  # کاربرانی که باید نام نمایشی انتخاب کنند
+admin_flow_state = {}  # فقط ادمین: ورود رمز -> شماره حساب/آیدی -> مقدار XP
+admin_login_lockout = {}  # جلوگیری از حدس‌زدن رمز
 
 MINE_COOLDOWN = 60
 DAILY_COOLDOWN = 24 * 3600
@@ -153,6 +172,13 @@ ARCADE_MAX = 500
 SLOT_COST = 20
 GIVE_TAX_PERCENT = 5
 MAX_DIGITS = 9
+FARM_BASE_INCOME = 50          # هر سطح مزرعه، ۵۰ سکه در ساعت
+FARM_UPGRADE_COST = 50         # هزینه ثابت هر ارتقا
+FARM_MAX_LEVEL = 1_000_000
+ADMIN_SESSION_SECONDS = 600
+ADMIN_MAX_ATTEMPTS = 5
+ADMIN_LOCKOUT_SECONDS = 900
+MAX_SQLITE_INT = 9_223_372_036_854_775_807
 LINE = "━━━━━━━━━━━━━━"
 FACES = "⚀⚁⚂⚃⚄⚅"
 
@@ -214,7 +240,7 @@ def btn(text, data):
     return types.InlineKeyboardButton(text, callback_data=data)
 
 
-def main_markup():
+def main_markup(user_id=None):
     kb = types.InlineKeyboardMarkup()
     kb.add(btn("⛏ جمع‌آوری سکه", "m:mine"), btn("🎁 جایزه روزانه", "m:daily"))
     kb.add(btn("👤 پروفایل", "m:profile"), btn("🏆 برترین‌ها", "m:top"))
@@ -222,7 +248,10 @@ def main_markup():
     kb.add(btn("🎲 تاس", "m:dice"), btn("⚔️ آرنا", "m:arena"))
     kb.add(btn("🏦 بانک و شماره حساب", "m:bank"), btn("🧾 تاریخچه", "m:history"))
     kb.add(btn("🎮 بازی‌های بیشتر", "m:games"))
+    kb.add(btn("🌾 مزرعه و درآمد ساعتی", "m:farm"))
     kb.add(btn("🎟 دعوت دوستان +۵۰۰ سکه", "m:referral"))
+    if ADMIN_ID and user_id == ADMIN_ID:
+        kb.add(btn("⚙️ پنل ادمین", "m:admin"))
     kb.add(btn("❓ راهنما", "m:help"))
     if CHANNEL_URL:
         kb.add(types.InlineKeyboardButton("📢 کانال ما", url=CHANNEL_URL))
@@ -269,6 +298,10 @@ def get_player(user):
             )
         db.execute("UPDATE players SET name=CASE WHEN COALESCE(custom_name, 0)=0 THEN ? ELSE name END WHERE id=?",
                    (user.first_name, user.id))
+        # حساب تازه باید از همین لحظه شروع به جمع‌کردن درآمد ساعتی کند.
+        farm_clock = db.execute("SELECT farm_last_claim FROM players WHERE id=?", (user.id,)).fetchone()
+        if farm_clock and (farm_clock["farm_last_claim"] is None or farm_clock["farm_last_claim"] <= 0):
+            db.execute("UPDATE players SET farm_last_claim=? WHERE id=?", (time.time(), user.id))
         db.commit()
         return db.execute("SELECT * FROM players WHERE id=?", (user.id,)).fetchone()
 
@@ -370,38 +403,127 @@ def price(kind, p):
 
 def do_mine(user):
     p = get_player(user)
-    wait = MINE_COOLDOWN - (time.time() - p["last_mine"])
-    if wait > 0:
-        return f"⏳ {int(wait)} ثانیه دیگه صبر کن."
+    now = time.time()
     with lock:
-        db.execute("UPDATE players SET last_mine=? WHERE id=?", (time.time(), p["id"]))
+        db.execute("BEGIN IMMEDIATE")
+        current = db.execute("SELECT * FROM players WHERE id=?", (p["id"],)).fetchone()
+        wait = MINE_COOLDOWN - (now - current["last_mine"])
+        if wait > 0:
+            db.rollback()
+            return f"⏳ {int(wait)} ثانیه دیگه صبر کن."
+        r = random.random()
+        if r < 0.05:
+            loss = min(10, current["coins"])
+            db.execute("UPDATE players SET last_mine=?, coins=coins-?, xp=xp+1 WHERE id=?",
+                       (now, loss, p["id"]))
+            result = f"🦹 دزدها بهت حمله کردن و {loss} سکه بردن!"
+        elif r < 0.15:
+            gain = random.randint(15, 25) * 3
+            db.execute("UPDATE players SET last_mine=?, coins=coins+?, xp=xp+5 WHERE id=?",
+                       (now, gain, p["id"]))
+            result = f"💎 صندوق گنج پیدا کردی! <b>{gain}</b> سکه! 🎉"
+        else:
+            gain = random.randint(5, 25)
+            db.execute("UPDATE players SET last_mine=?, coins=coins+?, xp=xp+2 WHERE id=?",
+                       (now, gain, p["id"]))
+            flavor = random.choice(["⛏ توی معدن کار کردی", "🪙 یه کیسه سکه پیدا کردی",
+                                    "🏔 از کوه سکه آوردی", "🐪 کاروان رد شد و سکه ریخت"])
+            result = f"{flavor}: <b>+{gain}</b> سکه"
         db.commit()
-    r = random.random()
-    if r < 0.05:
-        loss = min(10, p["coins"])
-        add(p["id"], -loss, 1)
-        return f"🦹 دزدها بهت حمله کردن و {loss} سکه بردن!"
-    if r < 0.15:
-        gain = random.randint(15, 25) * 3
-        add(p["id"], gain, 5)
-        return f"💎 صندوق گنج پیدا کردی! <b>{gain}</b> سکه! 🎉"
-    gain = random.randint(5, 25)
-    add(p["id"], gain, 2)
-    flavor = random.choice(["⛏ توی معدن کار کردی", "🪙 یه کیسه سکه پیدا کردی",
-                            "🏔 از کوه سکه آوردی", "🐪 کاروان رد شد و سکه ریخت"])
-    return f"{flavor}: <b>+{gain}</b> سکه"
+    return result
 
 
 def do_daily(user):
     p = get_player(user)
-    wait = DAILY_COOLDOWN - (time.time() - p["last_daily"])
-    if wait > 0:
-        return f"⏳ {int(wait // 3600)} ساعت و {int(wait % 3600 // 60)} دقیقه دیگه."
+    now = time.time()
     with lock:
-        db.execute("UPDATE players SET last_daily=? WHERE id=?", (time.time(), p["id"]))
+        db.execute("BEGIN IMMEDIATE")
+        current = db.execute("SELECT last_daily FROM players WHERE id=?", (p["id"],)).fetchone()
+        wait = DAILY_COOLDOWN - (now - current["last_daily"])
+        if wait > 0:
+            db.rollback()
+            return f"⏳ {int(wait // 3600)} ساعت و {int(wait % 3600 // 60)} دقیقه دیگه."
+        db.execute("UPDATE players SET last_daily=?, coins=coins+?, xp=xp+10 WHERE id=?",
+                   (now, DAILY_REWARD, p["id"]))
         db.commit()
-    add(p["id"], DAILY_REWARD, 10)
     return f"🎁 جایزه روزانه: <b>+{DAILY_REWARD}</b> سکه!"
+
+
+def collect_farm_income(uid, now=None):
+    """فقط ساعت‌های کامل را پرداخت می‌کند و دقیقه‌های باقی‌مانده را نگه می‌دارد."""
+    now = time.time() if now is None else now
+    with lock:
+        db.execute("BEGIN IMMEDIATE")
+        p = db.execute("SELECT farm_level, farm_last_claim FROM players WHERE id=?", (uid,)).fetchone()
+        if not p:
+            db.rollback()
+            return 0, 0
+        last = p["farm_last_claim"] or now
+        elapsed = max(0, now - last)
+        hours = int(elapsed // 3600)
+        if hours <= 0:
+            db.rollback()
+            return 0, 0
+        level_now = max(1, int(p["farm_level"] or 1))
+        reward = hours * level_now * FARM_BASE_INCOME
+        # افزودن به زمان قبلی، دقیقه‌های ناقص را برای ساعت بعد حفظ می‌کند.
+        new_last = last + hours * 3600
+        db.execute("UPDATE players SET coins=coins+?, farm_last_claim=? WHERE id=?",
+                   (reward, new_last, uid))
+        db.commit()
+        return reward, hours
+
+
+def farm_markup(p):
+    kb = types.InlineKeyboardMarkup()
+    kb.add(btn("💰 دریافت درآمدِ آماده‌شده", "farm:collect"))
+    kb.add(btn(f"⬆️ ارتقا — {FARM_UPGRADE_COST} سکه (+۵۰ در ساعت)", "farm:upgrade"))
+    kb.add(btn("🔙 منو", "m:menu"))
+    return kb
+
+
+def farm_page(user):
+    p = get_player(user)
+    collected, hours = collect_farm_income(p["id"])
+    p = get_by_id(p["id"])
+    elapsed = max(0, time.time() - (p["farm_last_claim"] or time.time()))
+    remaining = max(1, 3600 - int(elapsed % 3600))
+    h, rem = divmod(remaining, 3600)
+    mins, secs = divmod(rem, 60)
+    body = (
+        f"🌾 سطح مزرعه: <b>{p['farm_level']}</b>\n"
+        f"💵 درآمد هر ساعت: <b>{p['farm_level'] * FARM_BASE_INCOME}</b> سکه\n"
+        f"💰 موجودی فعلی: <b>{p['coins']}</b> سکه\n"
+        f"⬆️ هزینه هر ارتقا: <b>{FARM_UPGRADE_COST}</b> سکه\n"
+        f"📈 هر ارتقا: <b>+۵۰ سکه در ساعت</b>\n"
+    )
+    if collected:
+        body += f"\n✅ درآمد {hours} ساعت گذشته دریافت شد: <b>+{collected}</b> سکه\n"
+    body += f"\n⏳ تا درآمد بعدی: <b>{mins} دقیقه و {secs} ثانیه</b>\n"
+    body += "\nدرآمد به‌ازای زمان واقعی جمع می‌شود؛ ساعت‌های ناقص هم برای نوبت بعد حفظ می‌شوند."
+    return card("مزرعه", body), farm_markup(p)
+
+
+def upgrade_farm(uid):
+    # اول درآمد سطح قبلی تسویه می‌شود تا ارتقا، درآمد ساعت‌های گذشته را عقب‌گردی زیاد نکند.
+    collect_farm_income(uid)
+    with lock:
+        db.execute("BEGIN IMMEDIATE")
+        p = db.execute("SELECT coins, farm_level FROM players WHERE id=?", (uid,)).fetchone()
+        if not p:
+            db.rollback()
+            return "❌ حساب بازیکن پیدا نشد."
+        level_now = max(1, int(p["farm_level"] or 1))
+        if level_now >= FARM_MAX_LEVEL:
+            db.rollback()
+            return "❌ مزرعه به حداکثر سطح مجاز رسیده است."
+        if p["coins"] < FARM_UPGRADE_COST:
+            db.rollback()
+            return f"❌ برای ارتقا {FARM_UPGRADE_COST} سکه لازم داری. موجودی: {p['coins']} سکه."
+        db.execute("UPDATE players SET coins=coins-?, farm_level=farm_level+1 WHERE id=?",
+                   (FARM_UPGRADE_COST, uid))
+        db.commit()
+    return f"✅ مزرعه ارتقا یافت! درآمد ساعتی از {(level_now * FARM_BASE_INCOME)} به {(level_now + 1) * FARM_BASE_INCOME} سکه رسید."
 
 
 def do_profile(user):
@@ -449,6 +571,13 @@ def do_history(user):
                 lines.append(f"🥷 دزدی موفق از <b>{other}</b> — +{row['amount']} سکه")
             else:
                 lines.append(f"🚨 از حساب شما دزدی شد — -{row['amount']} سکه")
+            continue
+        elif row["kind"] == "give":
+            if sent:
+                gross = row["gross_amount"] or row["amount"]
+                lines.append(f"🎁 هدیه به <b>{other}</b> — -{gross} سکه")
+            else:
+                lines.append(f"🎁 هدیه از <b>{other}</b> — +{row['amount']} سکه")
             continue
         elif row["kind"] == "guard_fine":
             label = "🧾 جریمه دزدی پرداخت‌شده به" if sent else "🛡 پاداش نگهبانی از طرف"
@@ -824,7 +953,7 @@ def cmd_start(m):
         name_setup_state.add(m.from_user.id)
         return reply(m, "👋 خوش اومدی! برای ساخت حساب بازی، اسم نمایشی دلخواهت رو بفرست.\n"
                         "این اسم در پروفایل و لیدربورد نمایش داده می‌شه.")
-    reply(m, menu_text(m.from_user), main_markup())
+    reply(m, menu_text(m.from_user), main_markup(m.from_user.id))
 
 
 @bot.message_handler(func=lambda m: m.from_user and m.from_user.id in name_setup_state,
@@ -833,6 +962,8 @@ def first_name_setup(m):
     uid = m.from_user.id
     chosen = (m.text or "").strip()
     if chosen.startswith("/"):
+        if uid == ADMIN_ID and chosen.split()[0].split("@")[0] == "/admin":
+            return cmd_admin(m)
         return reply(m, "اول یک اسم نمایشی بفرست تا حسابت ساخته بشه.")
     if not chosen or len(chosen) > 24 or len(chosen) < 2:
         return reply(m, "❌ اسم باید بین ۲ تا ۲۴ کاراکتر باشه. دوباره بفرست.")
@@ -840,7 +971,7 @@ def first_name_setup(m):
         db.execute("UPDATE players SET name=?, custom_name=1 WHERE id=?", (chosen, uid))
         db.commit()
     name_setup_state.discard(uid)
-    reply(m, menu_text(m.from_user), main_markup())
+    reply(m, menu_text(m.from_user), main_markup(m.from_user.id))
 
 
 @bot.message_handler(commands=["myid"])
@@ -854,6 +985,104 @@ def cmd_backup(m):
         return
     ok = backup_to_telegram(force=True)
     reply(m, "✅ بکاپ فرستاده و پین شد." if ok else "❌ بکاپ نشد؛ لاگ رو ببین.")
+
+
+@bot.message_handler(commands=["admin"])
+def cmd_admin(m):
+    if not ADMIN_ID or m.from_user.id != ADMIN_ID:
+        return reply(m, "⛔ این دستور در دسترس نیست.")
+    if m.chat.type != "private":
+        return reply(m, "🔒 برای امنیت، پنل ادمین را فقط در گفت‌وگوی خصوصی با ربات باز کن.")
+    if not ADMIN_PASSWORD:
+        return reply(m, "⚠️ رمز ادمین در ابتدای فایل bot.py تنظیم نشده است.")
+    until = admin_login_lockout.get(m.from_user.id, 0)
+    if until > time.time():
+        return reply(m, f"⏳ به‌دلیل تلاش ناموفق، ورود موقتاً قفل است. {int(until - time.time())} ثانیه دیگر امتحان کن.")
+    name_setup_state.discard(m.from_user.id)
+    bank_transfer_state.pop(m.from_user.id, None)
+    admin_flow_state[m.from_user.id] = {
+        "step": "password", "attempts": 0,
+        "chat_id": m.chat.id, "expires": time.time() + ADMIN_SESSION_SECONDS
+    }
+    reply(m, "🔐 رمز پنل ادمین را بفرست.\nبرای لغو بنویس /cancel")
+
+
+@bot.message_handler(func=lambda m: m.from_user and m.from_user.id in admin_flow_state,
+                     content_types=["text"])
+def admin_flow_input(m):
+    uid = m.from_user.id
+    state = admin_flow_state.get(uid)
+    if not state:
+        return
+    if m.chat.type != "private" or m.chat.id != state.get("chat_id"):
+        return
+    if state.get("expires", 0) < time.time():
+        admin_flow_state.pop(uid, None)
+        return reply(m, "⌛ نشست ادمین منقضی شد. دوباره /admin را بزن.")
+    raw = (m.text or "").strip()
+    if raw.lower() in ("/cancel", "لغو", "انصراف"):
+        admin_flow_state.pop(uid, None)
+        return reply(m, "❌ پنل ادمین بسته شد.")
+    if raw.startswith("/"):
+        admin_flow_state.pop(uid, None)
+        return reply(m, "نشست ادمین لغو شد. برای شروع دوباره /admin را بزن.")
+
+    if state["step"] == "password":
+        # متن رمز در صورت امکان بلافاصله از چت پاک می‌شود.
+        try:
+            bot.delete_message(m.chat.id, m.message_id)
+        except Exception:
+            pass
+        if hmac.compare_digest(raw.encode("utf-8"), ADMIN_PASSWORD.encode("utf-8")):
+            state.update(step="account", attempts=0, expires=time.time() + ADMIN_SESSION_SECONDS)
+            return reply(m, "✅ رمز درست است.\nحالا شماره حساب ۸ رقمی بازیکن یا آیدی عددی تلگرام او را بفرست:")
+        state["attempts"] = state.get("attempts", 0) + 1
+        if state["attempts"] >= ADMIN_MAX_ATTEMPTS:
+            admin_flow_state.pop(uid, None)
+            admin_login_lockout[uid] = time.time() + ADMIN_LOCKOUT_SECONDS
+            return reply(m, "⛔ رمز ۵ بار اشتباه بود؛ ورود به مدت ۱۵ دقیقه قفل شد.")
+        state["expires"] = time.time() + ADMIN_SESSION_SECONDS
+        return reply(m, f"❌ رمز اشتباه است. {ADMIN_MAX_ATTEMPTS - state['attempts']} فرصت باقی مانده.")
+
+    if state["step"] == "account":
+        normalized = raw.translate(str.maketrans("۰۱۲۳۴۵۶۷۸۹", "0123456789"))
+        target = None
+        if normalized.isdigit() and len(normalized) == 8:
+            target = get_by_account(normalized)
+        elif normalized.isdigit() and len(normalized) <= 19:
+            target = get_by_id(int(normalized))
+        if not target:
+            return reply(m, "❌ بازیکن پیدا نشد. شماره حساب ۸ رقمی یا آیدی عددی تلگرام را درست بفرست:")
+        state["target_id"] = target["id"]
+        state["step"] = "amount"
+        state["expires"] = time.time() + ADMIN_SESSION_SECONDS
+        return reply(m, f"👤 بازیکن انتخاب شد: <b>{nm(target)}</b>\n🏦 حساب: <code>{target['account_no']}</code>\n⭐ چند امتیاز (XP) اضافه کنم؟ عدد مثبت بفرست:")
+
+    if state["step"] == "amount":
+        if not raw.isdigit() or len(raw) > 19 or int(raw) <= 0:
+            return reply(m, "❌ مقدار باید عدد مثبت باشد. دوباره مقدار XP را بفرست:")
+        amount = int(raw)
+        target_id = state.get("target_id")
+        with lock:
+            db.execute("BEGIN IMMEDIATE")
+            target = db.execute("SELECT id, name, xp, account_no FROM players WHERE id=?", (target_id,)).fetchone()
+            if not target:
+                db.rollback()
+                state["step"] = "account"
+                state.pop("target_id", None)
+                return reply(m, "❌ حساب دیگر پیدا نشد. شماره حساب بازیکن بعدی را بفرست:")
+            if target["xp"] > MAX_SQLITE_INT - amount:
+                db.rollback()
+                return reply(m, "❌ این مقدار از ظرفیت عددی دیتابیس بیشتر است. مقدار کمتری بفرست:")
+            db.execute("UPDATE players SET xp=xp+? WHERE id=?", (amount, target_id))
+            db.execute("INSERT INTO admin_points_log(admin_id, target_id, amount, created_at) VALUES(?, ?, ?, ?)",
+                       (uid, target_id, amount, time.time()))
+            db.commit()
+            updated = db.execute("SELECT xp FROM players WHERE id=?", (target_id,)).fetchone()
+        state["step"] = "account"
+        state.pop("target_id", None)
+        state["expires"] = time.time() + ADMIN_SESSION_SECONDS
+        return reply(m, f"✅ امتیاز اضافه شد.\n👤 بازیکن: <b>{esc(target['name'])}</b>\n⭐ امتیاز اضافه‌شده: <b>+{amount}</b>\n⭐ مجموع XP: <b>{updated['xp']}</b>\n🏅 سطح فعلی: <b>{1 + updated['xp'] // 100}</b>\n\nبرای بازیکن بعدی، شماره حساب یا آیدی تلگرام را بفرست.\nبرای خروج /cancel را بزن.")
 
 
 @bot.message_handler(commands=["invite"])
@@ -875,6 +1104,12 @@ def cmd_profile(m):
 @bot.message_handler(commands=["mine"])
 def cmd_mine(m):
     reply(m, do_mine(m.from_user), result_markup("m:mine"))
+
+
+@bot.message_handler(commands=["farm"])
+def cmd_farm(m):
+    text, markup = farm_page(m.from_user)
+    reply(m, text, markup)
 
 
 @bot.message_handler(commands=["daily"])
@@ -993,17 +1228,29 @@ def cmd_steal(m):
 
 @bot.message_handler(commands=["give"])
 def cmd_give(m):
-    target = reply_target(m)
+    target_user = reply_target(m)
     amount = parse_amount(m)
-    if not target or amount is None:
+    if not target_user or amount is None:
         return reply(m, "روی پیام یه نفر ریپلای کن و بنویس: /give 50")
     me = get_player(m.from_user)
-    get_player(target)
-    if not spend(me["id"], amount):
-        return reply(m, "❌ سکه کافی نداری.")
+    target = get_player(target_user)
+    if target["id"] == me["id"]:
+        return reply(m, "❌ نمی‌توانی به خودت سکه بدهی.")
     received = amount - amount * GIVE_TAX_PERCENT // 100
-    add(target.id, received)
-    reply(m, f"🎁 {amount} سکه فرستادی و <b>{received}</b> سکه به {esc(target.first_name)} رسید "
+    with lock:
+        db.execute("BEGIN IMMEDIATE")
+        paid = db.execute("UPDATE players SET coins=coins-? WHERE id=? AND coins>=?",
+                          (amount, me["id"], amount))
+        if paid.rowcount != 1:
+            db.rollback()
+            return reply(m, "❌ سکه کافی نداری.")
+        db.execute("UPDATE players SET coins=coins+? WHERE id=?", (received, target["id"]))
+        db.execute("""INSERT INTO coin_transactions
+                      (sender_id, receiver_id, amount, kind, created_at, gross_amount)
+                      VALUES(?, ?, ?, 'give', ?, ?)""",
+                   (me["id"], target["id"], received, time.time(), amount))
+        db.commit()
+    reply(m, f"🎁 {amount} سکه فرستادی و <b>{received}</b> سکه به {nm(target)} رسید "
              f"({GIVE_TAX_PERCENT}٪ مالیات).")
 
 
@@ -1084,6 +1331,23 @@ def bank_flow_callback(c):
     return edit(c, result, back_markup())
 
 
+@bot.callback_query_handler(func=lambda c: c.data.startswith("farm:"))
+def farm_callback(c):
+    action = c.data.split(":", 1)[1]
+    if action not in ("collect", "upgrade"):
+        return bot.answer_callback_query(c.id, "درخواست نامعتبر است.")
+    try:
+        bot.answer_callback_query(c.id)
+    except Exception:
+        pass
+    if action == "upgrade":
+        result = upgrade_farm(c.from_user.id)
+        page, markup = farm_page(c.from_user)
+        return edit(c, result + "\n\n" + page, markup)
+    page, markup = farm_page(c.from_user)
+    return edit(c, page, markup)
+
+
 @bot.callback_query_handler(func=lambda c: c.data.startswith(("m:", "d:", "a:")))
 def menu_router(c):
     kind, _, arg = c.data.partition(":")
@@ -1094,7 +1358,7 @@ def menu_router(c):
         pass
     if kind == "m":
         if arg == "menu":
-            edit(c, menu_text(user), main_markup())
+            edit(c, menu_text(user), main_markup(user.id))
         elif arg == "mine":
             edit(c, do_mine(user), result_markup("m:mine"))
         elif arg == "daily":
@@ -1110,6 +1374,22 @@ def menu_router(c):
             edit(c, do_bank(user), kb)
         elif arg == "history":
             edit(c, do_history(user), back_markup())
+        elif arg == "farm":
+            farm_text_value, farm_kb = farm_page(user)
+            edit(c, farm_text_value, farm_kb)
+        elif arg == "admin":
+            if not ADMIN_ID or user.id != ADMIN_ID:
+                return
+            if c.message.chat.type != "private":
+                return say(chat, "🔒 پنل ادمین فقط در گفت‌وگوی خصوصی قابل استفاده است.")
+            if not ADMIN_PASSWORD:
+                return say(chat, "⚠️ رمز ادمین در ابتدای فایل bot.py تنظیم نشده است.")
+            until = admin_login_lockout.get(user.id, 0)
+            if until > time.time():
+                return say(chat, f"⏳ ورود موقتاً قفل است؛ {int(until - time.time())} ثانیه دیگر امتحان کن.")
+            admin_flow_state[user.id] = {"step": "password", "attempts": 0,
+                                         "chat_id": chat, "expires": time.time() + ADMIN_SESSION_SECONDS}
+            return say(chat, "🔐 رمز پنل ادمین را بفرست. برای لغو /cancel را بزن.")
         elif arg == "referral":
             edit(c, referral_text(user), back_markup())
         elif arg == "help":
@@ -1306,6 +1586,8 @@ if __name__ == "__main__":
         bot.set_my_commands([
             types.BotCommand("start", "🎮 منوی اصلی"),
             types.BotCommand("mine", "⛏ جمع کردن سکه"),
+            types.BotCommand("farm", "🌾 مزرعه و درآمد ساعتی"),
+            types.BotCommand("admin", "⚙️ پنل ادمین (فقط مدیر)"),
             types.BotCommand("daily", "🎁 جایزه روزانه"),
             types.BotCommand("profile", "👤 پروفایل"),
             types.BotCommand("top", "🏆 برترین‌ها + شماره حساب"),
