@@ -119,6 +119,14 @@ db.execute("""CREATE TABLE IF NOT EXISTS admin_points_log(
     amount INTEGER NOT NULL,
     created_at REAL NOT NULL
 )""")
+# سابقه جداگانه سکه‌هایی که ادمین به بازیکنان اضافه می‌کند.
+db.execute("""CREATE TABLE IF NOT EXISTS admin_coin_log(
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    admin_id INTEGER NOT NULL,
+    target_id INTEGER NOT NULL,
+    amount INTEGER NOT NULL,
+    created_at REAL NOT NULL
+)""")
 # برای بازیکنان قدیمی، درآمد مزرعه از زمان نصب این نسخه محاسبه می‌شود؛ نه از سال ۱۹۷۰.
 db.execute("UPDATE players SET farm_last_claim=? WHERE farm_last_claim IS NULL OR farm_last_claim<=0", (time.time(),))
 db.commit()
@@ -603,6 +611,9 @@ def do_history(user):
         elif row["kind"] == "referral":
             lines.append(f"🎟 پاداش دعوت یک زیرمجموعه — +{row['amount']} سکه")
             continue
+        elif row["kind"] == "admin_credit":
+            lines.append(f"🎁 هدیه از مدیریت — +{row['amount']} سکه")
+            continue
         else:
             label = "📤 انتقال به" if sent else "📥 دریافت از"
             sign = "-" if sent else "+"
@@ -996,9 +1007,9 @@ def admin_quick_login(m):
     get_player(m.from_user)
     name_setup_state.discard(uid)
     bank_transfer_state.pop(uid, None)
-    admin_flow_state[uid] = {"step": "account", "attempts": 0, "chat_id": m.chat.id,
+    admin_flow_state[uid] = {"step": "action", "attempts": 0, "chat_id": m.chat.id,
                              "expires": time.time() + ADMIN_SESSION_SECONDS}
-    say(m.chat.id, "✅ وارد پنل ادمین شدی.\nشماره حساب ۸ رقمی بازیکن یا آیدی عددی تلگرام او را بفرست:\nبرای خروج /cancel را بزن.")
+    say(m.chat.id, "✅ وارد پنل ادمین شدی.\nنوع عملیات را انتخاب کن: «سکه» یا «امتیاز»\nبرای خروج /cancel را بزن.")
 
 
 @bot.message_handler(func=lambda m: m.from_user and m.from_user.id in name_setup_state,
@@ -1079,8 +1090,9 @@ def admin_flow_input(m):
         except Exception:
             pass
         if hmac.compare_digest(raw.encode("utf-8"), ADMIN_PASSWORD.encode("utf-8")):
-            state.update(step="account", attempts=0, expires=time.time() + ADMIN_SESSION_SECONDS)
-            return reply(m, "✅ رمز درست است.\nحالا شماره حساب ۸ رقمی بازیکن یا آیدی عددی تلگرام او را بفرست:")
+            state.update(step="action", operation=None, attempts=0,
+                         expires=time.time() + ADMIN_SESSION_SECONDS)
+            return reply(m, "✅ رمز درست است.\nنوع عملیات را بفرست: «سکه» یا «امتیاز»\nبرای خروج /cancel را بزن.")
         state["attempts"] = state.get("attempts", 0) + 1
         if state["attempts"] >= ADMIN_MAX_ATTEMPTS:
             admin_flow_state.pop(uid, None)
@@ -1089,7 +1101,25 @@ def admin_flow_input(m):
         state["expires"] = time.time() + ADMIN_SESSION_SECONDS
         return reply(m, f"❌ رمز اشتباه است. {ADMIN_MAX_ATTEMPTS - state['attempts']} فرصت باقی مانده.")
 
+    if state["step"] == "action":
+        choice = raw.strip().lower()
+        if choice in ("1", "امتیاز", "xp", "point", "points"):
+            state["operation"] = "xp"
+            action_label = "امتیاز XP"
+        elif choice in ("2", "سکه", "coin", "coins"):
+            state["operation"] = "coins"
+            action_label = "سکه"
+        else:
+            return reply(m, "❌ یکی از این دو مورد را بفرست: «سکه» یا «امتیاز».")
+        state["step"] = "account"
+        state["expires"] = time.time() + ADMIN_SESSION_SECONDS
+        return reply(m, f"✅ عملیات انتخاب شد: <b>{action_label}</b>\nحالا شماره حساب ۸ رقمی یا آیدی عددی تلگرام بازیکن را بفرست:")
+
     if state["step"] == "account":
+        if raw.strip().lower() in ("نوع", "تغییر", "change"):
+            state["step"] = "action"
+            state["expires"] = time.time() + ADMIN_SESSION_SECONDS
+            return reply(m, "نوع عملیات جدید را بفرست: «سکه» یا «امتیاز».")
         normalized = raw.translate(str.maketrans("۰۱۲۳۴۵۶۷۸۹", "0123456789"))
         target = None
         if normalized.isdigit() and len(normalized) == 8:
@@ -1101,34 +1131,99 @@ def admin_flow_input(m):
         state["target_id"] = target["id"]
         state["step"] = "amount"
         state["expires"] = time.time() + ADMIN_SESSION_SECONDS
-        return reply(m, f"👤 بازیکن انتخاب شد: <b>{nm(target)}</b>\n🏦 حساب: <code>{target['account_no']}</code>\n⭐ چند امتیاز (XP) اضافه کنم؟ عدد مثبت بفرست:")
+        if state.get("operation") == "coins":
+            prompt = "🪙 چند سکه به موجودی این بازیکن اضافه کنم؟ عدد مثبت بفرست:"
+        else:
+            prompt = "⭐ چند امتیاز (XP) اضافه کنم؟ عدد مثبت بفرست:"
+        return reply(m, f"👤 بازیکن انتخاب شد: <b>{nm(target)}</b>\n🏦 حساب: <code>{target['account_no']}</code>\n{prompt}")
 
     if state["step"] == "amount":
         raw = raw.translate(str.maketrans("۰۱۲۳۴۵۶۷۸۹", "0123456789")).replace(",", "").replace("٬", "")
         if not raw.isdigit() or len(raw) > 19 or int(raw) <= 0:
-            return reply(m, "❌ مقدار باید عدد مثبت باشد. دوباره مقدار XP را بفرست:")
+            unit = "سکه" if state.get("operation") == "coins" else "امتیاز XP"
+            return reply(m, f"❌ مقدار {unit} باید عدد مثبت باشد. دوباره بفرست:")
         amount = int(raw)
         target_id = state.get("target_id")
+        operation = state.get("operation", "xp")
+
         with lock:
             db.execute("BEGIN IMMEDIATE")
-            target = db.execute("SELECT id, name, xp, account_no FROM players WHERE id=?", (target_id,)).fetchone()
+            target = db.execute(
+                "SELECT id, name, xp, coins, account_no FROM players WHERE id=?",
+                (target_id,)
+            ).fetchone()
             if not target:
                 db.rollback()
                 state["step"] = "account"
                 state.pop("target_id", None)
                 return reply(m, "❌ حساب دیگر پیدا نشد. شماره حساب بازیکن بعدی را بفرست:")
-            if target["xp"] > MAX_SQLITE_INT - amount:
-                db.rollback()
-                return reply(m, "❌ این مقدار از ظرفیت عددی دیتابیس بیشتر است. مقدار کمتری بفرست:")
-            db.execute("UPDATE players SET xp=xp+? WHERE id=?", (amount, target_id))
-            db.execute("INSERT INTO admin_points_log(admin_id, target_id, amount, created_at) VALUES(?, ?, ?, ?)",
-                       (uid, target_id, amount, time.time()))
-            db.commit()
-            updated = db.execute("SELECT xp FROM players WHERE id=?", (target_id,)).fetchone()
+
+            if operation == "coins":
+                if target["coins"] > MAX_SQLITE_INT - amount:
+                    db.rollback()
+                    return reply(m, "❌ این مقدار از ظرفیت عددی دیتابیس بیشتر است. مقدار کمتری بفرست:")
+                db.execute("UPDATE players SET coins=coins+? WHERE id=?", (amount, target_id))
+                db.execute(
+                    "INSERT INTO admin_coin_log(admin_id, target_id, amount, created_at) VALUES(?, ?, ?, ?)",
+                    (uid, target_id, amount, time.time())
+                )
+                # sender_id=0 یعنی سکه از طرف سیستم/مدیریت ایجاد شده و از بازیکنی کم نشده است.
+                db.execute(
+                    "INSERT INTO coin_transactions(sender_id, receiver_id, amount, kind, created_at) "
+                    "VALUES(0, ?, ?, 'admin_credit', ?)",
+                    (target_id, amount, time.time())
+                )
+                db.commit()
+                updated = db.execute("SELECT coins FROM players WHERE id=?", (target_id,)).fetchone()
+                result_line = (
+                    f"🪙 سکه اضافه‌شده: <b>+{amount}</b>\n"
+                    f"💰 موجودی جدید: <b>{updated['coins']}</b> سکه"
+                )
+                notify_text = (
+                    f"🎁 <b>هدیه از مدیریت بازی</b>\n"
+                    f"مبلغ <b>{amount}</b> سکه به حساب شما اضافه شد.\n"
+                    f"💰 موجودی جدید: <b>{updated['coins']}</b> سکه"
+                )
+            else:
+                if target["xp"] > MAX_SQLITE_INT - amount:
+                    db.rollback()
+                    return reply(m, "❌ این مقدار از ظرفیت عددی دیتابیس بیشتر است. مقدار کمتری بفرست:")
+                db.execute("UPDATE players SET xp=xp+? WHERE id=?", (amount, target_id))
+                db.execute(
+                    "INSERT INTO admin_points_log(admin_id, target_id, amount, created_at) VALUES(?, ?, ?, ?)",
+                    (uid, target_id, amount, time.time())
+                )
+                db.commit()
+                updated = db.execute("SELECT xp FROM players WHERE id=?", (target_id,)).fetchone()
+                result_line = (
+                    f"⭐ امتیاز اضافه‌شده: <b>+{amount}</b>\n"
+                    f"⭐ مجموع XP: <b>{updated['xp']}</b>\n"
+                    f"🏅 سطح فعلی: <b>{1 + updated['xp'] // 100}</b>"
+                )
+                notify_text = (
+                    f"⭐ <b>امتیاز جدید از مدیریت</b>\n"
+                    f"<b>{amount}</b> امتیاز XP به حساب شما اضافه شد.\n"
+                    f"⭐ مجموع XP: <b>{updated['xp']}</b>"
+                )
+
+        # پیام اطلاع‌رسانی خصوصی به بازیکن؛ اگر ربات را باز نکرده باشد خطا نادیده گرفته می‌شود.
+        try:
+            bot.send_message(target_id, notify_text, parse_mode="HTML")
+        except Exception:
+            pass
+
         state["step"] = "account"
         state.pop("target_id", None)
         state["expires"] = time.time() + ADMIN_SESSION_SECONDS
-        return reply(m, f"✅ امتیاز اضافه شد.\n👤 بازیکن: <b>{esc(target['name'])}</b>\n⭐ امتیاز اضافه‌شده: <b>+{amount}</b>\n⭐ مجموع XP: <b>{updated['xp']}</b>\n🏅 سطح فعلی: <b>{1 + updated['xp'] // 100}</b>\n\nبرای بازیکن بعدی، شماره حساب یا آیدی تلگرام را بفرست.\nبرای خروج /cancel را بزن.")
+        return reply(
+            m,
+            f"✅ عملیات با موفقیت انجام شد.\n"
+            f"👤 بازیکن: <b>{esc(target['name'])}</b>\n"
+            f"🏦 حساب: <code>{target['account_no']}</code>\n"
+            f"{result_line}\n\n"
+            f"برای بازیکن بعدی، شماره حساب یا آیدی تلگرام را بفرست.\n"
+            f"برای تغییر نوع عملیات بنویس «نوع»؛ برای خروج /cancel را بزن."
+        )
 
 
 @bot.message_handler(commands=["invite"])
