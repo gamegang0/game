@@ -5,7 +5,7 @@ from telebot import types
 TOKEN = os.environ.get("BOT_TOKEN") or "PUT_YOUR_TOKEN_HERE"
 DB_PATH = os.environ.get("DB_PATH", "game.db")       # روی سرور با Volume مثلاً /data/game.db
 CHANNEL_URL = os.environ.get("CHANNEL_URL", "")      # اختیاری: لینک کانال برای دکمه‌ی شیشه‌ای
-ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "")  # رمز را فقط در Environment Variables سرور قرار بده
+ADMIN_PASSWORD = "armin3130"  # رمز ورود پنل ادمین
 bot = telebot.TeleBot(TOKEN)
 
 lock = threading.RLock()
@@ -83,7 +83,7 @@ SLOT_COST = 20
 GIVE_TAX_PERCENT = 5
 MAX_DIGITS = 9
 FARM_BASE_INCOME = 100          # درآمد ساعتی مزرعه در سطح صفر
-FARM_UPGRADE_INCOME = 50       # افزایش درآمد ساعتی با هر ارتقا
+FARM_UPGRADE_INCOME = 100      # افزایش درآمد ساعتی با هر ارتقا
 FARM_UPGRADE_COST = 50         # هزینه ثابت هر ارتقا
 MAX_SQLITE_INT = 9_223_372_036_854_775_807
 LINE = "━━━━━━━━━━━━━━"
@@ -753,7 +753,7 @@ HELP_TEXT = card("راهنما", (
     f"🎁 /give 50 — سکه دادن ({GIVE_TAX_PERCENT}٪ مالیات)\n\n"
     "💡 هر بازیکن یک شماره حساب ۸ رقمی دارد؛ در لیدربورد هم نمایش داده می‌شود.\n"
     "🛡 اگر نگهبان دزد را بگیرد، جریمه تصادفی از دزد کم و به صاحب حساب داده می‌شود.\n"
-    "🌾 مزرعه از سطح صفر ۱۰۰ سکه در ساعت می‌دهد؛ هر ارتقا ۵۰ سکه هزینه دارد و درآمد ساعتی را ۵۰ سکه افزایش می‌دهد.\n"
+    "🌾 مزرعه از سطح صفر ۱۰۰ سکه در ساعت می‌دهد؛ هر ارتقا ۵۰ سکه هزینه دارد و درآمد ساعتی را ۱۰۰ سکه افزایش می‌دهد.\n"
     "🎟 با /invite لینک دعوت بگیر؛ برای هر بازیکن جدید ۵۰۰ سکه پاداش می‌گیری.\n"
     "💪 امتیاز دوئل = تاس × ۵ + قدرت، پس شمشیر و زره بخر!"))
 
