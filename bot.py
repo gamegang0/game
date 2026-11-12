@@ -1,12 +1,48 @@
-import os, html, sqlite3, random, time, threading, hmac
+import os, html, sqlite3, random, time, threading, shutil, hashlib, signal
 import telebot
 from telebot import types
 
 TOKEN = os.environ.get("BOT_TOKEN") or "PUT_YOUR_TOKEN_HERE"
-DB_PATH = os.environ.get("DB_PATH", "game.db")       # روی سرور با Volume مثلاً /data/game.db
+# دیتابیس عمداً بیرون از پوشه‌ی پروژه (گیت) ذخیره می‌شود تا آپدیت/پول/دیپلوی چیزی را ریست نکند.
+# روی سرور (Railway/Render/...) حتماً DB_PATH را روی یک Volume دائمی مثل /data/game.db بگذار.
+_OLD_DB = "game.db"
+DB_PATH = os.environ.get("DB_PATH") or os.path.join(os.path.expanduser("~"), "coin_game_data", "game.db")
+os.makedirs(os.path.dirname(os.path.abspath(DB_PATH)), exist_ok=True)
+if (not os.path.exists(DB_PATH) and os.path.exists(_OLD_DB)
+        and os.path.abspath(_OLD_DB) != os.path.abspath(DB_PATH)):
+    shutil.copy2(_OLD_DB, DB_PATH)  # انتقال یک‌باره‌ی دیتابیس قدیمی
 CHANNEL_URL = os.environ.get("CHANNEL_URL", "")      # اختیاری: لینک کانال برای دکمه‌ی شیشه‌ای
-ADMIN_PASSWORD = "armin3130"  # رمز ورود پنل ادمین
 bot = telebot.TeleBot(TOKEN)
+
+# آیدی عددی تو (از دستور /myid توی بات بگیر). بکاپ دیتابیس توی چت خصوصی تو با بات ذخیره و پین می‌شه.
+ADMIN_ID = int(os.environ.get("ADMIN_ID", "0") or 0)
+
+
+def restore_from_telegram():
+    """اگه فایل دیتابیس نبود (هاست همه‌چیز رو پاک کرده)، آخرین بکاپِ پین‌شده توی چت ادمین رو برمی‌گردونه."""
+    if os.path.exists(DB_PATH) and os.path.getsize(DB_PATH) > 0:
+        return
+    if not ADMIN_ID:
+        print("⚠️ ADMIN_ID تنظیم نشده؛ بازیابی بکاپ از تلگرام ممکن نیست.")
+        return
+    try:
+        pinned = bot.get_chat(ADMIN_ID).pinned_message
+        if not pinned or not pinned.document:
+            print("بکاپی توی تلگرام پیدا نشد (اولین اجرا؟).")
+            return
+        info = bot.get_file(pinned.document.file_id)
+        data = bot.download_file(info.file_path)
+        if not data.startswith(b"SQLite format 3"):
+            print("فایل پین‌شده دیتابیس معتبر نیست.")
+            return
+        with open(DB_PATH, "wb") as f:
+            f.write(data)
+        print("✅ دیتابیس از بکاپ تلگرام بازیابی شد.")
+    except Exception as e:
+        print("restore failed:", e)
+
+
+restore_from_telegram()
 
 lock = threading.RLock()
 db = sqlite3.connect(DB_PATH, check_same_thread=False)
@@ -19,9 +55,7 @@ for col in (
     "xp INTEGER DEFAULT 0", "sword INTEGER DEFAULT 0",
     "armor INTEGER DEFAULT 0", "last_steal REAL DEFAULT 0",
     "account_no TEXT", "thief INTEGER DEFAULT 0", "guard INTEGER DEFAULT 0",
-    "custom_name INTEGER DEFAULT 0",
-    "farm_level INTEGER DEFAULT 0",
-    "farm_last_claim REAL DEFAULT 0"
+    "custom_name INTEGER DEFAULT 0"
 ):
     try:
         db.execute(f"ALTER TABLE players ADD COLUMN {col}")
@@ -46,8 +80,6 @@ for old_player in db.execute(
         (make_account_number(), old_player["id"])
     )
 db.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_players_account_no ON players(account_no)")
-# برای حساب‌های قدیمی، زمان شروع مزرعه از لحظه‌ی نصب این نسخه ثبت می‌شود تا درآمدِ گذشته‌ی ساختگی ایجاد نشود.
-db.execute("UPDATE players SET farm_last_claim=? WHERE farm_last_claim IS NULL OR farm_last_claim<=0", (time.time(),))
 db.execute("""CREATE TABLE IF NOT EXISTS coin_transactions(
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     sender_id INTEGER NOT NULL,
@@ -65,12 +97,50 @@ db.execute("""CREATE TABLE IF NOT EXISTS referrals(
 db.execute("CREATE INDEX IF NOT EXISTS idx_referrals_referrer ON referrals(referrer_id)")
 db.commit()
 
+_backup_state = {"hash": None, "msg_id": None}
+
+
+def backup_to_telegram(force=False):
+    """یه کپی از دیتابیس برای ادمین می‌فرسته و پین می‌کنه (فقط اگه تغییر کرده باشه)."""
+    if not ADMIN_ID:
+        return False
+    snap = os.path.join(os.path.dirname(os.path.abspath(DB_PATH)), "game_backup.db")
+    try:
+        if os.path.exists(snap):
+            os.remove(snap)
+        with lock:
+            dst = sqlite3.connect(snap)
+            db.backup(dst)
+            dst.close()
+        with open(snap, "rb") as f:
+            digest = hashlib.md5(f.read()).hexdigest()
+        if not force and digest == _backup_state["hash"]:
+            return False
+        with open(snap, "rb") as f:
+            msg = bot.send_document(ADMIN_ID, f, caption=f"💾 بکاپ بازی — {time.strftime('%Y-%m-%d %H:%M:%S')}",
+                                    disable_notification=True)
+        try:
+            bot.pin_chat_message(ADMIN_ID, msg.message_id, disable_notification=True)
+        except Exception as e:
+            print("pin failed:", e)
+        old = _backup_state["msg_id"]
+        if old:
+            try:
+                bot.delete_message(ADMIN_ID, old)
+            except Exception:
+                pass
+        _backup_state.update(hash=digest, msg_id=msg.message_id)
+        return True
+    except Exception as e:
+        print("telegram backup failed:", e)
+        return False
+
+
 duels = {}
 duel_counter = 0
 last_action = {}
 bank_transfer_state = {}  # user_id -> {step, account_no, amount}
 name_setup_state = set()  # کاربرانی که باید نام نمایشی انتخاب کنند
-admin_state = {}  # ورود امن و مرحله‌ای پنل ادمین؛ user_id -> state
 
 MINE_COOLDOWN = 60
 DAILY_COOLDOWN = 24 * 3600
@@ -79,13 +149,10 @@ TRANSFER_FEE_PERCENT = 0
 DAILY_REWARD = 200
 ARENA_MAX = 200
 MAX_UPGRADE = 10
+ARCADE_MAX = 500
 SLOT_COST = 20
 GIVE_TAX_PERCENT = 5
 MAX_DIGITS = 9
-FARM_BASE_INCOME = 100          # درآمد ساعتی مزرعه در سطح صفر
-FARM_UPGRADE_INCOME = 50       # افزایش درآمد ساعتی با هر ارتقا
-FARM_UPGRADE_COST = 50         # هزینه پایه؛ هر ارتقا ۵۰ سکه گران‌تر می‌شود
-MAX_SQLITE_INT = 9_223_372_036_854_775_807
 LINE = "━━━━━━━━━━━━━━"
 FACES = "⚀⚁⚂⚃⚄⚅"
 
@@ -154,9 +221,8 @@ def main_markup():
     kb.add(btn("🛒 فروشگاه", "m:shop"), btn("🎰 اسلات", "m:slots"))
     kb.add(btn("🎲 تاس", "m:dice"), btn("⚔️ آرنا", "m:arena"))
     kb.add(btn("🏦 بانک و شماره حساب", "m:bank"), btn("🧾 تاریخچه", "m:history"))
-    kb.add(btn("🌾 مزرعه و درآمد ساعتی", "m:farm"))
+    kb.add(btn("🎮 بازی‌های بیشتر", "m:games"))
     kb.add(btn("🎟 دعوت دوستان +۵۰۰ سکه", "m:referral"))
-    kb.add(btn("🔐 ورود ادمین", "m:admin"))
     kb.add(btn("❓ راهنما", "m:help"))
     if CHANNEL_URL:
         kb.add(types.InlineKeyboardButton("📢 کانال ما", url=CHANNEL_URL))
@@ -193,8 +259,8 @@ def get_player(user):
         ).fetchone()
         if not current:
             db.execute(
-                "INSERT OR IGNORE INTO players(id, name, account_no, farm_last_claim) VALUES(?, ?, ?, ?)",
-                (user.id, user.first_name, make_account_number(), time.time())
+                "INSERT OR IGNORE INTO players(id, name, account_no) VALUES(?, ?, ?)",
+                (user.id, user.first_name, make_account_number())
             )
         elif not current["account_no"]:
             db.execute(
@@ -224,7 +290,7 @@ def level(p):
 
 
 def power(p):
-    return level(p) + p["sword"] * 2 + p["armor"]
+    return p["sword"] * 2 + p["armor"]  # سطح (XP) روی قدرت تاثیری نداره
 
 
 def add(uid, coins=0, xp=0):
@@ -338,53 +404,6 @@ def do_daily(user):
     return f"🎁 جایزه روزانه: <b>+{DAILY_REWARD}</b> سکه!"
 
 
-def farm_income_per_hour(p):
-    """درآمد ساعتی مزرعه بر اساس سطح ارتقا."""
-    return FARM_BASE_INCOME + int(p["farm_level"]) * FARM_UPGRADE_INCOME
-
-
-def farm_upgrade_cost(level):
-    """هزینه ارتقای بعدی: سطح صفر ۵۰، سطح یک ۱۰۰، سطح دو ۱۵۰ و ..."""
-    return FARM_UPGRADE_COST * (int(level) + 1)
-
-
-def farm_pending(p, now=None):
-    """سکه‌های آماده‌ی برداشت و تعداد ساعت‌های کامل سپری‌شده را محاسبه می‌کند."""
-    now = time.time() if now is None else now
-    last = float(p["farm_last_claim"] or now)
-    elapsed = max(0.0, now - last)
-    hours = int(elapsed // 3600)
-    return hours * farm_income_per_hour(p), hours, elapsed % 3600
-
-
-def farm_text(user):
-    p = get_player(user)
-    with lock:
-        p = db.execute("SELECT * FROM players WHERE id=?", (p["id"],)).fetchone()
-        pending, hours, remainder = farm_pending(p)
-        rate = farm_income_per_hour(p)
-        remaining = max(0, int(3600 - remainder))
-    return card("مزرعه‌ی شخصی", (
-        f"🌾 سطح مزرعه: <b>{p['farm_level']}</b>\n"
-        f"💰 درآمد فعلی: <b>{rate}</b> سکه در ساعت\n"
-        f"📦 درآمد آماده‌ی برداشت: <b>{pending}</b> سکه ({hours} ساعت کامل)\n"
-        f"⏳ تا درآمد ساعت بعد: <b>{remaining // 60}</b> دقیقه\n"
-        f"🪙 هزینه‌ی ارتقای بعدی: <b>{farm_upgrade_cost(p['farm_level'])}</b> سکه\n"
-        f"⬆️ هر ارتقا: <b>+{FARM_UPGRADE_INCOME}</b> سکه درآمد در ساعت\n\n"
-        "درآمد در زمان خاموش بودن ربات هم با ثبت زمان در پایگاه داده جمع می‌شود."
-    ))
-
-
-def farm_markup(user):
-    p = get_player(user)
-    cost = farm_upgrade_cost(p["farm_level"])
-    kb = types.InlineKeyboardMarkup()
-    kb.add(btn("💰 برداشت درآمد", "farm:collect"))
-    kb.add(btn(f"⬆️ ارتقای مزرعه ({cost} سکه)", "farm:upgrade"))
-    kb.add(btn("🔙 منو", "m:menu"))
-    return kb
-
-
 def do_profile(user):
     p = get_player(user)
     body = (f"👤 <b>{nm(p)}</b>  {rank_title(p)}\n"
@@ -426,17 +445,17 @@ def do_history(user):
         other = esc(row["other_name"] or "بازیکن")
         sent = row["sender_id"] == p["id"]
         if row["kind"] == "steal":
-            label = "🥷 دزدی موفق از" if sent else "🚨 دزدیده شد از حساب شما توسط"
-            sign = "-" if sent else "+"
+            if sent:
+                lines.append(f"🥷 دزدی موفق از <b>{other}</b> — +{row['amount']} سکه")
+            else:
+                lines.append(f"🚨 از حساب شما دزدی شد — -{row['amount']} سکه")
+            continue
         elif row["kind"] == "guard_fine":
             label = "🧾 جریمه دزدی پرداخت‌شده به" if sent else "🛡 پاداش نگهبانی از طرف"
             sign = "-" if sent else "+"
         elif row["kind"] == "referral":
             lines.append(f"🎟 پاداش دعوت یک زیرمجموعه — +{row['amount']} سکه")
             continue
-        elif row["kind"] == "admin_grant":
-            label = "🛠 سکه مدیریتی به" if sent else "🎁 هدیه مدیر از"
-            sign = "+"
         else:
             label = "📤 انتقال به" if sent else "📥 دریافت از"
             sign = "-" if sent else "+"
@@ -647,6 +666,18 @@ def do_steal(user, target):
             VALUES(?, ?, ?, 'steal', ?)""",
             (me["id"], victim["id"], amount, time.time()))
         db.commit()
+    # به قربانی فقط خبر دزدی داده می‌شود؛ هویت دزد نمایش داده نمی‌شود.
+    try:
+        bot.send_message(
+            victim["id"],
+            f"🚨 <b>از حساب شما دزدی شد!</b>\n"
+            f"💸 <b>{amount}</b> سکه برداشته شد.\n"
+            f"💰 موجودی جدید: <b>{victim['coins'] - amount}</b> سکه\n"
+            f"🧱 برای جلوگیری از دزدی بعدی، نگهبانت رو ارتقا بده.",
+            parse_mode="HTML"
+        )
+    except Exception:
+        pass
     return (f"🥷 <b>دزدی موفق بود!</b>\n"
             f"از حساب {nm(victim)} مقدار تصادفی <b>{amount}</b> سکه برداشتی.\n"
             f"🏦 شماره حساب هدف: <code>{victim['account_no']}</code>\n"
@@ -743,7 +774,6 @@ def menu_text(user):
 HELP_TEXT = card("راهنما", (
     "⛏ /mine — جمع کردن سکه (هر ۶۰ ثانیه، رویداد رندوم)\n"
     "🎁 /daily — جایزه روزانه\n"
-    "🌾 /farm — مزرعه و برداشت درآمد ساعتی\n"
     "👤 /profile — سطح، قدرت و تجهیزات\n"
     "🏆 /top — برترین‌ها\n"
     "🛒 /shop — خرید شمشیر، زره، دزد و نگهبان\n"
@@ -753,16 +783,17 @@ HELP_TEXT = card("راهنما", (
     "🎟 /invite — لینک دعوت دوستان؛ هر عضو جدید ۵۰۰ سکه پاداش دارد\n"
     f"🎲 /dice 50 — تاس بنداز؛ اگه از ربات بیشتر بیاری شرطت دو برابر می‌شه\n"
     f"🎰 /slots — اسلات ({SLOT_COST} سکه، جکپات ۲۰ برابر)\n"
-    f"🎯 /arena 50 — دوئل با بازیکن رندوم (تا {ARENA_MAX} سکه)\n\n"
+    f"🎯 /arena 50 — دوئل با بازیکن رندوم (تا {ARENA_MAX} سکه)\n"
+    "🪙 /flip 50 — شیر یا خط\n"
+    f"🎯 /darts 50 — دارت | 🏀 /hoops 50 — بسکتبال | ⚽ /goal 50 — فوتبال | 🎳 /bowl 50 — بولینگ (تا {ARCADE_MAX} سکه)\n\n"
     "👇 این‌ها باید روی پیام یه نفر <b>ریپلای</b> بشن:\n"
     "⚔️ /duel 50 — دوئل تاسی\n"
     "🥷 /steal 12345678 — تلاش برای دزدی از شماره حساب (یا ریپلای)\n"
     f"🎁 /give 50 — سکه دادن ({GIVE_TAX_PERCENT}٪ مالیات)\n\n"
     "💡 هر بازیکن یک شماره حساب ۸ رقمی دارد؛ در لیدربورد هم نمایش داده می‌شود.\n"
     "🛡 اگر نگهبان دزد را بگیرد، جریمه تصادفی از دزد کم و به صاحب حساب داده می‌شود.\n"
-    "🌾 مزرعه از سطح صفر ۱۰۰ سکه در ساعت می‌دهد؛ درآمد ساعتی با هر ارتقا ۵۰ سکه بیشتر می‌شود و هزینه ارتقاها به‌ترتیب ۵۰، ۱۰۰، ۱۵۰ و ... سکه است.\n"
     "🎟 با /invite لینک دعوت بگیر؛ برای هر بازیکن جدید ۵۰۰ سکه پاداش می‌گیری.\n"
-    "💪 امتیاز دوئل = تاس × ۵ + قدرت، پس شمشیر و زره بخر!"))
+    "💪 امتیاز دوئل = تاس × ۵ + قدرت (شمشیر و زره)؛ سطح تاثیری نداره، پس تجهیزات بخر!"))
 
 
 # ---------- دستورات ----------
@@ -812,6 +843,19 @@ def first_name_setup(m):
     reply(m, menu_text(m.from_user), main_markup())
 
 
+@bot.message_handler(commands=["myid"])
+def cmd_myid(m):
+    reply(m, f"آیدی عددی تو: <code>{m.from_user.id}</code>")
+
+
+@bot.message_handler(commands=["backup"])
+def cmd_backup(m):
+    if not ADMIN_ID or m.from_user.id != ADMIN_ID:
+        return
+    ok = backup_to_telegram(force=True)
+    reply(m, "✅ بکاپ فرستاده و پین شد." if ok else "❌ بکاپ نشد؛ لاگ رو ببین.")
+
+
 @bot.message_handler(commands=["invite"])
 def cmd_invite(m):
     reply(m, referral_text(m.from_user), back_markup())
@@ -831,11 +875,6 @@ def cmd_profile(m):
 @bot.message_handler(commands=["mine"])
 def cmd_mine(m):
     reply(m, do_mine(m.from_user), result_markup("m:mine"))
-
-
-@bot.message_handler(commands=["farm"])
-def cmd_farm(m):
-    reply(m, farm_text(m.from_user), farm_markup(m.from_user))
 
 
 @bot.message_handler(commands=["daily"])
@@ -872,97 +911,6 @@ def cmd_transfer(m):
     if not raw_amount.isdigit() or len(raw_amount) > MAX_DIGITS or int(raw_amount) <= 0:
         return reply(m, "❌ مبلغ باید عددی مثبت و حداکثر ۹ رقم باشد.")
     reply(m, do_transfer(m.from_user, account_no, int(raw_amount)), back_markup())
-
-
-@bot.message_handler(func=lambda m: m.from_user and m.from_user.id in admin_state,
-                     content_types=["text"])
-def admin_text_input(m):
-    """ورود رمز، شماره حساب مقصد و مبلغ واریز مدیریتی."""
-    uid = m.from_user.id
-    state = admin_state.get(uid)
-    if not state:
-        return
-
-    raw = (m.text or "").strip()
-    if raw.startswith("/"):
-        admin_state.pop(uid, None)
-        return reply(m, "فرایند ادمین لغو شد.", back_markup())
-
-    if state.get("step") == "password":
-        if not ADMIN_PASSWORD:
-            admin_state.pop(uid, None)
-            return reply(m, "⚙️ رمز ادمین روی سرور تنظیم نشده است. متغیر ADMIN_PASSWORD را در Environment Variables قرار بده.", back_markup())
-        if not hmac.compare_digest(raw, ADMIN_PASSWORD):
-            admin_state.pop(uid, None)
-            return reply(m, "❌ رمز ادمین اشتباه است. برای تلاش دوباره از منو وارد شو.", back_markup())
-        state["step"] = "account"
-        return reply(m, "✅ رمز درست است. شماره حساب ۸ رقمی بازیکنی که می‌خواهی به او سکه بدهی را بفرست:")
-
-    if state.get("step") == "account":
-        if not raw.isdigit() or len(raw) != 8:
-            return reply(m, "❌ شماره حساب باید دقیقاً ۸ رقم باشد. دوباره بفرست:")
-        target = get_by_account(raw)
-        if not target:
-            return reply(m, "❌ این شماره حساب در بازی وجود ندارد. شماره را دوباره بفرست:")
-        if target["id"] == uid:
-            admin_state.pop(uid, None)
-            return reply(m, "⛔ نمی‌توانی به حساب خودت سکه بدهی. فرایند ادمین بسته شد.", back_markup())
-        state["account_no"] = raw
-        state["target_id"] = target["id"]
-        state["step"] = "amount"
-        return reply(m, f"✅ مقصد: <b>{nm(target)}</b>\n🏦 شماره حساب: <code>{raw}</code>\nحالا مبلغ سکه را بفرست:")
-
-    if state.get("step") == "amount":
-        if not raw.isdigit() or len(raw) > 19:
-            return reply(m, "❌ مبلغ باید عدد مثبت باشد و از ظرفیت عددی پایگاه داده بیشتر نباشد. دوباره وارد کن:")
-        amount = int(raw)
-        if amount <= 0 or amount > MAX_SQLITE_INT:
-            return reply(m, "❌ مبلغ خارج از محدوده‌ی مجاز است. دوباره وارد کن:")
-
-        with lock:
-            try:
-                db.execute("BEGIN IMMEDIATE")
-                actor = db.execute("SELECT * FROM players WHERE id=?", (uid,)).fetchone()
-                target = db.execute("SELECT * FROM players WHERE id=?", (state["target_id"],)).fetchone()
-                if not actor or not target or target["account_no"] != state["account_no"]:
-                    db.rollback()
-                    admin_state.pop(uid, None)
-                    return reply(m, "❌ حساب مقصد پیدا نشد؛ عملیات لغو شد.", back_markup())
-                if target["id"] == actor["id"]:
-                    db.rollback()
-                    admin_state.pop(uid, None)
-                    return reply(m, "⛔ امکان واریز به حساب خودت وجود ندارد.", back_markup())
-                if int(target["coins"]) > MAX_SQLITE_INT - amount:
-                    db.rollback()
-                    return reply(m, "❌ موجودی مقصد با این مبلغ از ظرفیت پایگاه داده بیشتر می‌شود. مبلغ کمتری وارد کن:")
-                db.execute("UPDATE players SET coins=coins+? WHERE id=?", (amount, target["id"]))
-                db.execute(
-                    "INSERT INTO coin_transactions(sender_id, receiver_id, amount, kind, created_at) "
-                    "VALUES(?, ?, ?, 'admin_grant', ?)",
-                    (uid, target["id"], amount, time.time())
-                )
-                db.commit()
-                new_balance = int(target["coins"]) + amount
-                target_name = nm(target)
-                target_account = target["account_no"]
-            except Exception:
-                db.rollback()
-                raise
-
-        admin_state.pop(uid, None)
-        try:
-            bot.send_message(
-                state["target_id"],
-                f"🎁 <b>واریز سکه از طرف مدیر</b>\nمبلغ <b>{amount}</b> سکه به حسابت اضافه شد.\n"
-                f"💰 موجودی جدید: <b>{new_balance}</b> سکه",
-                parse_mode="HTML"
-            )
-        except Exception:
-            pass
-        return reply(m, f"✅ واریز مدیریتی انجام شد.\n👤 گیرنده: <b>{target_name}</b>\n"
-                        f"🏦 شماره حساب: <code>{target_account}</code>\n"
-                        f"💰 مبلغ: <b>+{amount}</b> سکه\nموجودی جدید گیرنده: <b>{new_balance}</b> سکه",
-                     back_markup())
 
 
 @bot.message_handler(func=lambda m: m.from_user and m.from_user.id in bank_transfer_state,
@@ -1136,59 +1084,6 @@ def bank_flow_callback(c):
     return edit(c, result, back_markup())
 
 
-@bot.callback_query_handler(func=lambda c: c.data in ("farm:collect", "farm:upgrade"))
-def farm_callback(c):
-    uid = c.from_user.id
-    get_player(c.from_user)
-    now = time.time()
-    with lock:
-        try:
-            db.execute("BEGIN IMMEDIATE")
-            p = db.execute("SELECT * FROM players WHERE id=?", (uid,)).fetchone()
-            last = float(p["farm_last_claim"] or now)
-            elapsed = max(0.0, now - last)
-            hours = int(elapsed // 3600)
-            earned = hours * farm_income_per_hour(p)
-            new_last = last + hours * 3600
-
-            # ابتدا درآمد ساعت‌های کامل با نرخ قبلی تسویه می‌شود؛ سپس ارتقا اعمال می‌شود.
-            if earned:
-                db.execute(
-                    "UPDATE players SET coins=coins+?, farm_last_claim=? WHERE id=?",
-                    (earned, new_last, uid)
-                )
-            if c.data == "farm:collect":
-                if not earned:
-                    db.rollback()
-                    bot.answer_callback_query(c.id, "هنوز یک ساعت کامل نگذشته است.")
-                    return edit(c, farm_text(c.from_user), farm_markup(c.from_user))
-                db.commit()
-                message = f"✅ درآمد مزرعه برداشت شد: +{earned} سکه ({hours} ساعت)."
-            else:
-                # اگر درآمد آماده وجود داشته باشد، آن را با نرخ قبلی ثبت می‌کنیم.
-                current = db.execute("SELECT coins FROM players WHERE id=?", (uid,)).fetchone()
-                upgrade_cost = farm_upgrade_cost(p["farm_level"])
-                if int(current["coins"]) < upgrade_cost:
-                    db.commit()
-                    bot.answer_callback_query(c.id, f"برای ارتقای بعدی {upgrade_cost} سکه لازم داری.")
-                    return edit(c, farm_text(c.from_user), farm_markup(c.from_user))
-                db.execute(
-                    "UPDATE players SET coins=coins-?, farm_level=farm_level+1 WHERE id=?",
-                    (upgrade_cost, uid)
-                )
-                db.commit()
-                message = (f"✅ مزرعه ارتقا یافت!\nهزینه: {upgrade_cost} سکه\n"
-                           f"درآمد قبلی تسویه‌شده: +{earned} سکه\n"
-                           f"درآمد ساعتی جدید: {farm_income_per_hour(get_by_id(uid))} سکه")
-        except Exception:
-            db.rollback()
-            raise
-
-    bot.answer_callback_query(c.id, "انجام شد.")
-    p = get_by_id(uid)
-    edit(c, message + "\n\n" + farm_text(c.from_user), farm_markup(c.from_user))
-
-
 @bot.callback_query_handler(func=lambda c: c.data.startswith(("m:", "d:", "a:")))
 def menu_router(c):
     kind, _, arg = c.data.partition(":")
@@ -1217,12 +1112,6 @@ def menu_router(c):
             edit(c, do_history(user), back_markup())
         elif arg == "referral":
             edit(c, referral_text(user), back_markup())
-        elif arg == "farm":
-            edit(c, farm_text(user), farm_markup(user))
-        elif arg == "admin":
-            bank_transfer_state.pop(user.id, None)
-            admin_state[user.id] = {"step": "password"}
-            edit(c, card("ورود ادمین", "🔐 رمز ادمین را ارسال کن.\nبرای لغو، /cancel را بفرست."), back_markup())
         elif arg == "help":
             edit(c, HELP_TEXT, back_markup())
         elif arg == "shop":
@@ -1235,6 +1124,14 @@ def menu_router(c):
         elif arg == "arena":
             edit(c, card("آرنا", f"🎯 شرط رو انتخاب کن (حداکثر {ARENA_MAX}):"),
                  bet_markup("a", [20, 50, 100, 200]))
+        elif arg == "games":
+            edit(c, card("بازی‌های بیشتر", "یه بازی انتخاب کن 👇"), games_markup())
+        elif arg == "flip":
+            edit(c, card("شیر یا خط", "🪙 شرط رو انتخاب کن:"), bet_markup("fb", [10, 50, 100, 500]))
+        elif arg in ARCADE:
+            _, title, _t = ARCADE[arg]
+            edit(c, card(title, f"شرط رو انتخاب کن (حداکثر {ARCADE_MAX}):"),
+                 bet_markup(f"x:{arg}", [10, 50, 100, 500]))
         return
     if not arg.isdigit() or not (0 < int(arg) < 10 ** MAX_DIGITS):
         return
@@ -1243,6 +1140,117 @@ def menu_router(c):
         say(chat, do_dice(user, chat, bet), result_markup(f"d:{bet}"))
     elif kind == "a":
         say(chat, do_arena(user, chat, bet), result_markup(f"a:{bet}"))
+
+
+# ---------- بازی‌های جدید ----------
+# بازی: (ایموجی تلگرام, اسم, {عدد تاس: ضریب برگشت کل شرط})
+ARCADE = {
+    "darts": ("🎯", "دارت", {6: 4, 5: 2}),
+    "hoops": ("🏀", "بسکتبال", {5: 2.5, 4: 2.5}),
+    "goal": ("⚽", "فوتبال", {5: 1.65, 4: 1.65, 3: 1.65}),
+    "bowl": ("🎳", "بولینگ", {6: 5, 5: 1}),
+}
+
+
+def games_markup():
+    kb = types.InlineKeyboardMarkup()
+    kb.add(btn("🪙 شیر یا خط", "m:flip"), btn("🎯 دارت", "m:darts"))
+    kb.add(btn("🏀 بسکتبال", "m:hoops"), btn("⚽ فوتبال", "m:goal"))
+    kb.add(btn("🎳 بولینگ", "m:bowl"))
+    kb.add(btn("🔙 منو", "m:menu"))
+    return kb
+
+
+def do_arcade(user, chat_id, game, bet):
+    emoji, title, table = ARCADE[game]
+    if bet > ARCADE_MAX:
+        return f"❌ حداکثر شرط {title} {ARCADE_MAX} سکه‌ست."
+    p = get_player(user)
+    if p["coins"] < bet:
+        return "❌ سکه کافی نداری."
+    if too_fast(p["id"]):
+        return "⏳ یکم صبر کن."
+    if not spend(p["id"], bet):
+        return "❌ سکه کافی نداری."
+    v = roll(chat_id, emoji)
+    time.sleep(4)
+    mult = table.get(v, 0)
+    if mult <= 0:
+        return f"{emoji} {title}: نشد! 💀 <b>-{bet}</b> سکه"
+    payout = int(bet * mult)
+    add(p["id"], payout, 3 if payout > bet else 1)
+    if payout <= bet:
+        return f"{emoji} {title}: مساوی! 🤝 شرطت برگشت."
+    return f"{emoji} {title}: عالی بود! 🎉 <b>+{payout - bet}</b> سکه"
+
+
+def do_flip(user, side, bet):
+    if bet > ARCADE_MAX:
+        return f"❌ حداکثر شرط {ARCADE_MAX} سکه‌ست."
+    p = get_player(user)
+    if p["coins"] < bet:
+        return "❌ سکه کافی نداری."
+    if too_fast(p["id"]):
+        return "⏳ یکم صبر کن."
+    if not spend(p["id"], bet):
+        return "❌ سکه کافی نداری."
+    result = random.choice(["h", "t"])
+    names = {"h": "🦅 شیر", "t": "🪙 خط"}
+    head = f"🪙 سکه چرخید... <b>{names[result]}</b> اومد!\n{LINE}\n"
+    if result == side:
+        payout = bet * 19 // 10
+        add(p["id"], payout, 2)
+        if payout <= bet:
+            return head + "🤝 شرطت برگشت."
+        return head + f"🏆 بردی! <b>+{payout - bet}</b> سکه 🎉"
+    return head + f"💀 باختی! <b>-{bet}</b> سکه"
+
+
+@bot.message_handler(commands=["flip"])
+def cmd_flip(m):
+    bet = parse_amount(m)
+    if bet is None:
+        return reply(m, "بنویس: /flip 50")
+    kb = types.InlineKeyboardMarkup()
+    kb.add(btn("🦅 شیر", f"f:h:{bet}"), btn("🪙 خط", f"f:t:{bet}"))
+    reply(m, card("شیر یا خط", f"💰 شرط: {bet}\nیکی رو انتخاب کن:"), kb)
+
+
+@bot.message_handler(commands=list(ARCADE))
+def cmd_arcade(m):
+    game = (m.text or "").split()[0].lstrip("/").split("@")[0].lower()
+    bet = parse_amount(m)
+    if game not in ARCADE or bet is None:
+        return reply(m, f"بنویس: /{game} 50")
+    reply(m, do_arcade(m.from_user, m.chat.id, game, bet), result_markup(f"x:{game}:{bet}"))
+
+
+@bot.callback_query_handler(func=lambda c: c.data.startswith(("fb:", "f:", "x:")))
+def new_games_callback(c):
+    parts = c.data.split(":")
+    try:
+        bot.answer_callback_query(c.id)
+    except Exception:
+        pass
+    chat = c.message.chat.id
+    try:
+        if parts[0] == "fb":
+            bet = int(parts[1])
+            kb = types.InlineKeyboardMarkup()
+            kb.add(btn("🦅 شیر", f"f:h:{bet}"), btn("🪙 خط", f"f:t:{bet}"))
+            kb.add(btn("🔙 منو", "m:menu"))
+            return edit(c, card("شیر یا خط", f"💰 شرط: {bet}\nیکی رو انتخاب کن:"), kb)
+        if parts[0] == "f":
+            side, bet = parts[1], int(parts[2])
+            if side not in ("h", "t") or not (0 < bet < 10 ** MAX_DIGITS):
+                return
+            return say(chat, do_flip(c.from_user, side, bet), result_markup(f"fb:{bet}"))
+        game, bet = parts[1], int(parts[2])
+        if game not in ARCADE or not (0 < bet < 10 ** MAX_DIGITS):
+            return
+        say(chat, do_arcade(c.from_user, chat, game, bet), result_markup(f"x:{game}:{bet}"))
+    except (ValueError, IndexError):
+        return
 
 
 # ---------- فروشگاه ----------
@@ -1299,7 +1307,6 @@ if __name__ == "__main__":
             types.BotCommand("start", "🎮 منوی اصلی"),
             types.BotCommand("mine", "⛏ جمع کردن سکه"),
             types.BotCommand("daily", "🎁 جایزه روزانه"),
-            types.BotCommand("farm", "🌾 مزرعه و درآمد ساعتی"),
             types.BotCommand("profile", "👤 پروفایل"),
             types.BotCommand("top", "🏆 برترین‌ها + شماره حساب"),
             types.BotCommand("bank", "🏦 شماره حساب و موجودی"),
@@ -1310,6 +1317,11 @@ if __name__ == "__main__":
             types.BotCommand("dice", "🎲 تاس (مثلاً /dice 50)"),
             types.BotCommand("slots", "🎰 اسلات"),
             types.BotCommand("arena", "🎯 آرنا (مثلاً /arena 50)"),
+            types.BotCommand("flip", "🪙 شیر یا خط (مثلاً /flip 50)"),
+            types.BotCommand("darts", "🎯 دارت"),
+            types.BotCommand("hoops", "🏀 بسکتبال"),
+            types.BotCommand("goal", "⚽ فوتبال"),
+            types.BotCommand("bowl", "🎳 بولینگ"),
             types.BotCommand("duel", "⚔️ دوئل (ریپلای + /duel 50)"),
             types.BotCommand("steal", "🥷 دزدی با شماره حساب"),
             types.BotCommand("give", "🎁 سکه دادن (ریپلای + /give 50)"),
@@ -1317,5 +1329,23 @@ if __name__ == "__main__":
         ])
     except Exception as e:
         print("set_my_commands failed:", e)
-    print("Bot is running...")
+    def backup_loop():
+        while True:
+            time.sleep(300)
+            backup_to_telegram()
+
+    def _on_term(signum, frame):
+        # هاست موقع آپدیت SIGTERM می‌فرسته؛ قبل از خاموشی آخرین بکاپ رو می‌فرستیم.
+        try:
+            backup_to_telegram(force=True)
+        finally:
+            os._exit(0)
+
+    try:
+        signal.signal(signal.SIGTERM, _on_term)
+    except Exception:
+        pass
+    threading.Thread(target=backup_loop, daemon=True).start()
+    threading.Thread(target=backup_to_telegram, daemon=True).start()
+    print("Bot is running... DB:", DB_PATH)
     bot.infinity_polling()

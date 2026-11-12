@@ -1,0 +1,4 @@
+game.db
+game.db-*
+*.bak
+__pycache__/
