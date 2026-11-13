@@ -338,7 +338,7 @@ PVP_BET_INPUT = {}       # user_id -> {target_id, game, created}
 MAX_SQLITE_INT = 9_223_372_036_854_775_807  # must be defined before ARCADE_MAX
 MINE_COOLDOWN = 60
 DAILY_COOLDOWN = 24 * 3600
-STEAL_COOLDOWN = 30 * 60  # هر ۳۰ دقیقه یک‌بار
+STEAL_COOLDOWN = 15 * 60  # هر ۱۵ دقیقه یک‌بار
 TRANSFER_FEE_PERCENT = 0
 DAILY_REWARD = 200
 ARENA_MAX = 200
@@ -476,20 +476,20 @@ def btn(text, data):
 
 def main_markup(user_id=None):
     kb = types.InlineKeyboardMarkup()
-    kb.add(btn("⛏ معدن سکه", "m:mine"), btn("🎁 جایزه روزانه", "m:daily"))
-    kb.add(btn("👤 پروفایل", "m:profile"), btn("🏆 رتبه‌بندی", "m:top"))
-    kb.add(btn("🎯 آرنای دونفره", "m:arena"), btn("💻 حمله سایبری", "m:cyber"))
-    kb.add(btn("🎰 اسلات شرطی", "m:slots"), btn("🎲 بازی‌های بیشتر", "m:games"))
-    kb.add(btn("🛠 ارتقای تجهیزات", "m:shop"))
-    kb.add(btn("🏦 بانک", "m:bank"), btn("🧾 گردش حساب", "m:history"))
-    kb.add(btn("🌾 مزرعه", "m:farm"))
-    kb.add(btn("🎡 چرخ شانس", "m:wheel"), btn("🔐 صندوق امن", "m:vault"))
-    kb.add(btn("📋 مأموریت‌ها", "m:missions"), btn("🏅 دستاوردها", "m:achievements"))
-    kb.add(btn("🏆 لیگ هفتگی", "m:weekly"), btn("🎟 قرعه‌کشی رایگان", "m:raffle"))
-    kb.add(btn("🎁 کدهای هدیه", "m:giftcodes"), btn("🎟 دعوت دوستان", "m:referral"))
+    kb.add(btn("⛏️ | معدن سکه", "m:mine"), btn("🎁 | جایزه روزانه", "m:daily"))
+    kb.add(btn("👑 پروفایل من", "m:profile"), btn("🏆 تالار قهرمانان", "m:top"))
+    kb.add(btn("⚔️ میدان آرنا", "m:arena"), btn("🟥 عملیات سایبری", "m:cyber"))
+    kb.add(btn("🎰 جکپات اسلات", "m:slots"), btn("🕹️ سالن آرکید", "m:games"))
+    kb.add(btn("⚒️ کارگاه ارتقای تجهیزات", "m:shop"))
+    kb.add(btn("🏛 خزانه و بانک", "m:bank"), btn("📜 سوابق تراکنش", "m:history"))
+    kb.add(btn("🌿 امپراتوری مزرعه", "m:farm"))
+    kb.add(btn("✨ گردونه شانس", "m:wheel"), btn("🛡 گاوصندوق امن", "m:vault"))
+    kb.add(btn("🧭 مأموریت‌های ویژه", "m:missions"), btn("🎖 کلکسیون افتخارات", "m:achievements"))
+    kb.add(btn("🥇 لیگ هفتگی", "m:weekly"), btn("🎟 بخت‌آزمایی رایگان", "m:raffle"))
+    kb.add(btn("🎁 جعبه کدهای هدیه", "m:giftcodes"), btn("🤝 دعوت هم‌تیمی‌ها", "m:referral"))
     if ADMIN_ID and user_id == ADMIN_ID:
-        kb.add(btn("⚙️ پنل ادمین", "m:admin"))
-    kb.add(btn("❓ راهنما", "m:help"))
+        kb.add(btn("🔴 مرکز فرماندهی ادمین", "m:admin"))
+    kb.add(btn("📖 راهنمای بازی", "m:help"))
     if CHANNEL_URL:
         kb.add(types.InlineKeyboardButton("📢 کانال ما", url=CHANNEL_URL))
     return kb
@@ -504,10 +504,10 @@ def back_markup():
 def admin_actions_markup():
     """انتخاب عملیات پنل ادمین با دکمه‌های شیشه‌ای."""
     kb = types.InlineKeyboardMarkup()
-    kb.add(btn("🪙 افزودن سکه", "adminop:coins"), btn("⭐ افزودن XP", "adminop:xp"))
-    kb.add(btn("⛔ بن بازیکن", "adminop:ban"), btn("✅ رفع بن", "adminop:unban"))
-    kb.add(btn("🎁 ساخت کد هدیه", "adminop:gift"), btn("🗑 حذف کد هدیه", "adminop:gift_delete"))
-    kb.add(btn("⚡ رویداد درآمد ۲ برابر", "adminop:event"))
+    kb.add(btn("🪙 مدیریت موجودی", "adminop:coins"), btn("⭐ مدیریت تجربه", "adminop:xp"))
+    kb.add(btn("🚫 محدودسازی حساب", "adminop:ban"), btn("🟢 آزادسازی حساب", "adminop:unban"))
+    kb.add(btn("🎁 صدور کد هدیه", "adminop:gift"), btn("🗑 ابطال کد هدیه", "adminop:gift_delete"))
+    kb.add(btn("⚡ فعال‌سازی رویداد دوبرابر", "adminop:event"))
     kb.add(btn("❌ بستن پنل", "adminop:cancel"))
     return kb
 
@@ -1053,7 +1053,7 @@ def farm_upgrade_cost(level_now):
 def farm_markup(p):
     cost = farm_upgrade_cost(p["farm_level"])
     kb = types.InlineKeyboardMarkup()
-    kb.add(btn("💰 دریافت درآمدِ آماده‌شده", "farm:collect"))
+    kb.add(btn("🌾 برداشت محصول و درآمد", "farm:collect"))
     kb.add(btn(f"⬆️ ارتقا — {cost} سکه (+{FARM_INCOME_STEP} سکه/ساعت، +{FARM_UPGRADE_XP} امتیاز)", "farm:upgrade"))
     kb.add(btn(f"⬆️⬆️ ارتقا تا {FARM_MULTI_UPGRADE} سطح (هر چقدر سکه داری)", "farm:upgrade5"))
     kb.add(btn("🔙 منو", "m:menu"))
@@ -1150,17 +1150,17 @@ def do_bank(user):
 
 def bank_markup():
     kb = types.InlineKeyboardMarkup()
-    kb.add(btn("📤 انتقال سکه", "bankstart"))
-    kb.add(btn("🏦 سپرده‌گذاری", "bankop:deposit"), btn("💸 برداشت سپرده", "bankop:withdraw"))
-    kb.add(btn("🥷 دزدی از حساب", "bankop:steal"))
-    kb.add(btn("🧾 گردش حساب", "m:history"), btn("🔄 تازه‌سازی", "m:bank"))
+    kb.add(btn("💸 انتقال بین‌حسابی", "bankstart"))
+    kb.add(btn("📥 سرمایه‌گذاری سپرده", "bankop:deposit"), btn("📤 برداشت سپرده", "bankop:withdraw"))
+    kb.add(btn("🕵️ عملیات سرقت", "bankop:steal"))
+    kb.add(btn("📑 گزارش تراکنش‌ها", "m:history"), btn("♻️ به‌روزرسانی", "m:bank"))
     kb.add(btn("🔙 منو", "m:menu"))
     return kb
 
 
 def cyber_markup():
     kb = types.InlineKeyboardMarkup()
-    kb.add(btn("💻 شروع حمله سایبری", "bankop:cyber"))
+    kb.add(btn("🖥️ اجرای عملیات سایبری", "bankop:cyber"))
     kb.add(btn("🔙 منو", "m:menu"))
     return kb
 
@@ -1379,7 +1379,7 @@ def do_steal(user, target):
         wait = STEAL_COOLDOWN - (time.time() - me["last_steal"])
         if wait > 0:
             minutes, seconds = divmod(int(wait), 60)
-            return f"⏳ دزدی بعدی پس از {minutes} دقیقه و {seconds} ثانیه فعال می‌شود. فاصله هر تلاش ۳۰ دقیقه است."
+            return f"⏳ دزدی بعدی پس از {minutes} دقیقه و {seconds} ثانیه فعال می‌شود. فاصله هر تلاش ۱۵ دقیقه است."
         if int(victim["coins"] or 0) < 2:
             return "😅 موجودی هدف برای دزدی کافی نیست؛ هیچ‌وقت تمام موجودی بازیکن برداشته نمی‌شود."
 
@@ -1655,7 +1655,7 @@ HELP_TEXT = card("راهنمای بازی | GAME GUIDE", (
     "🧾 /history — گردش حساب | /invite — لینک دعوت\n"
     "🎯 /arena 12345678 — دعوت به آرنا؛ مبلغ شرط را وارد می‌کنی و حریف با موجودی کافی قبول می‌کند\n"
     "💻 /cyber 12345678 — هزینه ۵۰٬۰۰۰ سکه؛ تمام پیام‌ها، فرمان‌ها و دکمه‌های ربات هدف را ۲۴ ساعت مسدود می‌کند\n"
-    "🥷 /steal 12345678 — تلاش برای دزدی؛ هر ۳۰ دقیقه یک‌بار\n"
+    "🥷 /steal 12345678 — تلاش برای دزدی؛ هر ۱۵ دقیقه یک‌بار\n"
     "🎰 /slots مبلغ — اسلات با شرط دلخواه؛ هر ۶ ساعت یک‌بار\n"
     "🎡 /wheel — چرخ پاداش | /dice مبلغ — تاس با ربات | /flip مبلغ — شیر یا خط\n"
     "🎮 /darts مبلغ | /hoops مبلغ | /goal مبلغ | /bowl مبلغ | /rps مبلغ — بازی با ربات و شرط دلخواه\n"
@@ -2852,11 +2852,11 @@ ARCADE = {
 
 def games_markup():
     kb = types.InlineKeyboardMarkup()
-    kb.add(btn("🪙 شیر یا خط", "m:flip"), btn("🎯 دارت", "m:darts"))
-    kb.add(btn("🏀 بسکتبال", "m:hoops"), btn("⚽ فوتبال", "m:goal"))
-    kb.add(btn("🎳 بولینگ", "m:bowl"), btn("✊ سنگ کاغذ قیچی", "m:rps"))
-    kb.add(btn("🃏 بلک‌جک", "m:blackjack"), btn("🎡 رولت", "m:roulette"))
-    kb.add(btn("🔢 حدس عدد", "m:guess"))
+    kb.add(btn("🪙 دوئل شیر یا خط", "m:flip"), btn("🎯 چالش دارت", "m:darts"))
+    kb.add(btn("🏀 مسابقه بسکتبال", "m:hoops"), btn("⚽ ضربه پنالتی", "m:goal"))
+    kb.add(btn("🎳 سالن بولینگ", "m:bowl"), btn("✊ نبرد سنگ‌کاغذقیچی", "m:rps"))
+    kb.add(btn("🃏 میز بلک‌جک", "m:blackjack"), btn("🎡 میز رولت", "m:roulette"))
+    kb.add(btn("🔮 معمای حدس عدد", "m:guess"))
     kb.add(btn("🔙 منو", "m:menu"))
     return kb
 
@@ -3072,8 +3072,8 @@ def vault_page(user):
         "برای ارتقای تجهیزات و انتقال سکه، ابتدا از صندوق برداشت کن."
     )
     kb = types.InlineKeyboardMarkup()
-    kb.add(btn("📥 واریز ۱۰۰", "v:dep:100"), btn("📥 واریز ۵۰۰", "v:dep:500"), btn("📥 واریز همه", "v:dep:all"))
-    kb.add(btn("📤 برداشت ۱۰۰", "v:wd:100"), btn("📤 برداشت ۵۰۰", "v:wd:500"), btn("📤 برداشت همه", "v:wd:all"))
+    kb.add(btn("🔒 سپرده ۱۰۰", "v:dep:100"), btn("🔒 سپرده ۵۰۰", "v:dep:500"), btn("🔒 سپرده همه", "v:dep:all"))
+    kb.add(btn("🔓 برداشت ۱۰۰", "v:wd:100"), btn("🔓 برداشت ۵۰۰", "v:wd:500"), btn("🔓 برداشت همه", "v:wd:all"))
     kb.add(btn("🔙 منو", "m:menu"))
     return card("صندوق امن", body), kb
 
@@ -3085,7 +3085,7 @@ def vault_move(user, direction, amount):
         return "❌ مقدار نامعتبر است."
     with lock:
         db.execute("BEGIN IMMEDIATE")
-        row = db.execute("SELECT coins, vault, guard FROM players WHERE id=?", (uid,)).fetchone()
+        row = db.execute("SELECT coins, vault, guard, vault_level FROM players WHERE id=?", (uid,)).fetchone()
         if not row:
             db.rollback()
             return "❌ حساب پیدا نشد."
@@ -3122,18 +3122,29 @@ def cmd_vault(m):
     reply(m, text, kb)
 
 
-@bot.callback_query_handler(func=lambda c: c.data.startswith("v:"))
+@bot.callback_query_handler(func=lambda c: bool(c.data and c.data.startswith("v:")))
 def vault_callback(c):
-    parts = c.data.split(":")
-    try:
-        bot.answer_callback_query(c.id)
-    except Exception:
-        pass
-    if len(parts) != 3 or parts[1] not in ("dep", "wd"):
+    parts = (c.data or "").split(":")
+    if len(parts) != 3 or parts[1] not in ("dep", "wd") or not c.from_user:
+        try:
+            bot.answer_callback_query(c.id, "دکمه نامعتبر است.", show_alert=True)
+        except Exception:
+            pass
         return
-    msg = vault_move(c.from_user, parts[1], parts[2])
-    page, kb = vault_page(c.from_user)
-    edit(c, msg + "\n\n" + page, kb)
+    try:
+        msg = vault_move(c.from_user, parts[1], parts[2])
+        page, kb = vault_page(c.from_user)
+        try:
+            bot.answer_callback_query(c.id, "عملیات صندوق انجام شد.")
+        except Exception:
+            pass
+        edit(c, msg + "\n\n" + page, kb)
+    except Exception as e:
+        try:
+            bot.answer_callback_query(c.id, "خطا در عملیات صندوق؛ دوباره تلاش کن.", show_alert=True)
+        except Exception:
+            pass
+        print("vault_callback error:", repr(e))
 
 
 # ---------- سنگ کاغذ قیچی ----------
