@@ -76,12 +76,12 @@ PLAYER_EXTRA_COLUMNS = (
     "farm_last_claim REAL DEFAULT 0",
     # --- ستون‌های نسخه‌ی جدید ---
     "daily_streak INTEGER DEFAULT 0", "pickaxe INTEGER DEFAULT 0",
-    "last_wheel REAL DEFAULT 0", "vault INTEGER DEFAULT 0",
+    "last_wheel REAL DEFAULT 0", "vault INTEGER DEFAULT 0", "vault_level INTEGER DEFAULT 0",
     "mine_count INTEGER DEFAULT 0",
     "last_slots REAL DEFAULT 0",
     "last_cyber REAL DEFAULT 0",
     "cyber_lock_until REAL DEFAULT 0",
-    "last_seen REAL DEFAULT 0",
+    "cyber_attacker_id INTEGER DEFAULT 0", "cyber_attacker_name TEXT DEFAULT ''",
 )
 
 
@@ -117,6 +117,9 @@ def init_schema():
                 (make_account_number(), old_player["id"])
             )
         db.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_players_account_no ON players(account_no)")
+        # بازار و محصولات مزرعه حذف شده‌اند؛ جدول‌های قدیمی این دو قابلیت هم پاک می‌شوند.
+        db.execute("DROP TABLE IF EXISTS market_listings")
+        db.execute("DROP TABLE IF EXISTS farm_crop_state")
         db.execute("CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY, value TEXT)")
         if not ADMIN_ID:
             _saved_admin = db.execute("SELECT value FROM settings WHERE key='admin_id'").fetchone()
@@ -177,14 +180,6 @@ def init_schema():
             user_id INTEGER PRIMARY KEY, reason TEXT DEFAULT '', created_at REAL NOT NULL)""")
         db.execute("""CREATE TABLE IF NOT EXISTS bank_deposits(
             user_id INTEGER PRIMARY KEY, amount INTEGER DEFAULT 0, last_interest REAL NOT NULL)""")
-        db.execute("""CREATE TABLE IF NOT EXISTS market_listings(
-            id INTEGER PRIMARY KEY AUTOINCREMENT, seller_id INTEGER NOT NULL, item TEXT NOT NULL,
-            quantity INTEGER NOT NULL, unit_price INTEGER NOT NULL, created_at REAL NOT NULL, active INTEGER DEFAULT 1)""")
-        db.execute("CREATE INDEX IF NOT EXISTS idx_market_active ON market_listings(active, id)")
-        # شمشیر و زره از نسخه جدید حذف شده‌اند؛ پیشنهادهای قدیمی آن‌ها دیگر قابل خرید نیست.
-        db.execute("UPDATE market_listings SET active=0 WHERE item IN ('sword', 'armor')")
-        db.execute("""CREATE TABLE IF NOT EXISTS farm_crop_state(
-            user_id INTEGER PRIMARY KEY, crop TEXT DEFAULT 'wheat', last_claim REAL NOT NULL)""")
         db.execute("""CREATE TABLE IF NOT EXISTS weekly_points(
             user_id INTEGER NOT NULL, week_key TEXT NOT NULL, points INTEGER DEFAULT 0,
             PRIMARY KEY(user_id, week_key))""")
@@ -229,16 +224,49 @@ def is_banned(uid):
         return db.execute("SELECT 1 FROM banned_players WHERE user_id=?", (uid,)).fetchone() is not None
 
 
-# این دو فیلتر قبل از همه هندلرهای پیام و دکمه ثبت می‌شوند تا بن واقعاً اعمال شود.
-@bot.message_handler(func=lambda m: bool(m.from_user and is_banned(m.from_user.id)),
-                     content_types=["text", "photo", "document", "sticker", "audio", "video", "voice"])
-def block_banned_message(m):
-    reply(m, "⛔ دسترسی این حساب به بازی توسط مدیریت مسدود شده است.")
+# این فیلترها قبل از همه هندلرها ثبت می‌شوند تا بن و محدودیت سایبری سراسری باشند.
+RESTRICTED_MESSAGE_TYPES = [
+    "text", "audio", "document", "animation", "game", "photo", "sticker",
+    "video", "video_note", "voice", "location", "contact", "venue", "dice",
+    "new_chat_members", "left_chat_member", "new_chat_title", "new_chat_photo",
+    "delete_chat_photo", "group_chat_created", "supergroup_chat_created",
+    "channel_chat_created", "migrate_to_chat_id", "migrate_from_chat_id",
+    "pinned_message", "invoice", "successful_payment", "connected_website",
+    "poll", "passport_data", "proximity_alert_triggered", "video_chat_scheduled",
+    "video_chat_started", "video_chat_ended", "video_chat_participants_invited",
+    "web_app_data", "message_auto_delete_timer_changed", "forum_topic_created",
+    "forum_topic_closed", "forum_topic_reopened", "forum_topic_edited",
+    "general_forum_topic_hidden", "general_forum_topic_unhidden",
+    "write_access_allowed", "user_shared", "chat_shared", "story",
+]
 
 
-@bot.callback_query_handler(func=lambda c: bool(c.from_user and is_banned(c.from_user.id)))
-def block_banned_callback(c):
-    bot.answer_callback_query(c.id, "⛔ دسترسی این حساب مسدود است.", show_alert=True)
+@bot.message_handler(
+    func=lambda m: bool(m.from_user and (is_banned(m.from_user.id) or is_cyber_restricted(m.from_user.id))),
+    content_types=RESTRICTED_MESSAGE_TYPES,
+)
+def block_restricted_message(m):
+    if is_banned(m.from_user.id):
+        return reply(m, "⛔ دسترسی این حساب به بازی توسط مدیریت مسدود شده است.")
+    reply(m, cyber_restriction_text(m.from_user.id))
+
+
+@bot.callback_query_handler(func=lambda c: bool(c.from_user and (is_banned(c.from_user.id) or is_cyber_restricted(c.from_user.id))))
+def block_restricted_callback(c):
+    if is_banned(c.from_user.id):
+        return bot.answer_callback_query(c.id, "⛔ دسترسی این حساب مسدود است.", show_alert=True)
+    player = get_by_id(c.from_user.id)
+    attacker = (player["cyber_attacker_name"] or "نامشخص") if player else "نامشخص"
+    attacker_id = int(player["cyber_attacker_id"] or 0) if player else 0
+    attacker_player = get_by_id(attacker_id) if attacker_id else None
+    attacker_account = (attacker_player["account_no"] or "—") if attacker_player else "—"
+    short_text = f"🔒 دسترسی محدود است | حمله‌کننده: {attacker} | حساب: {attacker_account}"
+    bot.answer_callback_query(c.id, short_text[:195], show_alert=True)
+
+
+@bot.message_handler(commands=["market", "sell", "buy", "crops"])
+def removed_market_products_commands(m):
+    return reply(m, "🗑 بخش‌های بازار و محصولات از بازی حذف شده‌اند.", main_markup(m.from_user.id))
 
 
 _backup_state = {"hash": None, "msg_id": None}
@@ -295,17 +323,20 @@ name_setup_state = set()  # برای سازگاری با نشست‌های قد�
 admin_flow_state = {}  # فقط ادمین: ورود رمز -> شماره حساب/آیدی -> مقدار XP
 admin_login_lockout = {}  # جلوگیری از حدس‌زدن رمز
 
+MAX_SQLITE_INT = 9_223_372_036_854_775_807  # must be defined before ARCADE_MAX
 MINE_COOLDOWN = 60
 DAILY_COOLDOWN = 24 * 3600
-STEAL_COOLDOWN = 300
+STEAL_COOLDOWN = 30 * 60  # هر ۳۰ دقیقه یک‌بار
 TRANSFER_FEE_PERCENT = 0
 DAILY_REWARD = 200
 ARENA_MAX = 200
-MAX_UPGRADE = 10
-ARCADE_MAX = 500
+EQUIPMENT_MAX_LEVEL = 100  # دزد، نگهبان و کلنگ تا سطح ۱۰۰
+VAULT_MAX_LEVEL = 20       # صندوق امن جداگانه تا سطح ۲۰
+MAX_UPGRADE = EQUIPMENT_MAX_LEVEL  # سازگاری با نسخه‌های قدیمی
+ARCADE_MAX = MAX_SQLITE_INT  # محدودیت فقط موجودی بازیکن و ظرفیت SQLite است
 SLOT_COST = 0  # اسلات رایگان است
 SLOTS_COOLDOWN = 6 * 3600
-CYBER_COST = 25_000
+CYBER_COST = 5_000
 CYBER_COOLDOWN = 24 * 3600
 CYBER_LOCK_SECONDS = 24 * 3600
 GIVE_TAX_PERCENT = 5
@@ -336,7 +367,6 @@ PICKAXE_BONUS = 3                # هر سطح کلنگ، ۳ سکه به هر م
 ADMIN_SESSION_SECONDS = 600
 ADMIN_MAX_ATTEMPTS = 5
 ADMIN_LOCKOUT_SECONDS = 900
-MAX_SQLITE_INT = 9_223_372_036_854_775_807
 LINE = "━━━━━━━━━━━━━━"
 FACES = "⚀⚁⚂⚃⚄⚅"
 
@@ -438,9 +468,9 @@ def main_markup(user_id=None):
     kb.add(btn("👤 پروفایل", "m:profile"), btn("🏆 رتبه‌بندی", "m:top"))
     kb.add(btn("🎯 آرنای دونفره", "m:arena"), btn("💻 حمله سایبری", "m:cyber"))
     kb.add(btn("🎰 اسلات رایگان", "m:slots"), btn("🎲 بازی‌های بیشتر", "m:games"))
-    kb.add(btn("🛒 فروشگاه", "m:shop"), btn("🛍 بازار", "m:market"))
+    kb.add(btn("🛠 ارتقای تجهیزات", "m:shop"))
     kb.add(btn("🏦 بانک", "m:bank"), btn("🧾 گردش حساب", "m:history"))
-    kb.add(btn("🌾 مزرعه", "m:farm"), btn("🌱 محصولات", "m:crops"))
+    kb.add(btn("🌾 مزرعه", "m:farm"))
     kb.add(btn("🎡 چرخ شانس", "m:wheel"), btn("🔐 صندوق امن", "m:vault"))
     kb.add(btn("📋 مأموریت‌ها", "m:missions"), btn("🏅 دستاوردها", "m:achievements"))
     kb.add(btn("🏆 لیگ هفتگی", "m:weekly"), btn("🎟 قرعه‌کشی رایگان", "m:raffle"))
@@ -493,13 +523,6 @@ def bet_markup(prefix, amounts):
 
 
 # ---------- منطق بازی ----------
-def _mark_player_active(uid):
-    """آخرین فعالیت بازیکن داخل ربات را ثبت می‌کند؛ وضعیت آنلاین تلگرام را نمی‌خواند."""
-    with lock:
-        db.execute("UPDATE players SET last_seen=? WHERE id=?", (time.time(), int(uid)))
-        db.commit()
-
-
 def get_player(user):
     with lock:
         current = db.execute(
@@ -518,8 +541,8 @@ def get_player(user):
             )
         # نام همه‌ی کاربران (حتی حساب‌های قدیمی) از یوزرنیم فعلی تلگرام به‌روز می‌شود.
         # شماره حساب و موجودی دست‌نخورده می‌مانند.
-        db.execute("UPDATE players SET name=?, custom_name=0, last_seen=? WHERE id=?",
-                   (display_name, time.time(), user.id))
+        db.execute("UPDATE players SET name=?, custom_name=0 WHERE id=?",
+                   (display_name, user.id))
         # حساب تازه باید از همین لحظه شروع به جمع‌کردن درآمد ساعتی کند.
         farm_clock = db.execute("SELECT farm_last_claim FROM players WHERE id=?", (user.id,)).fetchone()
         if farm_clock and (farm_clock["farm_last_claim"] is None or farm_clock["farm_last_claim"] <= 0):
@@ -555,7 +578,7 @@ def resolve_player_identifier(value):
 
 
 def is_cyber_restricted(uid):
-    """محدودیت حمله سایبری فقط ورود به آرنا را متوقف می‌کند، نه کل ربات را."""
+    """تا پایان زمان قفل سایبری، تمام پیام‌ها و دکمه‌های بازیکن مسدود می‌شوند."""
     player = get_by_id(uid)
     return bool(player and float(player["cyber_lock_until"] or 0) > time.time())
 
@@ -564,11 +587,18 @@ def cyber_restriction_text(uid):
     player = get_by_id(uid)
     until = float(player["cyber_lock_until"] or 0) if player else 0
     if until <= time.time():
-        return "✅ محدودیت آرنا تمام شده است."
-    left = int(until - time.time())
-    return (f"🔒 ورود به آرنا تا <b>{time.strftime('%Y-%m-%d %H:%M', time.localtime(until))}</b> محدود است "
-            f"(حدود {left // 3600} ساعت و {(left % 3600) // 60} دقیقه).\n"
-            "✅ معدن، بانک، انتقال، مزرعه و بقیه بخش‌های ربات همچنان در دسترس هستند.")
+        return "✅ محدودیت حمله سایبری تمام شده است."
+    left = max(0, int(until - time.time()))
+    attacker_name = (player["cyber_attacker_name"] or "نامشخص") if player else "نامشخص"
+    attacker_id = int(player["cyber_attacker_id"] or 0) if player else 0
+    attacker = get_by_id(attacker_id) if attacker_id else None
+    attacker_account = attacker["account_no"] if attacker else "—"
+    return (f"🔒 دسترسی شما به تمام امکانات ربات مسدود است.\n"
+            f"👤 حمله‌کننده: <b>{esc(attacker_name)}</b>\n"
+            f"🏦 شماره حساب حمله‌کننده: <code>{esc(attacker_account)}</code>\n"
+            f"⏰ پایان محرومیت: <b>{time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(until))}</b>\n"
+            f"⏳ زمان باقی‌مانده: {left // 3600} ساعت و {(left % 3600) // 60} دقیقه.\n"
+            "💻 این محرومیت کامل، تا ۲۴ ساعت بعد از حمله ادامه دارد.")
 
 
 def gift_announcement_text(code):
@@ -633,11 +663,11 @@ def parse_amount(m, index=1):
     parts = (m.text or "").split()
     if len(parts) <= index:
         return None
-    s = parts[index]
-    if not s.isdigit() or len(s) > MAX_DIGITS:
+    s = parts[index].translate(str.maketrans("۰۱۲۳۴۵۶۷۸۹٠١٢٣٤٥٦٧٨٩", "01234567890123456789")).replace(",", "").replace("٬", "")
+    if not s.isdigit() or len(s) > 19:
         return None
     n = int(s)
-    return n if n > 0 else None
+    return n if 0 < n <= MAX_SQLITE_INT else None
 
 
 def too_fast(uid, secs=6):
@@ -652,39 +682,13 @@ def roll(chat_id, emoji="🎲"):
     return bot.send_dice(chat_id, emoji=emoji).dice.value
 
 
-def settle(winner_id, loser_id, bet):
-    """مقدار واقعی جابه‌جا شده رو برمی‌گردونه (اگه بازنده کمتر داشت همون)"""
-    with lock:
-        row = db.execute("SELECT coins FROM players WHERE id=?", (loser_id,)).fetchone()
-        amount = max(0, min(bet, row["coins"]))
-        db.execute("UPDATE players SET coins=coins+?, wins=wins+1, xp=xp+20 WHERE id=?",
-                   (amount, winner_id))
-        db.execute("UPDATE players SET coins=coins-?, losses=losses+1, xp=xp+5 WHERE id=?",
-                   (amount, loser_id))
-        db.commit()
-        return amount
 
-
-def run_fight(chat_id, a_id, b_id, bet):
-    """دوئل تاسی: امتیاز = تاس × ۵ + قدرت"""
-    a, b = get_by_id(a_id), get_by_id(b_id)
-    say(chat_id, f"⚔️ <b>{nm(a)}</b> 🆚 <b>{nm(b)}</b>\n💰 شرط: {bet} سکه\n🎲 تاس‌ها در راهن...")
-    va = roll(chat_id)
-    vb = roll(chat_id)
-    time.sleep(4)
-    sa, sb = va * 5 + power(a), vb * 5 + power(b)
-    text = (f"{face(va)} {nm(a)}: {va}×۵ + قدرت {power(a)} = <b>{sa}</b>\n"
-            f"{face(vb)} {nm(b)}: {vb}×۵ + قدرت {power(b)} = <b>{sb}</b>\n{LINE}\n")
-    if sa == sb:
-        return text + "🤝 مساوی شد! سکه‌ای جابه‌جا نشد."
-    winner, loser = (a, b) if sa > sb else (b, a)
-    amount = settle(winner["id"], loser["id"], bet)
-    return text + f"🏆 <b>{nm(winner)}</b> برنده شد و {amount} سکه از {nm(loser)} گرفت! 🎉"
 
 
 def price(kind, p):
-    bases = {"thief": 250, "guard": 250, "pickaxe": 400}
-    return bases[kind] * (int(p[kind] or 0) + 1)
+    bases = {"thief": 250, "guard": 250, "pickaxe": 400, "vault": 500}
+    current_level = int(p["vault_level"] or 0) if kind == "vault" else int(p[kind] or 0)
+    return bases[kind] * (current_level + 1)
 
 
 def do_mine(user):
@@ -869,7 +873,7 @@ def do_profile(user):
             f"⭐ سطح {level(p)}/100  {xp_bar(p)}  "
             f"{level_progress(p['xp'])[1]}/{level_progress(p['xp'])[2] if level(p) < 100 else 'MAX'} XP تا سطح بعد\n"
             f"🥷 دزد: سطح {p['thief']}  |  🛡 نگهبان: سطح {p['guard']}  |  ⛏ کلنگ: سطح {p['pickaxe'] or 0}\n"
-            f"🔐 صندوق امن: <b>{p['vault'] or 0}</b> سکه  |  🔥 رکورد روزانه: {p['daily_streak'] or 0} روز\n"
+            f"🔐 صندوق امن: سطح {p['vault_level'] or 0}/{VAULT_MAX_LEVEL} — {p['vault'] or 0} سکه  |  🔥 رکورد روزانه: {p['daily_streak'] or 0} روز\n"
             f"🏅 برد: {p['wins']} | 💀 باخت: {p['losses']}\n"
             f"🎯 وضعیت آرنا: {'محدود تا پایان زمان حمله' if float(p['cyber_lock_until'] or 0) > time.time() else 'آزاد'}")
     return card("پروفایل", body)
@@ -894,6 +898,13 @@ def bank_markup():
     kb.add(btn("🏦 سپرده‌گذاری", "bankop:deposit"), btn("💸 برداشت سپرده", "bankop:withdraw"))
     kb.add(btn("🥷 دزدی از حساب", "bankop:steal"))
     kb.add(btn("🧾 گردش حساب", "m:history"), btn("🔄 تازه‌سازی", "m:bank"))
+    kb.add(btn("🔙 منو", "m:menu"))
+    return kb
+
+
+def cyber_markup():
+    kb = types.InlineKeyboardMarkup()
+    kb.add(btn("💻 شروع حمله سایبری", "bankop:cyber"))
     kb.add(btn("🔙 منو", "m:menu"))
     return kb
 
@@ -949,66 +960,106 @@ def do_history(user):
     return card("۸ عملیات اخیر حساب", "\n".join(lines))
 
 
+# لیدربورد کلی: دارایی + XP + بردها + پیشرفت مزرعه/تجهیزات + فعالیت‌ها.
 TOP_BOARDS = {
-    "wins": ("🏆 تعداد برد", "wins"),
-    "level": ("⭐ سطح", "xp"),
+    "overall": ("🏆 رتبه‌بندی کلی", "overall_score"),
+    # سازگاری با دکمه‌های قدیمی که هنوز callback با مقدار coins می‌فرستند.
+    "coins": ("🏆 رتبه‌بندی کلی", "overall_score"),
 }
 
 
-def top_rows(kind="wins"):
-    if kind not in TOP_BOARDS:
-        kind = "wins"
+def top_rows(kind="overall"):
+    """ده بازیکن برتر را با امتیاز ترکیبی همه بخش‌های اصلی بازی برمی‌گرداند."""
     with lock:
-        return db.execute(
-            f"SELECT * FROM players ORDER BY {TOP_BOARDS[kind][1]} DESC, id ASC LIMIT 10"
-        ).fetchall()
+        player_ids = [int(r["id"]) for r in db.execute("SELECT id FROM players").fetchall()]
+    for uid in player_ids:
+        get_deposit_balance(uid)
+    with lock:
+        rows = db.execute("""SELECT p.*,
+            COALESCE(d.amount,0) AS deposit_amount,
+            (SELECT COUNT(*) FROM referrals r WHERE r.referrer_id=p.id) AS referral_count,
+            (SELECT COUNT(*) FROM achievement_claims a WHERE a.user_id=p.id) AS achievement_count
+            FROM players p
+            LEFT JOIN bank_deposits d ON d.user_id=p.id""").fetchall()
+
+    ranked = []
+    for source in rows:
+        row = dict(source)
+        wallet = max(0, int(row.get("coins") or 0))
+        vault = max(0, int(row.get("vault") or 0))
+        deposit = max(0, int(row.get("deposit_amount") or 0))
+        total_coins = wallet + vault + deposit
+        xp_value = max(0, int(row.get("xp") or 0))
+        wins = max(0, int(row.get("wins") or 0))
+        farm_level = max(1, int(row.get("farm_level") or 1))
+        thief = max(0, int(row.get("thief") or 0))
+        guard = max(0, int(row.get("guard") or 0))
+        pickaxe = max(0, int(row.get("pickaxe") or 0))
+        vault_level = max(0, int(row.get("vault_level") or 0))
+        referrals_count = max(0, int(row.get("referral_count") or 0))
+        achievements = max(0, int(row.get("achievement_count") or 0))
+        mine_count = max(0, int(row.get("mine_count") or 0))
+
+        # امتیاز کلی شفاف است: دارایی + XP + وزن بردها و پیشرفت/فعالیت‌ها.
+        overall_score = (
+            total_coins
+            + xp_value
+            + wins * 100
+            + farm_level * 50
+            + (thief + guard + pickaxe + vault_level) * 50
+            + referrals_count * 500
+            + achievements * 100
+            + mine_count * 5
+        )
+        row.update({
+            "wallet_coins": wallet,
+            "vault_coins": vault,
+            "deposit_coins": deposit,
+            "total_coins": total_coins,
+            "referral_count": referrals_count,
+            "achievement_count": achievements,
+            "overall_score": overall_score,
+        })
+        ranked.append(row)
+    ranked.sort(key=lambda r: (-int(r["overall_score"]), -int(r["total_coins"]), int(r["id"])))
+    return ranked[:10]
 
 
-def top_markup(kind="wins"):
-    if kind not in TOP_BOARDS:
-        kind = "wins"
+def top_markup(kind="overall"):
     kb = types.InlineKeyboardMarkup()
-    tabs = [btn(("• " if k == kind else "") + v[0], f"top:{k}") for k, v in TOP_BOARDS.items()]
-    kb.add(*tabs)
-    kb.add(btn("🔙 منو", "m:menu"))
+    kb.add(btn("🔄 تازه‌سازی", "m:top"), btn("🔙 منو", "m:menu"))
     return kb
 
 
 def _top_value(kind, r):
-    if kind == "level":
-        return f"سطح {level(r)}"
-    return f"{int(r['wins'] or 0)} برد · سطح {level(r)}"
+    return f"{int(r['overall_score']):,} امتیاز کلی"
 
 
-def _last_seen_label(player_row):
-    try:
-        last_seen = float(player_row["last_seen"] or 0)
-    except (KeyError, TypeError, ValueError):
-        last_seen = 0
-    if last_seen <= 0:
-        return "⚪ آخرین بازدید: ثبت نشده"
-    elapsed = max(0, int(time.time() - last_seen))
-    if elapsed <= 300:
-        return "🟢 آنلاین در ربات"
-    if elapsed < 3600:
-        return f"🕒 آخرین بازدید: {elapsed // 60} دقیقه پیش"
-    if elapsed < 86400:
-        return f"🕒 آخرین بازدید: {elapsed // 3600} ساعت پیش"
-    if elapsed < 7 * 86400:
-        return f"🕒 آخرین بازدید: {elapsed // 86400} روز پیش"
-    return "🕒 آخرین بازدید: " + time.strftime("%Y-%m-%d %H:%M", time.localtime(last_seen))
-
-
-def do_top(kind="wins"):
-    if kind not in TOP_BOARDS:
-        kind = "wins"
-    rows = top_rows(kind)
+def do_top(kind="overall"):
+    rows = top_rows("overall")
     medals = ["🥇", "🥈", "🥉"] + ["🔹"] * 7
-    lines = [f"{medals[i]} <b>{nm(r)}</b> — {_top_value(kind, r)}\n{_last_seen_label(r)}"
-             for i, r in enumerate(rows)]
+    lines = []
+    for i, r in enumerate(rows):
+        lv = level_progress(r["xp"])[0]
+        income = max(1, int(r["farm_level"] or 1)) * FARM_BASE_INCOME
+        lines.append(
+            f"{medals[i]} <b>{nm(r)}</b> — <b>{_top_value('overall', r)}</b>\n"
+            f"💰 مجموع سکه: <b>{int(r['total_coins']):,}</b> "
+            f"(کیف {int(r['wallet_coins']):,} | صندوق {int(r['vault_coins']):,} | بانک {int(r['deposit_coins']):,})\n"
+            f"⭐ XP: <b>{int(r['xp'] or 0):,}</b> | سطح: <b>{lv}</b>\n"
+            f"🏆 برد: <b>{int(r['wins'] or 0)}</b> | 💀 باخت: <b>{int(r['losses'] or 0)}</b>\n"
+            f"🌾 مزرعه: سطح <b>{int(r['farm_level'] or 1)}</b> ({income:,} سکه/ساعت) | "
+            f"⛏ معدن: <b>{int(r['mine_count'] or 0):,}</b>\n"
+            f"🧰 دزد {int(r['thief'] or 0)} | نگهبان {int(r['guard'] or 0)} | "
+            f"کلنگ {int(r['pickaxe'] or 0)} | صندوق سطح {int(r['vault_level'] or 0)}\n"
+            f"👥 دعوت: <b>{int(r['referral_count'])}</b> | 🏅 دستاورد: <b>{int(r['achievement_count'])}</b>\n"
+            f"🏦 شماره حساب: <code>{esc(r['account_no'] or '—')}</code>"
+        )
     body = "\n\n".join(lines) if lines else "هنوز کسی بازی نکرده."
-    body += "\n\n🟢 آنلاین یعنی در ۵ دقیقه اخیر داخل ربات فعالیت داشته است؛ این وضعیت، وضعیت آنلاین خود تلگرام نیست."
-    return card(f"برترین‌ها — {TOP_BOARDS[kind][0]}", body)
+    body += ("\n\n📊 رتبه‌بندی بر اساس امتیاز کلی است: مجموع دارایی + XP + بردها "
+             "+ پیشرفت مزرعه و تجهیزات + دعوت‌ها + دستاوردها + تعداد معدن‌کاری. "
+             "شماره حساب هر بازیکن هم نمایش داده می‌شود.")
+    return card("لیدربورد کلی", body)
 
 
 def do_transfer(user, account_no, amount):
@@ -1137,7 +1188,8 @@ def do_steal(user, target):
         victim = db.execute("SELECT * FROM players WHERE id=?", (target["id"],)).fetchone()
         wait = STEAL_COOLDOWN - (time.time() - me["last_steal"])
         if wait > 0:
-            return f"⏳ {int(wait)} ثانیه دیگر برای عملیات بعدی صبر کن."
+            minutes, seconds = divmod(int(wait), 60)
+            return f"⏳ دزدی بعدی پس از {minutes} دقیقه و {seconds} ثانیه فعال می‌شود. فاصله هر تلاش ۳۰ دقیقه است."
         if int(victim["coins"] or 0) < 2:
             return "😅 موجودی هدف برای دزدی کافی نیست؛ هیچ‌وقت تمام موجودی بازیکن برداشته نمی‌شود."
 
@@ -1249,7 +1301,7 @@ def cmd_steal(m):
 
 
 def do_cyber(user, target):
-    """رویداد کاملاً خیالی درون‌بازی؛ فقط آرنای هدف را ۲۴ ساعت محدود می‌کند."""
+    """رویداد کاملاً خیالی درون‌بازی؛ تمام امکانات ربات هدف را ۲۴ ساعت محدود می‌کند."""
     actor = get_player(user)
     if not target:
         return "❌ بازیکن مقصد پیدا نشد. آیدی عددی تلگرام یا شماره حساب ۸ رقمی را بررسی کن."
@@ -1273,56 +1325,63 @@ def do_cyber(user, target):
         if int(current_actor["coins"]) < CYBER_COST:
             db.rollback()
             return f"❌ برای حمله سایبری درون‌بازی {CYBER_COST:,} سکه لازم داری."
+        attacker_name = str(current_actor["name"] or f"user_{actor['id']}")
+        lock_until = now + CYBER_LOCK_SECONDS
         db.execute("UPDATE players SET coins=coins-?, last_cyber=? WHERE id=?",
                    (CYBER_COST, now, actor["id"]))
-        db.execute("UPDATE players SET cyber_lock_until=? WHERE id=?",
-                   (now + CYBER_LOCK_SECONDS, target["id"]))
+        db.execute("""UPDATE players
+                      SET cyber_lock_until=?, cyber_attacker_id=?, cyber_attacker_name=?
+                      WHERE id=?""",
+                   (lock_until, actor["id"], attacker_name, target["id"]))
         db.commit()
         fresh_actor = db.execute("SELECT * FROM players WHERE id=?", (actor["id"],)).fetchone()
         fresh_target = db.execute("SELECT * FROM players WHERE id=?", (target["id"],)).fetchone()
     try:
         bot.send_message(target["id"],
-            f"🛡 <b>هشدار امنیتی بازی</b>\nیک رویداد خیالی از طرف <b>{nm(fresh_actor)}</b> ثبت شد.\n"
-            "آرنای دونفره تو برای ۲۴ ساعت غیرفعال شده است. موجودی و بقیه بخش‌های ربات دست‌نخورده‌اند.",
+            f"🛡 <b>هشدار حمله سایبری</b>\n"
+            f"👤 حمله‌کننده: <b>{nm(fresh_actor)}</b>\n"
+            f"🏦 شماره حساب حمله‌کننده: <code>{esc(fresh_actor['account_no'])}</code>\n"
+            f"⏰ محرومیت تا: <b>{time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(lock_until))}</b>\n"
+            "تمام امکانات ربات تو برای ۲۴ ساعت غیرفعال شده‌اند.",
             parse_mode="HTML")
     except Exception:
         pass
     return (f"💻 <b>رویداد سایبری درون‌بازی ثبت شد!</b>\n"
             f"🎯 هدف: <b>{nm(fresh_target)}</b>\n"
             f"💸 هزینه ثابت: <b>{CYBER_COST:,} سکه</b>\n"
-            "🔒 آرنای هدف برای ۲۴ ساعت محدود شد.\n"
-            "✅ موجودی هدف، بانک، معدن، مزرعه و سایر امکانات او تغییری نکرد.\n"
-            "🚫 این قابلیت ارتقا ندارد؛ حمله بعدی تو پس از ۲۴ ساعت آزاد می‌شود.")
+            "🔒 تمام بخش‌های ربات هدف برای ۲۴ ساعت مسدود شد.\n"
+            f"👤 حمله‌کننده ثبت‌شده: <b>{esc(attacker_name)}</b>\n"
+            f"🏦 شماره حساب حمله‌کننده: <code>{esc(fresh_actor['account_no'])}</code>\n"
+            "✅ موجودی و اطلاعات حساب هدف تغییری نکرد؛ تمام پیام‌ها و دکمه‌های ربات برای او مسدود شد.\n"
+            "🚫 حمله بعدی تو پس از ۲۴ ساعت آزاد می‌شود.")
 
 
 @bot.message_handler(commands=["cyber"])
 def cmd_cyber(m):
     parts = (m.text or "").split()
     if len(parts) != 2:
-        return reply(m, "فرمت: <code>/cyber آیدی_تلگرام_یا_شماره_حساب</code>\nهزینه ثابت: ۲۵٬۰۰۰ سکه؛ فقط آرنا را ۲۴ ساعت محدود می‌کند.")
+        return reply(m, "فرمت: <code>/cyber آیدی_تلگرام_یا_شماره_حساب</code>\nهزینه ثابت: ۵٬۰۰۰ سکه؛ تمام ربات را ۲۴ ساعت محدود می‌کند.")
     target = resolve_player_identifier(parts[1])
     reply(m, do_cyber(m.from_user, target), back_markup())
 
 
-def do_dice(user, chat_id, bet):
+def do_dice(user, chat_id):
+    """بازی تاس رایگان؛ نتیجه فقط XP می‌دهد و سکه‌ای جابه‌جا نمی‌شود."""
     p = get_player(user)
-    if p["coins"] < bet:
-        return "❌ سکه کافی نداری."
     if too_fast(p["id"]):
         return "⏳ یکم صبر کن."
-    if not spend(p["id"], bet):
-        return "❌ سکه کافی نداری."
     mv = roll(chat_id)
     bv = roll(chat_id)
     time.sleep(4)
     head = f"{face(mv)} تو: <b>{mv}</b>   |   {face(bv)} ربات: <b>{bv}</b>\n{LINE}\n"
     if mv > bv:
-        add(p["id"], bet * 2, 2)
-        return head + f"🏆 بردی! <b>+{bet}</b> سکه 🎉"
+        add(p["id"], xp=5)
+        return head + "🏆 بردی! <b>+۵ XP</b> گرفتی."
     if mv == bv:
-        add(p["id"], bet)
-        return head + "🤝 مساوی! شرطت برگشت."
-    return head + f"💀 باختی! <b>-{bet}</b> سکه"
+        add(p["id"], xp=3)
+        return head + "🤝 مساوی! <b>+۳ XP</b> گرفتی."
+    add(p["id"], xp=1)
+    return head + "💪 این دور ربات برد؛ <b>+۱ XP</b> برای شرکت در بازی گرفتی."
 
 
 def do_slots(user, chat_id):
@@ -1351,10 +1410,10 @@ def do_slots(user, chat_id):
     return "🎰 این بار نمادها یکی نشدند؛ چیزی از موجودی‌ات کم نشد.\n✅ اسلات کاملاً رایگان است.\n⏱ نوبت بعدی: ۶ ساعت دیگر"
 
 
-def do_arena(user, chat_id, bet=None):
+def do_arena(user, chat_id):
     return ("🎯 آرنا با دعوت مستقیم کار می‌کند.\n"
-            "از دستور <code>/arena آیدی_تلگرام_یا_شماره_حساب</code> استفاده کن، بازی را انتخاب کن و مبلغ شرط را دستی بفرست. "
-            "حریف مبلغ را می‌بیند و می‌تواند قبول یا رد کند. در مساوی نه سکه و نه XP تغییر نمی‌کند.")
+            "از دستور <code>/arena آیدی_تلگرام_یا_شماره_حساب</code> استفاده کن و بازی را انتخاب کن. "
+            "مسابقه رایگان است؛ برنده XP و آمار برد دریافت می‌کند و هیچ سکه‌ای از حساب بازیکنان کم یا به آن اضافه نمی‌شود.")
 
 
 def menu_text(user):
@@ -1378,26 +1437,26 @@ HELP_TEXT = card("راهنمای بازی | GAME GUIDE", (
     "⛏ /mine — معدن هر ۶۰ ثانیه؛ جایزه تا ۵٬۰۰۰ سکه و رویداد راهزن تا ۱٬۰۰۰ سکه\n"
     "🎁 /daily — جایزه روزانه و رکورد پیوسته\n"
     "👤 /profile — سطح، XP، موجودی، شماره حساب و آمار برد/باخت\n"
-    "🏆 /top — رتبه‌بندی بازیکنان\n"
+    "🏆 /top — لیدربورد فقط بر اساس مجموع سکه‌ها، همراه شماره حساب\n"
     "🛒 /shop — ارتقای دزد، نگهبان و کلنگ؛ شمشیر و زره حذف شده‌اند\n"
     "🏦 /bank — شماره حساب | /transfer 12345678 100 — انتقال سکه\n"
     "🧾 /history — گردش حساب | /invite — لینک دعوت\n"
-    "🎯 /arena 12345678 — دعوت آرنا؛ مبلغ شرط را خودت وارد می‌کنی و حریف قبول یا رد می‌کند\n"
-    "💻 /cyber 12345678 — رویداد خیالی با هزینه ثابت ۲۵٬۰۰۰ سکه؛ فقط آرنا را ۲۴ ساعت محدود می‌کند\n"
-    "🥷 /steal 12345678 — تلاش برای دزدی؛ هرگز تمام موجودی هدف برداشته نمی‌شود و سقف ضربه نصف موجودی است\n"
+    "🎯 /arena 12345678 — دعوت به آرنای رایگان؛ برنده XP و یک برد می‌گیرد\n"
+    "💻 /cyber 12345678 — هزینه ۵٬۰۰۰ سکه؛ تمام پیام‌ها، فرمان‌ها و دکمه‌های ربات هدف را ۲۴ ساعت مسدود می‌کند\n"
+    "🥷 /steal 12345678 — تلاش برای دزدی؛ هر ۳۰ دقیقه یک‌بار\n"
     "🎰 /slots — اسلات رایگان هر ۶ ساعت؛ باخت هیچ سکه‌ای کم نمی‌کند، سه نماد یکسان +۵٬۰۰۰ سکه\n"
     "🎡 /wheel — چرخ رایگان | /dice — تاس با ربات | /flip — شیر یا خط\n"
-    "🌾 /farm — مزرعه | /crops — انتخاب محصولات و رویداد آب‌وهوا\n"
+    "🌾 /farm — مزرعه و درآمد ساعتی\n"
     "📋 /missions — مأموریت روزانه | /achievements — مدال‌ها | /weekly — لیگ هفتگی\n"
     "🎟 /raffle — قرعه‌کشی رایگان بدون خرید بلیت\n"
     "🃏 /blackjack — بلک‌جک تمرینی رایگان | /roulette — رولت رایگان | /guess — حدس عدد\n"
     "🏛 /deposit 500 — سپرده | /withdraw 500 — برداشت\n"
-    "🛍 /market — بازار | /sell pickaxe 1 300 — فروش آیتم | /buy 12 — خرید پیشنهاد\n"
+
     "🎁 /giftcodes — کدهای عمومی | /redeem CODE — استفاده از کد هدیه\n\n"
     "🏅 سطح‌ها از ۱ تا ۱۰۰ هستند؛ برای هر سطح، XP بیشتری از سطح قبلی لازم است.\n"
     "💡 نام از یوزرنیم تلگرام (@username) گرفته می‌شود؛ اگر وجود نداشته باشد user_ID نمایش داده می‌شود.\n"
     "🏦 شماره حساب ۸ رقمی و موجودی با تغییر یوزرنیم حفظ می‌شوند.\n"
-    "🤝 آرنا فقط مسابقه دوستانه است: سکه‌ای از هیچ‌یک کم نمی‌شود؛ برنده XP و آمار برد دریافت می‌کند.\n"
+    "🤝 آرنا بدون شرط سکه است؛ برنده XP و آمار برد می‌گیرد و در مساوی آمار تغییر نمی‌کند.\n"
     "📌 برای سنجاق عمومی کدها، ادمین در گروه اطلاع‌رسانی دستور /setgiftchannel را اجرا کند و به ربات اجازه سنجاق پیام بدهد.\n"
     "━━━━━━━━━━━━━━\nبرای برگشت به منو از دکمه‌های رنگارنگ پایین صفحه استفاده کن."
 ))
@@ -1845,12 +1904,11 @@ def cmd_daily(m):
 @bot.message_handler(commands=["top"])
 def cmd_top(m):
     get_player(m.from_user)
-    reply(m, do_top("wins"), top_markup("wins"))
+    reply(m, do_top("overall"), top_markup("overall"))
 
 
 @bot.message_handler(commands=["bank", "account"])
 def cmd_bank(m):
-    PVP_BET_INPUT.pop(m.from_user.id, None)
     bank_transfer_state.pop(m.from_user.id, None)
     bank_action_state.pop(m.from_user.id, None)
     reply(m, do_bank(m.from_user), bank_markup())
@@ -1951,13 +2009,41 @@ def bank_action_input(m):
         result = do_steal(m.from_user, target)
         return reply(m, result + "\n\n" + do_bank(m.from_user), bank_markup())
 
+    if step == "cyber":
+        if not normalized.isdigit() or len(normalized) > 19:
+            return reply(m, "❌ آیدی تلگرام یا شماره حساب معتبر نیست. دوباره بفرست:", bank_action_cancel_markup())
+        target = resolve_player_identifier(normalized)
+        if not target:
+            return reply(m, "❌ بازیکنی با این آیدی یا شماره حساب پیدا نشد. دوباره وارد کن:", bank_action_cancel_markup())
+        if int(target["id"]) == uid:
+            return reply(m, "❌ نمی‌توانی به حساب خودت حمله کنی. هدف دیگری بفرست:", bank_action_cancel_markup())
+        bank_action_state.pop(uid, None)
+        result = do_cyber(m.from_user, target)
+        return reply(m, result, back_markup())
+
+
+def launch_free_bot_game(chat_id, user, game):
+    """بازی‌های تک‌نفره رایگان هستند؛ ورودی یا شرط سکه ندارند."""
+    bank_transfer_state.pop(user.id, None)
+    bank_action_state.pop(user.id, None)
+    PVP_TARGET_INPUT.pop(user.id, None)
+    if game == "dice":
+        return say(chat_id, do_dice(user, chat_id), result_markup("m:dice"))
+    if game == "flip":
+        kb = types.InlineKeyboardMarkup()
+        kb.add(btn("🦅 شیر", "f:h"), btn("🪙 خط", "f:t"))
+        kb.add(btn("🔙 منو", "m:menu"))
+        return say(chat_id, card("شیر یا خط", "🪙 یک گزینه انتخاب کن؛ بازی رایگان است و XP می‌دهد."), kb)
+    if game == "rps":
+        return say(chat_id, card("سنگ کاغذ قیچی", "یکی را انتخاب کن؛ بازی رایگان است و XP می‌دهد."), rps_choice_markup())
+    if game in ARCADE:
+        return say(chat_id, do_arcade(user, chat_id, game), result_markup("m:games"))
+    return say(chat_id, "❌ بازی نامعتبر است.", back_markup())
+
 
 @bot.message_handler(commands=["dice", "gamble"])
 def cmd_dice(m):
-    bet = parse_amount(m)
-    if bet is None:
-        return reply(m, "بنویس: /dice 50")
-    reply(m, do_dice(m.from_user, m.chat.id, bet), result_markup(f"d:{bet}"))
+    reply(m, do_dice(m.from_user, m.chat.id), result_markup("m:dice"))
 
 
 @bot.message_handler(commands=["slots"])
@@ -1965,7 +2051,7 @@ def cmd_slots(m):
     reply(m, do_slots(m.from_user, m.chat.id), result_markup("m:slots"))
 
 
-# ---------- آرنای دونفره با شرط سکه ----------
+# ---------- آرنای دونفره رایگان ----------
 PVP_GAME_DATA = {
     "football": ("⚽", "فوتبال"),
     "basketball": ("🏀", "بسکتبال"),
@@ -1976,10 +2062,9 @@ PVP_GAME_DATA = {
     "rps": (None, "سنگ کاغذ قیچی"),
 }
 PVP_CHALLENGES = {}
-PVP_BET_INPUT = {}  # user_id -> {target_id, game, created}
+PVP_TARGET_INPUT = {}  # user_id -> {created}
 PVP_COUNTER = 0
 PVP_LOCK = threading.RLock()
-PVP_MAX_BET = 999_999_999
 
 
 def pvp_game_markup(target_id):
@@ -2013,49 +2098,9 @@ def _pvp_award(challenger_id, target_id, winner_id=None):
             f"👏 بازیکن دوم: <b>{nm(loser)}</b> — +۱۰ XP و یک باخت")
 
 
-def _pvp_settle_bet(challenge, winner_id):
-    bet = int(challenge.get("bet", 0) or 0)
-    challenger_id = int(challenge["challenger"])
-    target_id = int(challenge["target"])
-    if bet <= 0:
-        return False, "❌ مبلغ شرط نامعتبر است."
-    if winner_id is None:
-        return True, f"🤝 مساوی شد؛ شرط {bet:,} سکه‌ای هر دو نفر دست‌نخورده ماند."
-    if winner_id not in (challenger_id, target_id):
-        return False, "❌ نتیجه مسابقه معتبر نیست."
-
-    with lock:
-        db.execute("BEGIN IMMEDIATE")
-        balances = {r["id"]: int(r["coins"] or 0) for r in db.execute(
-            "SELECT id, coins FROM players WHERE id IN (?,?)", (challenger_id, target_id)
-        ).fetchall()}
-        if len(balances) != 2 or any(balances.get(uid, 0) < bet for uid in (challenger_id, target_id)):
-            db.rollback()
-            return False, "❌ موجودی یکی از بازیکن‌ها برای پرداخت شرط کافی نیست؛ مسابقه بدون تغییر سکه و XP لغو شد."
-        winner_after_stake = balances[winner_id] - bet
-        if winner_after_stake > MAX_SQLITE_INT - (2 * bet):
-            db.rollback()
-            return False, "❌ موجودی برنده ظرفیت دریافت کل جایزه را ندارد؛ هیچ سکه‌ای جابه‌جا نشد."
-        for uid in (challenger_id, target_id):
-            cur = db.execute("UPDATE players SET coins=coins-? WHERE id=? AND coins>=?", (bet, uid, bet))
-            if cur.rowcount != 1:
-                db.rollback()
-                return False, "❌ موجودی تغییر کرده است؛ شرط پرداخت نشد و مسابقه لغو شد."
-        db.execute("UPDATE players SET coins=coins+? WHERE id=?", (2 * bet, winner_id))
-        db.commit()
-    winner = get_by_id(winner_id)
-    return True, (f"💰 شرط هر نفر: {bet:,} سکه\n"
-                   f"🏆 جایزه کل به {nm(winner)} رسید: {2 * bet:,} سکه")
-
-
 def _pvp_finish_awards(challenge, winner_id):
-    if winner_id is None:
-        return _pvp_award(challenge["challenger"], challenge["target"], None)
-    paid, coin_text = _pvp_settle_bet(challenge, winner_id)
-    if not paid:
-        return coin_text + "\n⭐ XP و آمار برد/باخت هم تغییر نکرد."
-    xp_text = _pvp_award(challenge["challenger"], challenge["target"], winner_id)
-    return xp_text + "\n" + coin_text
+    """مسابقه رایگان است؛ فقط XP و آمار برد/باخت ثبت می‌شود."""
+    return _pvp_award(challenge["challenger"], challenge["target"], winner_id)
 
 
 def _pvp_send_result(challenge, result_text):
@@ -2099,32 +2144,38 @@ def _pvp_roll_match(challenge_id):
         result_a, result_b = str(a_roll), str(b_roll)
     result = (f"🎮 <b>نتیجه مسابقه {title}</b>\n"
               f"{nm(a)}: <b>{result_a}</b>\n{nm(b)}: <b>{result_b}</b>\n"
-              f"💰 مبلغ شرط هر نفر: <b>{int(c['bet']):,} سکه</b>\n"
+              f"🎁 مسابقه رایگان بود؛ هیچ سکه‌ای جابه‌جا نشد.\n"
               f"━━━━━━━━━━━━━━\n{awards}")
     PVP_CHALLENGES.pop(challenge_id, None)
     _pvp_send_result(c, result)
 
 
-def _create_pvp_invite(challenger_id, target_id, game, bet):
+def _create_pvp_invite(challenger_id, target_id, game):
     global PVP_COUNTER
     challenger = get_by_id(challenger_id)
     target = get_by_id(target_id)
     if not challenger or not target:
         return False, "❌ یکی از حساب‌ها پیدا نشد."
-    if int(challenger["coins"] or 0) < bet:
-        return False, f"❌ موجودی تو برای شرط {bet:,} سکه کافی نیست."
-    if int(target["coins"] or 0) < bet:
-        return False, f"❌ موجودی حریف کافی نیست؛ او فقط {int(target['coins'] or 0):,} سکه دارد."
+    if int(challenger_id) == int(target_id):
+        return False, "❌ نمی‌توانی خودت را دعوت کنی."
+    if game not in PVP_GAME_DATA:
+        return False, "❌ نوع مسابقه معتبر نیست."
+    if is_cyber_restricted(challenger_id) or is_cyber_restricted(target_id):
+        return False, "🔒 یکی از بازیکنان در محدودیت ۲۴ ساعته است."
     with PVP_LOCK:
-        # پاک‌سازی دعوت‌های منقضی‌شده
+        now = time.time()
         for old_cid, old_match in list(PVP_CHALLENGES.items()):
-            if time.time() - old_match.get("created", 0) > 600:
+            if now - old_match.get("created", 0) > 600:
                 PVP_CHALLENGES.pop(old_cid, None)
         PVP_COUNTER += 1
         cid = PVP_COUNTER
         PVP_CHALLENGES[cid] = {
-            "challenger": challenger_id, "target": target_id, "game": game,
-            "bet": int(bet), "created": time.time(), "rps": {}, "accepted": False
+            "challenger": challenger_id,
+            "target": target_id,
+            "game": game,
+            "created": now,
+            "rps": {},
+            "accepted": False,
         }
     _, title = PVP_GAME_DATA[game]
     kb = types.InlineKeyboardMarkup()
@@ -2133,16 +2184,17 @@ def _create_pvp_invite(challenger_id, target_id, game, bet):
         bot.send_message(
             target_id,
             f"⚡ <b>دعوت به آرنا!</b>\n👤 دعوت‌کننده: <b>{esc(challenger['name'])}</b>\n"
-            f"🎮 بازی: <b>{title}</b>\n💰 شرط هر نفر: <b>{bet:,} سکه</b>\n"
-            f"🏆 جایزه کل برای برنده: <b>{2 * bet:,} سکه</b>\n"
-            f"💰 موجودی فعلی تو: <b>{int(target['coins']):,} سکه</b>\n"
-            "در صورت مساوی، سکه و XP هیچ‌کدام تغییر نمی‌کند.\n⏳ اعتبار دعوت: ۲ دقیقه",
-            parse_mode="HTML", reply_markup=kb
+            f"🎮 بازی: <b>{title}</b>\n"
+            "🎁 مسابقه رایگان است؛ هیچ سکه‌ای شرط‌بندی یا جابه‌جا نمی‌شود.\n"
+            "🏆 برنده +۳۰ XP و یک برد می‌گیرد؛ بازیکن دیگر +۱۰ XP می‌گیرد.\n"
+            "⏳ اعتبار دعوت: ۲ دقیقه",
+            parse_mode="HTML",
+            reply_markup=kb,
         )
     except Exception:
         PVP_CHALLENGES.pop(cid, None)
         return False, "❌ نتوانستم به حریف پیام بدهم. او باید ابتدا /start را در ربات زده باشد."
-    return True, f"✅ دعوت {title} برای حریف ارسال شد.\n💰 شرط هر نفر: {bet:,} سکه | جایزه کل: {2 * bet:,} سکه\nمنتظر قبول یا رد او بمان."
+    return True, f"✅ دعوت مسابقه {title} برای حریف ارسال شد.\n🎁 مسابقه رایگان است و فقط XP و آمار برد/باخت تغییر می‌کند.\nمنتظر قبول یا رد او بمان."
 
 
 def cmd_arena(m):
@@ -2153,14 +2205,18 @@ def cmd_arena(m):
     elif len(parts) == 2:
         target = resolve_player_identifier(parts[1])
     if not target:
-        return reply(m, "فرمت: <code>/arena آیدی_تلگرام_یا_شماره_حساب</code>\nیا روی پیام حریف ریپلای کن و /arena بزن.")
+        uid = m.from_user.id
+        bank_transfer_state.pop(uid, None)
+        bank_action_state.pop(uid, None)
+        PVP_TARGET_INPUT[uid] = {"created": time.time()}
+        return reply(m, "🎯 آیدی عددی تلگرام یا شماره حساب ۸ رقمی حریف را بفرست.\nبرای لغو /cancel را بزن:", back_markup())
     if target["id"] == m.from_user.id:
         return reply(m, "❌ نمی‌توانی خودت را به مسابقه دعوت کنی.")
     if is_cyber_restricted(m.from_user.id):
         return reply(m, cyber_restriction_text(m.from_user.id))
     if is_cyber_restricted(target["id"]):
         return reply(m, "🔒 این بازیکن فعلاً در محدودیت رقابتی است و نمی‌تواند مسابقه بپذیرد.")
-    reply(m, card("ARENA | دعوت به مسابقه", f"🎯 حریف: <b>{nm(target)}</b>\n🎮 رشته مسابقه را انتخاب کن.\n⚽ فوتبال · 🏀 بسکتبال · 🎯 دارت · 🎳 بولینگ · 🎲 تاس · 🪙 شیر یا خط · ✊ سنگ‌کاغذقیچی\n\n💰 بعد از انتخاب بازی، مبلغ شرط را دستی وارد می‌کنی. حریف مبلغ را می‌بیند و فقط در صورت داشتن موجودی کافی می‌تواند قبول کند.\n🤝 در مساوی، نه سکه و نه XP تغییر نمی‌کند."),
+    reply(m, card("ARENA | دعوت به مسابقه", f"🎯 حریف: <b>{nm(target)}</b>\n🎮 رشته مسابقه را انتخاب کن.\n⚽ فوتبال · 🏀 بسکتبال · 🎯 دارت · 🎳 بولینگ · 🎲 تاس · 🪙 شیر یا خط · ✊ سنگ‌کاغذقیچی\n\n🎁 مسابقه رایگان است و هیچ سکه‌ای از بازیکنان کم نمی‌شود. برنده XP و یک برد می‌گیرد؛ در مساوی آمار تغییر نمی‌کند."),
           pvp_game_markup(target["id"]))
 
 
@@ -2169,34 +2225,26 @@ def cmd_arena_entry(m):
     cmd_arena(m)
 
 
-@bot.message_handler(func=lambda m: m.from_user and m.from_user.id in PVP_BET_INPUT, content_types=["text"])
-def pvp_bet_input(m):
+@bot.message_handler(func=lambda m: m.from_user and m.from_user.id in PVP_TARGET_INPUT, content_types=["text"])
+def pvp_target_input(m):
     uid = m.from_user.id
-    state = PVP_BET_INPUT.get(uid)
-    if not state:
-        return
     raw = (m.text or "").strip()
     if raw.lower() in ("/cancel", "لغو", "انصراف"):
-        PVP_BET_INPUT.pop(uid, None)
-        return reply(m, "❌ تعیین شرط آرنا لغو شد.", back_markup())
-    if raw.startswith("/"):
-        PVP_BET_INPUT.pop(uid, None)
-        return reply(m, "❌ تعیین شرط آرنا لغو شد. برای شروع دوباره /arena را بزن.", back_markup())
-    if time.time() - state.get("created", 0) > 180:
-        PVP_BET_INPUT.pop(uid, None)
-        return reply(m, "⌛ زمان تعیین مبلغ شرط تمام شد؛ دوباره از آرنا شروع کن.", back_markup())
+        PVP_TARGET_INPUT.pop(uid, None)
+        return reply(m, "❌ دعوت آرنا لغو شد.", back_markup())
     normalized = raw.translate(str.maketrans("۰۱۲۳۴۵۶۷۸۹٠١٢٣٤٥٦٧٨٩", "01234567890123456789"))
-    normalized = normalized.replace(",", "").replace("٬", "").replace(" ", "")
-    if not normalized.isdigit() or len(normalized) > 9 or int(normalized) <= 0 or int(normalized) > PVP_MAX_BET:
-        return reply(m, f"❌ مبلغ باید عدد مثبت و حداکثر {PVP_MAX_BET:,} سکه باشد. دوباره وارد کن یا /cancel بزن:")
-    bet = int(normalized)
-    target_id = int(state["target_id"])
-    game = state["game"]
-    PVP_BET_INPUT.pop(uid, None)
-    if is_cyber_restricted(uid) or is_cyber_restricted(target_id):
-        return reply(m, "🔒 به‌دلیل محدودیت آرنا، دعوت ساخته نشد.", back_markup())
-    success, message = _create_pvp_invite(uid, target_id, game, bet)
-    return reply(m, message, back_markup())
+    target = resolve_player_identifier(normalized)
+    if not target:
+        return reply(m, "❌ بازیکن پیدا نشد. آیدی عددی تلگرام یا شماره حساب ۸ رقمی را دوباره بفرست:", back_markup())
+    if int(target["id"]) == uid:
+        return reply(m, "❌ نمی‌توانی خودت را دعوت کنی. شماره حساب یا آیدی حریف دیگری را بفرست:", back_markup())
+    if is_cyber_restricted(uid) or is_cyber_restricted(target["id"]):
+        PVP_TARGET_INPUT.pop(uid, None)
+        return reply(m, "🔒 یکی از دو بازیکن در محرومیت سایبری است و نمی‌تواند وارد آرنا شود.", back_markup())
+    PVP_TARGET_INPUT.pop(uid, None)
+    bank_transfer_state.pop(uid, None)
+    bank_action_state.pop(uid, None)
+    return reply(m, card("ARENA | انتخاب بازی", f"🎯 حریف: <b>{nm(target)}</b>\nشماره حساب: <code>{esc(target['account_no'])}</code>\n🎮 بازی را انتخاب کن. مسابقه رایگان است و فقط XP و آمار برد/باخت ثبت می‌شود."), pvp_game_markup(target["id"]))
 
 
 @bot.callback_query_handler(func=lambda c: c.data.startswith(("pvpstart:", "pvpaccept:", "pvpreject:", "pvprps:")))
@@ -2206,8 +2254,6 @@ def pvp_callbacks(c):
         bot.answer_callback_query(c.id)
     except Exception:
         pass
-    if c.from_user:
-        _mark_player_active(c.from_user.id)
     parts = data.split(":")
     if parts[0] == "pvpstart":
         try:
@@ -2225,11 +2271,9 @@ def pvp_callbacks(c):
             return bot.answer_callback_query(c.id, "حریف پیدا نشد.")
         bank_transfer_state.pop(c.from_user.id, None)
         bank_action_state.pop(c.from_user.id, None)
-        PVP_BET_INPUT[c.from_user.id] = {"target_id": target_id, "game": game, "created": time.time()}
-        _, title = PVP_GAME_DATA[game]
-        return edit(c,
-                    f"🎮 بازی انتخاب شد: <b>{title}</b>\n💰 مبلغ شرط هر نفر را به عدد بفرست (حداکثر {PVP_MAX_BET:,} سکه).\n"
-                    "موجودی هر دو بازیکن پیش از ارسال دعوت بررسی می‌شود. برای لغو /cancel را بزن.", back_markup())
+        PVP_TARGET_INPUT.pop(c.from_user.id, None)
+        success, message = _create_pvp_invite(c.from_user.id, target_id, game)
+        return edit(c, message, back_markup())
 
     if parts[0] in ("pvpaccept", "pvpreject"):
         try:
@@ -2255,10 +2299,9 @@ def pvp_callbacks(c):
             PVP_CHALLENGES.pop(cid, None)
             return edit(c, "🔒 مسابقه به‌دلیل محدودیت آرنا یکی از حساب‌ها لغو شد.", back_markup())
         a = get_by_id(match["challenger"]); b = get_by_id(match["target"])
-        bet = int(match.get("bet", 0))
-        if not a or not b or int(a["coins"] or 0) < bet or int(b["coins"] or 0) < bet:
+        if not a or not b:
             PVP_CHALLENGES.pop(cid, None)
-            return edit(c, "❌ موجودی یکی از بازیکن‌ها دیگر برای این شرط کافی نیست؛ مسابقه لغو شد و سکه‌ای کم نشد.", back_markup())
+            return edit(c, "❌ یکی از حساب‌ها دیگر پیدا نمی‌شود؛ مسابقه لغو شد.", back_markup())
         if match.get("accepted"):
             return bot.answer_callback_query(c.id, "این مسابقه قبلاً پذیرفته شده است.")
         match["accepted"] = True
@@ -2268,7 +2311,7 @@ def pvp_callbacks(c):
             for player_id in (match["challenger"], match["target"]):
                 try:
                     bot.send_message(player_id,
-                                     f"✊ <b>سنگ، کاغذ، قیچی</b>\n💰 شرط هر نفر: <b>{bet:,} سکه</b>\nانتخابت را بزن:",
+                                     "✊ <b>سنگ، کاغذ، قیچی</b>\n🎁 مسابقه رایگان است. انتخابت را بزن:",
                                      parse_mode="HTML", reply_markup=kb)
                 except Exception:
                     pass
@@ -2313,7 +2356,7 @@ def pvp_callbacks(c):
         a = get_by_id(match["challenger"]); b = get_by_id(match["target"])
         result = (f"✊ <b>نتیجه سنگ، کاغذ، قیچی</b>\n"
                   f"{nm(a)}: {symbols[a_choice]}\n{nm(b)}: {symbols[b_choice]}\n"
-                  f"💰 شرط هر نفر: <b>{int(match['bet']):,} سکه</b>\n"
+                  "🎁 مسابقه رایگان بود؛ هیچ سکه‌ای جابه‌جا نشد.\n"
                   f"━━━━━━━━━━━━━━\n{awards}")
         PVP_CHALLENGES.pop(cid, None)
         _pvp_send_result(match, result)
@@ -2323,7 +2366,6 @@ def pvp_callbacks(c):
 def bank_flow_callback(c):
     uid = c.from_user.id
     if c.data == "bankstart":
-        PVP_BET_INPUT.pop(uid, None)
         bank_action_state.pop(uid, None)
         bank_transfer_state[uid] = {"step": "account"}
         bot.answer_callback_query(c.id)
@@ -2346,13 +2388,12 @@ def bank_flow_callback(c):
 @bot.callback_query_handler(func=lambda c: c.data.startswith("bankop:"))
 def bank_action_callback(c):
     uid = c.from_user.id
-    PVP_BET_INPUT.pop(uid, None)
     action = (c.data or "").split(":", 1)[1]
     if action == "cancel":
         bank_action_state.pop(uid, None)
         bot.answer_callback_query(c.id, "عملیات لغو شد.")
         return edit(c, do_bank(c.from_user), bank_markup())
-    if action not in ("deposit", "withdraw", "steal"):
+    if action not in ("deposit", "withdraw", "steal", "cyber"):
         return bot.answer_callback_query(c.id, "درخواست نامعتبر است.", show_alert=True)
     bank_transfer_state.pop(uid, None)
     bank_action_state[uid] = {"step": action}
@@ -2361,8 +2402,10 @@ def bank_action_callback(c):
         prompt = "🏦 مبلغی را که می‌خواهی به سپرده منتقل کنی به عدد بفرست:"
     elif action == "withdraw":
         prompt = "💸 مبلغی را که می‌خواهی از سپرده برداشت کنی به عدد بفرست:"
-    else:
+    elif action == "steal":
         prompt = "🥷 شماره حساب ۸ رقمی بازیکنی را که می‌خواهی هدف قرار بدهی بفرست:"
+    else:
+        prompt = f"💻 آیدی عددی تلگرام یا شماره حساب ۸ رقمی هدف را بفرست. هزینه حمله {CYBER_COST:,} سکه است:"
     return say(c.message.chat.id, prompt, bank_action_cancel_markup())
 
 
@@ -2442,7 +2485,7 @@ def menu_router(c):
         elif arg == "profile":
             edit(c, do_profile(user), back_markup())
         elif arg == "top":
-            edit(c, do_top(), top_markup())
+            edit(c, do_top("overall"), top_markup("overall"))
         elif arg == "bank":
             bank_transfer_state.pop(user.id, None)
             bank_action_state.pop(user.id, None)
@@ -2458,8 +2501,7 @@ def menu_router(c):
             vault_text_value, vault_kb = vault_page(user)
             edit(c, vault_text_value, vault_kb)
         elif arg == "rps":
-            edit(c, card("سنگ کاغذ قیچی", "✊ شرط رو انتخاب کن (حداکثر %d):" % ARCADE_MAX),
-                 bet_markup("rb", [10, 50, 100, 500]))
+            launch_free_bot_game(chat, user, "rps")
         elif arg == "admin":
             if not ADMIN_ID or user.id != ADMIN_ID:
                 return
@@ -2483,19 +2525,19 @@ def menu_router(c):
         elif arg == "slots":
             say(chat, do_slots(user, chat), result_markup("m:slots"))
         elif arg == "dice":
-            edit(c, card("تاس", "🎲 شرط رو انتخاب کن:"), bet_markup("d", [10, 50, 100, 500]))
+            launch_free_bot_game(chat, user, "dice")
         elif arg == "arena":
-            edit(c, card("آرنای دونفره", "برای دعوت حریف، آیدی عددی تلگرام یا شماره حساب ۸ رقمی را بفرست:\n<code>/arena 12345678</code>\n\nبعد از انتخاب بازی، مبلغ شرط را دستی وارد کن. حریف مبلغ را می‌بیند و قبول یا رد می‌کند. برنده شرط را می‌برد؛ در مساوی نه سکه و نه XP تغییر می‌کند."), back_markup())
+            PVP_TARGET_INPUT[user.id] = {"created": time.time()}
+            say(chat, "🎯 آیدی عددی تلگرام یا شماره حساب ۸ رقمی حریف را بفرست؛ بعد نوع مسابقه را انتخاب می‌کنی. مسابقه رایگان است و فقط XP ثبت می‌شود.\nبرای لغو /cancel را بزن:", back_markup())
         elif arg == "games":
             edit(c, card("مرکز مینی‌گیم", "🎮 یک بازی انتخاب کن؛ اسلات رایگان هر ۶ ساعت یک‌بار قابل استفاده است."), games_markup())
         elif arg == "cyber":
-            edit(c, card("💻 رویداد سایبری درون‌بازی",
-                         f"هزینه ثابت: <b>{CYBER_COST:,} سکه</b>\n"
-                         "🎯 هدف را با آیدی عددی تلگرام یا شماره حساب ۸ رقمی انتخاب کن.\n"
-                         "🔒 اثر فقط آرنای دونفره هدف را دقیقاً ۲۴ ساعت می‌بندد.\n"
-                         "✅ موجودی، بانک، انتقال، معدن، مزرعه و بقیه ربات دست‌نخورده می‌مانند.\n"
-                         "🚫 ارتقا ندارد؛ هر بازیکن هر ۲۴ ساعت یک حمله می‌تواند انجام دهد.\n\n"
-                         "دستور: <code>/cyber 12345678</code>"), back_markup())
+            edit(c, card("💻 حمله سایبری درون‌بازی",
+                         f"هزینه هر حمله: <b>{CYBER_COST:,} سکه</b>\n"
+                         "🎯 با دکمه زیر، آیدی عددی تلگرام یا شماره حساب ۸ رقمی هدف را وارد کن.\n"
+                         "🔒 بعد از ثبت حمله، هدف دقیقاً ۲۴ ساعت به هیچ پیام، فرمان یا دکمه‌ای از ربات دسترسی ندارد.\n"
+                         "✅ موجودی و اطلاعات حساب هدف تغییر نمی‌کند.\n"
+                         "⏳ هر بازیکن هر ۲۴ ساعت فقط یک حمله می‌تواند انجام دهد."), cyber_markup())
         elif arg == "giftcodes":
             edit(c, giftcodes_page(user), back_markup())
         elif arg == "blackjack":
@@ -2511,38 +2553,28 @@ def menu_router(c):
             edit(c, mission_text, mission_kb)
         elif arg == "achievements":
             edit(c, achievements_page(user), back_markup())
-        elif arg == "market":
-            edit(c, market_page(user), market_markup())
-        elif arg == "crops":
-            crop_text, crop_kb = crops_page(user)
-            edit(c, crop_text, crop_kb)
         elif arg == "weekly":
             edit(c, weekly_page(user), back_markup())
         elif arg == "raffle":
             edit(c, raffle_page(user), raffle_markup())
         elif arg == "flip":
-            edit(c, card("شیر یا خط", "🪙 شرط رو انتخاب کن:"), bet_markup("fb", [10, 50, 100, 500]))
+            launch_free_bot_game(chat, user, "flip")
         elif arg in ARCADE:
-            _, title, _t = ARCADE[arg]
-            edit(c, card(title, f"شرط رو انتخاب کن (حداکثر {ARCADE_MAX}):"),
-                 bet_markup(f"x:{arg}", [10, 50, 100, 500]))
+            launch_free_bot_game(chat, user, arg)
         return
-    if not arg.isdigit() or not (0 < int(arg) < 10 ** MAX_DIGITS):
-        return
-    bet = int(arg)
-    if kind == "d":
-        say(chat, do_dice(user, chat, bet), result_markup(f"d:{bet}"))
+    if kind == "d":  # سازگاری با دکمه‌های قدیمی؛ مبلغ ارسالی نادیده گرفته می‌شود.
+        say(chat, do_dice(user, chat), result_markup("m:dice"))
     elif kind == "a":
-        say(chat, do_arena(user, chat, bet), back_markup())
+        say(chat, do_arena(user, chat), back_markup())
 
 
 # ---------- بازی‌های جدید ----------
-# بازی: (ایموجی تلگرام, اسم, {عدد تاس: ضریب برگشت کل شرط})
+# بازی‌های رایگان: (ایموجی تلگرام، نام بازی، نتیجه‌های موفق)
 ARCADE = {
-    "darts": ("🎯", "دارت", {6: 4, 5: 2}),
-    "hoops": ("🏀", "بسکتبال", {5: 2.5, 4: 2.5}),
-    "goal": ("⚽", "فوتبال", {5: 1.65, 4: 1.65, 3: 1.65}),
-    "bowl": ("🎳", "بولینگ", {6: 5, 5: 1}),
+    "darts": ("🎯", "دارت", {6, 5}),
+    "hoops": ("🏀", "بسکتبال", {5, 4}),
+    "goal": ("⚽", "فوتبال", {5, 4, 3}),
+    "bowl": ("🎳", "بولینگ", {6, 5}),
 }
 
 
@@ -2557,114 +2589,100 @@ def games_markup():
     return kb
 
 
-def do_arcade(user, chat_id, game, bet):
+def do_arcade(user, chat_id, game):
     emoji, title, table = ARCADE[game]
-    if bet > ARCADE_MAX:
-        return f"❌ حداکثر شرط {title} {ARCADE_MAX} سکه‌ست."
     p = get_player(user)
-    if p["coins"] < bet:
-        return "❌ سکه کافی نداری."
     if too_fast(p["id"]):
         return "⏳ یکم صبر کن."
-    if not spend(p["id"], bet):
-        return "❌ سکه کافی نداری."
-    v = roll(chat_id, emoji)
+    value = roll(chat_id, emoji)
     time.sleep(4)
-    mult = table.get(v, 0)
-    if mult <= 0:
-        return f"{emoji} {title}: نشد! 💀 <b>-{bet}</b> سکه"
-    payout = int(bet * mult)
-    add(p["id"], payout, 3 if payout > bet else 1)
-    if payout <= bet:
-        return f"{emoji} {title}: مساوی! 🤝 شرطت برگشت."
-    return f"{emoji} {title}: عالی بود! 🎉 <b>+{payout - bet}</b> سکه"
+    if value in table:
+        add(p["id"], xp=5)
+        return f"{emoji} {title}: عالی بود! 🎉 <b>+۵ XP</b> گرفتی.\n✅ بازی رایگان بود؛ سکه‌ای کم یا زیاد نشد."
+    add(p["id"], xp=1)
+    return f"{emoji} {title}: این بار نشد. <b>+۱ XP</b> برای شرکت در بازی گرفتی.\n✅ بازی رایگان بود؛ سکه‌ای کم یا زیاد نشد."
 
 
-def do_flip(user, side, bet):
-    if bet > ARCADE_MAX:
-        return f"❌ حداکثر شرط {ARCADE_MAX} سکه‌ست."
+def do_flip(user, side):
+    if side not in ("h", "t"):
+        return "❌ انتخاب نامعتبر."
     p = get_player(user)
-    if p["coins"] < bet:
-        return "❌ سکه کافی نداری."
     if too_fast(p["id"]):
         return "⏳ یکم صبر کن."
-    if not spend(p["id"], bet):
-        return "❌ سکه کافی نداری."
     result = random.choice(["h", "t"])
     names = {"h": "🦅 شیر", "t": "🪙 خط"}
     head = f"🪙 سکه چرخید... <b>{names[result]}</b> اومد!\n{LINE}\n"
     if result == side:
-        payout = bet * 19 // 10
-        add(p["id"], payout, 2)
-        if payout <= bet:
-            return head + "🤝 شرطت برگشت."
-        return head + f"🏆 بردی! <b>+{payout - bet}</b> سکه 🎉"
-    return head + f"💀 باختی! <b>-{bet}</b> سکه"
+        add(p["id"], xp=5)
+        return head + "🏆 درست حدس زدی! <b>+۵ XP</b> گرفتی.\n✅ بازی رایگان بود؛ سکه‌ای جابه‌جا نشد."
+    add(p["id"], xp=1)
+    return head + "💪 این بار حدست درست نبود؛ <b>+۱ XP</b> گرفتی.\n✅ بازی رایگان بود؛ سکه‌ای جابه‌جا نشد."
 
 
 @bot.message_handler(commands=["flip"])
 def cmd_flip(m):
-    bet = parse_amount(m)
-    if bet is None:
-        return reply(m, "بنویس: /flip 50")
     kb = types.InlineKeyboardMarkup()
-    kb.add(btn("🦅 شیر", f"f:h:{bet}"), btn("🪙 خط", f"f:t:{bet}"))
-    reply(m, card("شیر یا خط", f"💰 شرط: {bet}\nیکی رو انتخاب کن:"), kb)
+    kb.add(btn("🦅 شیر", "f:h"), btn("🪙 خط", "f:t"))
+    kb.add(btn("🔙 منو", "m:menu"))
+    reply(m, card("شیر یا خط", "یکی را انتخاب کن؛ بازی رایگان است و XP می‌دهد."), kb)
 
 
 @bot.message_handler(commands=list(ARCADE))
 def cmd_arcade(m):
     game = (m.text or "").split()[0].lstrip("/").split("@")[0].lower()
-    bet = parse_amount(m)
-    if game not in ARCADE or bet is None:
-        return reply(m, f"بنویس: /{game} 50")
-    reply(m, do_arcade(m.from_user, m.chat.id, game, bet), result_markup(f"x:{game}:{bet}"))
+    if game not in ARCADE:
+        return reply(m, "❌ بازی نامعتبر است.")
+    reply(m, do_arcade(m.from_user, m.chat.id, game), result_markup("m:games"))
 
 
 @bot.callback_query_handler(func=lambda c: c.data.startswith(("fb:", "f:", "x:")))
 def new_games_callback(c):
-    parts = c.data.split(":")
+    parts = (c.data or "").split(":")
     try:
         bot.answer_callback_query(c.id)
     except Exception:
         pass
     chat = c.message.chat.id
     try:
-        if parts[0] == "fb":
-            bet = int(parts[1])
+        if parts[0] == "fb":  # دکمه‌ی قدیمی؛ مبلغ قبلی نادیده گرفته می‌شود.
             kb = types.InlineKeyboardMarkup()
-            kb.add(btn("🦅 شیر", f"f:h:{bet}"), btn("🪙 خط", f"f:t:{bet}"))
+            kb.add(btn("🦅 شیر", "f:h"), btn("🪙 خط", "f:t"))
             kb.add(btn("🔙 منو", "m:menu"))
-            return edit(c, card("شیر یا خط", f"💰 شرط: {bet}\nیکی رو انتخاب کن:"), kb)
+            return edit(c, card("شیر یا خط", "یکی را انتخاب کن؛ بازی رایگان است و XP می‌دهد."), kb)
         if parts[0] == "f":
-            side, bet = parts[1], int(parts[2])
-            if side not in ("h", "t") or not (0 < bet < 10 ** MAX_DIGITS):
+            side = parts[1]
+            if side not in ("h", "t"):
                 return
-            return say(chat, do_flip(c.from_user, side, bet), result_markup(f"fb:{bet}"))
-        game, bet = parts[1], int(parts[2])
-        if game not in ARCADE or not (0 < bet < 10 ** MAX_DIGITS):
+            return say(chat, do_flip(c.from_user, side), result_markup("m:games"))
+        game = parts[1]
+        if game not in ARCADE:
             return
-        say(chat, do_arcade(c.from_user, chat, game, bet), result_markup(f"x:{game}:{bet}"))
+        say(chat, do_arcade(c.from_user, chat, game), result_markup("m:games"))
     except (ValueError, IndexError):
         return
 
 
-# ---------- فروشگاه ----------
+# ---------- ارتقای تجهیزات ----------
 def shop_text(p):
-    return card("فروشگاه تجهیزات",
+    return card("ارتقای تجهیزات",
                 f"💰 موجودی: <b>{p['coins']:,}</b> سکه\n\n"
-                f"🥷 دزد: سطح {p['thief']} — سرقت عادی قوی‌تر با هر سطح\n"
-                f"🧱 نگهبان: سطح {p['guard']} — محافظت در برابر سرقت عادی\n"
-                f"⛏ کلنگ: سطح {p['pickaxe'] or 0} — +{PICKAXE_BONUS} سکه پایه در معدن\n\n"
-                "💻 حمله سایبری ارتقا ندارد و همیشه ۲۵٬۰۰۰ سکه هزینه دارد.\n"
+                f"🥷 دزد: سطح {p['thief']}/ {EQUIPMENT_MAX_LEVEL} — سرقت عادی قوی‌تر با هر سطح\n"
+                f"🧱 نگهبان: سطح {p['guard']}/{EQUIPMENT_MAX_LEVEL} — محافظت در برابر سرقت عادی\n"
+                f"⛏ کلنگ: سطح {p['pickaxe'] or 0}/{EQUIPMENT_MAX_LEVEL} — +{PICKAXE_BONUS} سکه پایه در معدن به‌ازای هر سطح\n"
+                f"🔐 صندوق امن: سطح {p['vault_level'] or 0}/{VAULT_MAX_LEVEL} — هر سطح ۱۰۰۰ ظرفیت بیشتر\n\n"
+                "💻 حمله سایبری ارتقا ندارد و همیشه ۵٬۰۰۰ سکه هزینه دارد.\n"
                 "⚔️ شمشیر و زره از قدرت دوئل حذف شده‌اند.")
 
 
 def shop_markup(p):
     kb = types.InlineKeyboardMarkup()
-    kb.add(btn(f"🥷 ارتقای دزد {p['thief']} — {price('thief', p)} سکه", "buy:thief"))
-    kb.add(btn(f"🧱 ارتقای نگهبان {p['guard']} — {price('guard', p)} سکه", "buy:guard"))
-    kb.add(btn(f"⛏ کلنگ {p['pickaxe'] or 0} — {price('pickaxe', p)} سکه", "buy:pickaxe"))
+    kb.add(btn(f"🥷 ارتقای دزد {p['thief']}/{EQUIPMENT_MAX_LEVEL} — {price('thief', p)} سکه", "buy:thief"))
+    kb.add(btn(f"🧱 ارتقای نگهبان {p['guard']}/{EQUIPMENT_MAX_LEVEL} — {price('guard', p)} سکه", "buy:guard"))
+    kb.add(btn(f"⛏ کلنگ {p['pickaxe'] or 0}/{EQUIPMENT_MAX_LEVEL} — {price('pickaxe', p)} سکه", "buy:pickaxe"))
+    if int(p["vault_level"] or 0) < VAULT_MAX_LEVEL:
+        kb.add(btn(f"🔐 ارتقای صندوق امن {p['vault_level'] or 0}/{VAULT_MAX_LEVEL} — {price('vault', p)} سکه", "buy:vault"))
+    else:
+        kb.add(btn(f"🔐 صندوق امن — حداکثر سطح {VAULT_MAX_LEVEL}", "buy:vault"))
     kb.add(btn("💻 اطلاعات حمله سایبری", "m:cyber"))
     kb.add(btn("🔙 منو", "m:menu"))
     return kb
@@ -2679,17 +2697,23 @@ def cmd_shop(m):
 @bot.callback_query_handler(func=lambda c: c.data.startswith("buy:"))
 def buy(c):
     kind = c.data.split(":")[1]
-    if kind not in ("thief", "guard", "pickaxe"):
+    if kind not in ("thief", "guard", "pickaxe", "vault"):
         return bot.answer_callback_query(c.id)
     with lock:
         p = get_player(c.from_user)
-        if p[kind] >= MAX_UPGRADE:
-            return bot.answer_callback_query(c.id, "به حداکثر سطح رسیدی!")
+        current_level = int(p["vault_level"] or 0) if kind == "vault" else int(p[kind] or 0)
+        level_limit = VAULT_MAX_LEVEL if kind == "vault" else EQUIPMENT_MAX_LEVEL
+        if current_level >= level_limit:
+            return bot.answer_callback_query(c.id, f"به حداکثر سطح {level_limit} رسیدی!")
         cost = price(kind, p)
         if p["coins"] < cost:
             return bot.answer_callback_query(c.id, "سکه کافی نداری!")
-        db.execute(f"UPDATE players SET coins=coins-?, {kind}={kind}+1 WHERE id=?",
-                   (cost, p["id"]))
+        if kind == "vault":
+            db.execute("UPDATE players SET coins=coins-?, vault_level=vault_level+1 WHERE id=?",
+                       (cost, p["id"]))
+        else:
+            db.execute(f"UPDATE players SET coins=coins-?, {kind}={kind}+1 WHERE id=?",
+                       (cost, p["id"]))
         db.commit()
         p = get_by_id(p["id"])
     bot.answer_callback_query(c.id, "✅ خریدی!")
@@ -2722,7 +2746,7 @@ def cmd_wheel(m):
 
 # ---------- صندوق امن ----------
 def vault_cap(p):
-    return VAULT_BASE_CAP * (int(p["guard"] or 0) + 1)
+    return VAULT_BASE_CAP * (int(p["vault_level"] or 0) + 1)
 
 
 def vault_page(user):
@@ -2733,8 +2757,8 @@ def vault_page(user):
         f"💰 سکه‌های جیبی (قابل دزدی): <b>{p['coins']}</b>\n"
         f"🔐 داخل صندوق امن (غیرقابل دزدی): <b>{vault_now}</b> / {cap}\n\n"
         "سکه‌هایی که توی صندوق باشن توسط دزدها دیده نمی‌شن.\n"
-        "با ارتقای 🧱 نگهبان، ظرفیت صندوق ۱۰۰۰ تا بیشتر می‌شه.\n"
-        "برای بازی، شرط‌بندی، خرید و انتقال باید اول سکه رو برداشت کنی."
+        "با ارتقای مستقل 🔐 صندوق امن از بخش تجهیزات، ظرفیت صندوق ۱۰۰۰ تا بیشتر می‌شه.\n"
+        "برای ارتقای تجهیزات و انتقال سکه، ابتدا از صندوق برداشت کن."
     )
     kb = types.InlineKeyboardMarkup()
     kb.add(btn("📥 واریز ۱۰۰", "v:dep:100"), btn("📥 واریز ۵۰۰", "v:dep:500"), btn("📥 واریز همه", "v:dep:all"))
@@ -2761,7 +2785,7 @@ def vault_move(user, direction, amount):
             n = min(coins, free) if amount == "all" else int(amount)
             if free <= 0:
                 db.rollback()
-                return f"❌ صندوق پر است ({vault_now}/{cap}). نگهبانت رو ارتقا بده تا ظرفیت بیشتر بشه."
+                return f"❌ صندوق پر است ({vault_now}/{cap}). سطح صندوق امن را از بخش تجهیزات ارتقا بده."
             if n <= 0 or n > coins:
                 db.rollback()
                 return "❌ سکه کافی نداری."
@@ -2806,66 +2830,52 @@ RPS_SYMBOLS = {"r": ("🪨", "سنگ"), "p": ("📄", "کاغذ"), "s": ("✂️
 RPS_BEATS = {"r": "s", "s": "p", "p": "r"}  # سنگ قیچی را می‌شکند، قیچی کاغذ را می‌برد، کاغذ سنگ را می‌پوشاند
 
 
-def do_rps(user, choice, bet):
+def do_rps(user, choice):
     if choice not in RPS_SYMBOLS:
         return "❌ انتخاب نامعتبر."
-    if bet > ARCADE_MAX:
-        return f"❌ حداکثر شرط {ARCADE_MAX} سکه‌ست."
     p = get_player(user)
-    if p["coins"] < bet:
-        return "❌ سکه کافی نداری."
     if too_fast(p["id"]):
         return "⏳ یکم صبر کن."
-    if not spend(p["id"], bet):
-        return "❌ سکه کافی نداری."
     bot_choice = random.choice(list(RPS_SYMBOLS))
     me_e, me_n = RPS_SYMBOLS[choice]
     bt_e, bt_n = RPS_SYMBOLS[bot_choice]
     head = f"{me_e} تو: <b>{me_n}</b>   🆚   {bt_e} ربات: <b>{bt_n}</b>\n{LINE}\n"
     if choice == bot_choice:
-        add(p["id"], bet, 0)
-        return head + "🤝 مساوی! شرطت برگشت."
+        add(p["id"], xp=3)
+        return head + "🤝 مساوی! <b>+۳ XP</b> گرفتی."
     if RPS_BEATS[choice] == bot_choice:
-        payout = bet * 19 // 10
-        add(p["id"], payout, 2)
-        if payout <= bet:
-            return head + "🤝 شرطت برگشت."
-        return head + f"🏆 بردی! <b>+{payout - bet}</b> سکه 🎉"
-    return head + f"💀 باختی! <b>-{bet}</b> سکه"
+        add(p["id"], xp=5)
+        return head + "🏆 بردی! <b>+۵ XP</b> گرفتی."
+    add(p["id"], xp=1)
+    return head + "💪 این دور ربات برد؛ <b>+۱ XP</b> برای شرکت در بازی گرفتی." 
 
 
-def rps_choice_markup(bet):
+def rps_choice_markup():
     kb = types.InlineKeyboardMarkup()
-    kb.add(btn("🪨 سنگ", f"r:r:{bet}"), btn("📄 کاغذ", f"r:p:{bet}"), btn("✂️ قیچی", f"r:s:{bet}"))
+    kb.add(btn("🪨 سنگ", "r:r"), btn("📄 کاغذ", "r:p"), btn("✂️ قیچی", "r:s"))
     kb.add(btn("🔙 منو", "m:menu"))
     return kb
 
 
 @bot.message_handler(commands=["rps"])
 def cmd_rps(m):
-    bet = parse_amount(m)
-    if bet is None:
-        return reply(m, f"بنویس: /rps 50  (حداکثر {ARCADE_MAX})")
-    reply(m, card("سنگ کاغذ قیچی", f"💰 شرط: {bet}\nیکی رو انتخاب کن:"), rps_choice_markup(bet))
+    reply(m, card("سنگ کاغذ قیچی", "یکی را انتخاب کن؛ بازی رایگان است و XP می‌دهد."), rps_choice_markup())
 
 
 @bot.callback_query_handler(func=lambda c: c.data.startswith(("rb:", "r:")))
 def rps_callback(c):
-    parts = c.data.split(":")
+    parts = (c.data or "").split(":")
     try:
         bot.answer_callback_query(c.id)
     except Exception:
         pass
     try:
-        if parts[0] == "rb":
-            bet = int(parts[1])
-            if not (0 < bet < 10 ** MAX_DIGITS):
-                return
-            return edit(c, card("سنگ کاغذ قیچی", f"💰 شرط: {bet}\nیکی رو انتخاب کن:"), rps_choice_markup(bet))
-        choice, bet = parts[1], int(parts[2])
-        if choice not in RPS_SYMBOLS or not (0 < bet < 10 ** MAX_DIGITS):
+        if parts[0] == "rb":  # دکمه‌ی قدیمی؛ مبلغ شرط حذف شده است.
+            return edit(c, card("سنگ کاغذ قیچی", "یکی را انتخاب کن؛ بازی رایگان است و XP می‌دهد."), rps_choice_markup())
+        choice = parts[1]
+        if choice not in RPS_SYMBOLS:
             return
-        say(c.message.chat.id, do_rps(c.from_user, choice, bet), result_markup(f"rb:{bet}"))
+        say(c.message.chat.id, do_rps(c.from_user, choice), result_markup("m:games"))
     except (ValueError, IndexError):
         return
 
@@ -2873,14 +2883,13 @@ def rps_callback(c):
 # ---------- تب‌های لیدربورد ----------
 @bot.callback_query_handler(func=lambda c: c.data.startswith("top:"))
 def top_callback(c):
-    _mark_player_active(c.from_user.id)
     kind = c.data.split(":", 1)[1]
     try:
         bot.answer_callback_query(c.id)
     except Exception:
         pass
     if kind not in TOP_BOARDS:
-        return
+        kind = "overall"
     edit(c, do_top(kind), top_markup(kind))
 
 
@@ -3018,18 +3027,6 @@ GUESS_STATES = {}
 GUESS_COOLDOWN = 24 * 3600
 FREE_ROULETTE_COOLDOWN = 24 * 3600
 DAILY_MISSION_TARGET = 5
-CROP_DATA = {
-    "wheat": ("🌾 گندم", 5, 1),
-    "fruit": ("🍎 میوه", 12, 3),
-    "gold": ("🪙 طلایی", 25, 7),
-}
-MARKET_ITEMS = {
-    "thief": ("🥷 دزد", "thief"),
-    "guard": ("🧿 نگهبان", "guard"),
-    "pickaxe": ("⛏ کلنگ", "pickaxe"),
-}
-
-
 def active_income_multiplier():
     with lock:
         row = db.execute("SELECT value FROM settings WHERE key='double_income_until'").fetchone()
@@ -3312,140 +3309,7 @@ def cmd_deposit_withdraw(m):
     reply(m, move_deposit(m.from_user, n, withdraw=(m.text.split()[0].lstrip("/").split("@")[0] == "withdraw")), back_markup())
 
 
-# ---- بازار بازیکنان ----
-def market_page(user):
-    get_player(user)
-    with lock:
-        rows = db.execute("SELECT l.*,p.name FROM market_listings l JOIN players p ON p.id=l.seller_id WHERE l.active=1 ORDER BY l.id DESC LIMIT 10").fetchall()
-    lines = []
-    for r in rows:
-        if r["item"] not in MARKET_ITEMS:
-            continue
-        title = MARKET_ITEMS[r["item"]][0]
-        lines.append(f"#{r['id']} | {title} ×{r['quantity']} | هر عدد {r['unit_price']} سکه | فروشنده: {esc(r['name'])}")
-    return card("بازار بازیکنان", "\n".join(lines) if lines else "فعلاً پیشنهادی برای فروش وجود ندارد.\nبرای فروش: /sell pickaxe 1 300\nبرای خرید: /buy شماره")
-
-
-def market_markup():
-    kb = types.InlineKeyboardMarkup(); kb.add(btn("🔄 تازه‌سازی بازار", "market:refresh")); kb.add(btn("🔙 منو", "m:menu")); return kb
-
-
-@bot.message_handler(commands=["market"])
-def cmd_market(m):
-    reply(m, market_page(m.from_user), market_markup())
-
-
-@bot.message_handler(commands=["sell"])
-def cmd_sell(m):
-    parts = (m.text or "").split()
-    if len(parts) != 4: return reply(m, "فرمت: <code>/sell pickaxe 1 300</code>\nآیتم: thief, guard, pickaxe")
-    item = parts[1].lower()
-    try: qty, unit_price = int(parts[2]), int(parts[3])
-    except ValueError: return reply(m, "❌ تعداد و قیمت باید عدد باشند.")
-    if item not in MARKET_ITEMS or not (1 <= qty <= 1000) or not (1 <= unit_price <= 999_999_999):
-        return reply(m, "❌ آیتم، تعداد یا قیمت معتبر نیست.")
-    p = get_player(m.from_user); col = MARKET_ITEMS[item][1]
-    with lock:
-        db.execute("BEGIN IMMEDIATE")
-        cur = db.execute(f"UPDATE players SET {col}={col}-? WHERE id=? AND {col}>=?", (qty, p["id"], qty))
-        if cur.rowcount != 1:
-            db.rollback(); return reply(m, "❌ به این تعداد از آن آیتم برای فروش نداری.")
-        db.execute("INSERT INTO market_listings(seller_id,item,quantity,unit_price,created_at,active) VALUES(?,?,?,?,?,1)",
-                   (p["id"], item, qty, unit_price, time.time()))
-        listing_id = db.execute("SELECT last_insert_rowid()").fetchone()[0]
-        db.commit()
-    reply(m, f"✅ پیشنهاد فروش #{listing_id} ثبت شد: {MARKET_ITEMS[item][0]} ×{qty}، هر عدد {unit_price} سکه.")
-
-
-@bot.message_handler(commands=["buy"])
-def cmd_buy(m):
-    parts = (m.text or "").split()
-    if len(parts) != 2 or not parts[1].isdigit(): return reply(m, "فرمت: <code>/buy 12</code>")
-    uid = m.from_user.id; listing_id = int(parts[1]); get_player(m.from_user)
-    with lock:
-        db.execute("BEGIN IMMEDIATE")
-        listing = db.execute("SELECT * FROM market_listings WHERE id=? AND active=1", (listing_id,)).fetchone()
-        if not listing: db.rollback(); return reply(m, "❌ این پیشنهاد دیگر فعال نیست.")
-        if listing["seller_id"] == uid: db.rollback(); return reply(m, "❌ نمی‌توانی پیشنهاد خودت را بخری.")
-        total = int(listing["quantity"]) * int(listing["unit_price"])
-        if total > MAX_SQLITE_INT: db.rollback(); return reply(m, "❌ قیمت بیش از حد مجاز است.")
-        seller_balance = db.execute("SELECT coins FROM players WHERE id=?", (listing["seller_id"],)).fetchone()["coins"]
-        if seller_balance > MAX_SQLITE_INT - total: db.rollback(); return reply(m, "❌ موجودی فروشنده به سقف عددی رسیده؛ خرید ممکن نیست.")
-        cur = db.execute("UPDATE players SET coins=coins-? WHERE id=? AND coins>=?", (total, uid, total))
-        if cur.rowcount != 1: db.rollback(); return reply(m, "❌ سکه کافی نداری.")
-        if listing["item"] not in MARKET_ITEMS:
-            db.rollback(); return reply(m, "❌ این نوع کالا از فروشگاه حذف شده است.")
-        col = MARKET_ITEMS[listing["item"]][1]
-        db.execute(f"UPDATE players SET {col}={col}+? WHERE id=?", (listing["quantity"], uid))
-        db.execute("UPDATE players SET coins=coins+? WHERE id=?", (total, listing["seller_id"]))
-        db.execute("UPDATE market_listings SET active=0 WHERE id=? AND active=1", (listing_id,))
-        db.commit()
-    reply(m, f"✅ خرید انجام شد: {MARKET_ITEMS[listing['item']][0]} ×{listing['quantity']} برای {total} سکه.")
-    try: bot.send_message(listing["seller_id"], f"🛍 پیشنهاد #{listing_id} فروخته شد؛ {total} سکه دریافت کردی.")
-    except Exception: pass
-
-
-# ---- محصولات مزرعه با آب‌وهوا ----
-def crops_page(user):
-    p = get_player(user)
-    now = time.time()
-    with lock:
-        db.execute("INSERT OR IGNORE INTO farm_crop_state(user_id,crop,last_claim) VALUES(?, 'wheat', ?)", (p["id"], now))
-        row = db.execute("SELECT crop,last_claim FROM farm_crop_state WHERE user_id=?", (p["id"],)).fetchone()
-        db.commit()
-    name, rate, required_level = CROP_DATA[row["crop"]]
-    hours = max(0, min(24, int((now - row["last_claim"]) // 3600)))
-    kb = types.InlineKeyboardMarkup()
-    kb.add(btn("🌾 گندم", "crop:choose:wheat"), btn("🍎 میوه", "crop:choose:fruit"))
-    kb.add(btn("🪙 محصول طلایی", "crop:choose:gold"))
-    kb.add(btn("📦 برداشت محصول", "crop:collect"), btn("🔙 منو", "m:menu"))
-    body = (f"محصول فعلی: <b>{name}</b>\nدرآمد پایه: {rate * max(1,p['farm_level'])} سکه/ساعت\n"
-            f"زمان آماده برداشت: {hours} ساعت\nمزرعه لازم برای میوه: سطح ۳؛ محصول طلایی: سطح ۷\n"
-            "در برداشت، ممکن است خشکسالی (۵۰٪ درآمد) یا باران (۱۵۰٪ درآمد) رخ دهد.\n"
-            "این درآمد جدا از درآمد اصلی مزرعه محاسبه می‌شود؛ حداکثر ۲۴ ساعت ذخیره می‌شود.")
-    return card("محصولات مزرعه", body), kb
-
-
-def choose_crop(user, crop):
-    p = get_player(user)
-    if crop not in CROP_DATA: return "❌ محصول نامعتبر است."
-    _, _, req = CROP_DATA[crop]
-    if p["farm_level"] < req: return f"🔒 برای این محصول مزرعه سطح {req} لازم است."
-    with lock:
-        db.execute("INSERT OR IGNORE INTO farm_crop_state(user_id,crop,last_claim) VALUES(?, 'wheat', ?)", (p["id"], time.time()))
-        db.execute("UPDATE farm_crop_state SET crop=?,last_claim=? WHERE user_id=?", (crop, time.time(), p["id"]))
-        db.commit()
-    return f"✅ محصول مزرعه به {CROP_DATA[crop][0]} تغییر کرد. زمان درآمد از همین لحظه محاسبه می‌شود."
-
-
-def collect_crop(user):
-    p = get_player(user); now = time.time()
-    with lock:
-        db.execute("BEGIN IMMEDIATE")
-        row = db.execute("SELECT crop,last_claim FROM farm_crop_state WHERE user_id=?", (p["id"],)).fetchone()
-        if not row:
-            db.execute("INSERT INTO farm_crop_state(user_id,crop,last_claim) VALUES(?, 'wheat', ?)", (p["id"], now))
-            db.commit(); return "🌾 مزرعه کاشته شد؛ یک ساعت دیگر برای برداشت برگرد."
-        elapsed = max(0, now - row["last_claim"]); hours = min(24, int(elapsed // 3600))
-        if hours <= 0: db.rollback(); return "⏳ هنوز یک ساعت کامل نگذشته؛ بعداً برداشت کن."
-        _, rate, _ = CROP_DATA[row["crop"]]
-        event = random.random()
-        if event < .15: factor, weather = .5, "☀️ خشکسالی؛ درآمد نصف شد"
-        elif event < .40: factor, weather = 1.5, "🌧 باران؛ درآمد ۵۰٪ بیشتر شد"
-        else: factor, weather = 1.0, "🌤 هوای عادی"
-        new_crop_clock = now if now - row["last_claim"] > 24 * 3600 else row["last_claim"] + hours * 3600
-        reward = income_with_event(rate * max(1, p["farm_level"]) * factor, row["last_claim"], row["last_claim"] + hours * 3600)
-        db.execute("UPDATE players SET coins=coins+? WHERE id=?", (reward, p["id"]))
-        db.execute("UPDATE farm_crop_state SET last_claim=? WHERE user_id=?", (new_crop_clock, p["id"]))
-        db.commit()
-    record_weekly_points(p["id"], 3)
-    return f"✅ برداشت {CROP_DATA[row['crop']][0]}: +{reward} سکه\n{weather}\nساعت‌های ذخیره‌شده: {hours}"
-
-
-@bot.message_handler(commands=["crops"])
-def cmd_crops(m):
-    text, kb = crops_page(m.from_user); reply(m, text, kb)
-
+# بازار بازیکنان و محصولات مزرعه در این نسخه حذف شده‌اند؛ جدول‌های مربوط نیز هنگام شروع حذف می‌شوند.
 
 # ---- بلک‌جک تمرینی و رایگان ----
 def bj_card(): return random.choice([1,2,3,4,5,6,7,8,9,10,10,10,10])
@@ -3647,7 +3511,7 @@ def cmd_weekly(m): reply(m, weekly_page(m.from_user), back_markup())
 
 
 # ---- callback های افزوده‌شده ----
-@bot.callback_query_handler(func=lambda c: c.data.startswith(("mission:", "raffle:", "bj:", "guess:", "crop:", "market:")))
+@bot.callback_query_handler(func=lambda c: c.data.startswith(("mission:", "raffle:", "bj:", "guess:")))
 def extended_callbacks(c):
     data=c.data; user=c.from_user
     try: bot.answer_callback_query(c.id)
@@ -3681,13 +3545,8 @@ def extended_callbacks(c):
         direction="بزرگ‌تر" if guess<target else "کوچک‌تر"
         kb=types.InlineKeyboardMarkup(); kb.add(*[btn(str(x), f"guess:{x}") for x in range(1,6)]); kb.add(*[btn(str(x), f"guess:{x}") for x in range(6,11)])
         return edit(c, card("حدس عدد", f"❌ درست نبود؛ عدد مخفی {direction} است.\nتلاش: {state['tries']}/5"), kb)
-    if data.startswith("crop:"):
-        parts=data.split(":")
-        if len(parts)==3 and parts[1]=="choose":
-            msg=choose_crop(user,parts[2]); txt,kb=crops_page(user); return edit(c,msg+"\n\n"+txt,kb)
-        if len(parts)==2 and parts[1]=="collect":
-            msg=collect_crop(user); txt,kb=crops_page(user); return edit(c,msg+"\n\n"+txt,kb)
-    if data=="market:refresh": return edit(c,market_page(user),market_markup())
+    if data.startswith(("crop:", "market:")):
+        return bot.answer_callback_query(c.id, "🗑 این بخش از بازی حذف شده است.", show_alert=True)
 
 
 
@@ -3704,7 +3563,7 @@ if __name__ == "__main__":
             types.BotCommand("admin", "⚙️ پنل ادمین (فقط مدیر)"),
             types.BotCommand("daily", "🎁 جایزه روزانه"),
             types.BotCommand("profile", "👤 پروفایل"),
-            types.BotCommand("top", "🏆 برترین‌ها + شماره حساب"),
+            types.BotCommand("top", "🏆 رتبه‌بندی مجموع سکه + شماره حساب"),
             types.BotCommand("bank", "🏦 شماره حساب و موجودی"),
             types.BotCommand("transfer", "📤 انتقال سکه با شماره حساب"),
             types.BotCommand("history", "🧾 تاریخچه انتقال و دزدی"),
@@ -3716,16 +3575,14 @@ if __name__ == "__main__":
             types.BotCommand("blackjack", "🃏 بلک‌جک تمرینی رایگان"),
             types.BotCommand("roulette", "🎡 رولت رایگان روزانه"),
             types.BotCommand("guess", "🔢 حدس عدد روزانه"),
-            types.BotCommand("market", "🛍 بازار بازیکنان"),
-            types.BotCommand("crops", "🌱 محصولات مزرعه"),
             types.BotCommand("deposit", "🏛 سپرده‌گذاری"),
             types.BotCommand("withdraw", "🏛 برداشت سپرده"),
             types.BotCommand("redeem", "🎁 کد هدیه"),
             types.BotCommand("shop", "🛒 ارتقای دزد، نگهبان و کلنگ"),
             types.BotCommand("dice", "🎲 تاس (مثلاً /dice 50)"),
             types.BotCommand("slots", "🎰 اسلات رایگان هر ۶ ساعت"),
-            types.BotCommand("arena", "🎯 دعوت به آرنای دونفره با آیدی/شماره حساب"),
-            types.BotCommand("cyber", "💻 حمله سایبری درون‌بازی (۲۵۰۰۰ سکه)"),
+            types.BotCommand("arena", "🎯 دعوت به آرنای رایگان با آیدی/شماره حساب"),
+            types.BotCommand("cyber", "💻 حمله سایبری درون‌بازی (۵۰۰۰ سکه)"),
             types.BotCommand("giftcodes", "🎁 کدهای هدیه و شمارنده استفاده"),
             types.BotCommand("setgiftchannel", "📌 تنظیم گروه عمومی کد هدیه (ادمین)"),
             types.BotCommand("flip", "🪙 شیر یا خط (مثلاً /flip 50)"),
