@@ -469,8 +469,50 @@ def edit(c, text, markup=None):
             say(c.message.chat.id, text, markup)
 
 
-# ---------- دکمه‌های شیشه‌ای ----------
+# ---------- دکمه‌های شیشه‌ای | رنگ‌بندی واقعی تلگرام ----------
+def button_style(data):
+    """فقط برای بخش‌های عادی بازی، رنگ استاندارد دکمه را برمی‌گرداند.
+
+    رنگ‌های رسمی تلگرام: primary (آبی)، success (سبز)، danger (قرمز).
+    callback_data تغییر نمی‌کند؛ کنترل‌های بازی‌های شرطی بدون تغییر می‌مانند.
+    """
+    action = str(data or "").lower()
+
+    # صفحه‌ها و عملیات غیرشرطی
+    blue_actions = {
+        "m:profile", "m:top", "m:help", "m:menu", "m:mine", "m:daily",
+        "m:farm", "m:vault", "m:history", "m:missions", "m:achievements",
+        "m:weekly", "m:giftcodes", "m:referral", "m:admin",
+        "adminop:coins", "adminop:xp", "adminop:gift", "adminop:event",
+        "farm:upgrade", "farm:upgrade5", "v:dep:100", "v:dep:500", "v:dep:all",
+        "top:overall", "top:coins", "top:xp", "top:wins",
+    }
+    green_actions = {
+        "farm:collect", "mission:claim", "adminop:unban",
+        "v:wd:100", "v:wd:500", "v:wd:all",
+    }
+    red_actions = {
+        "adminop:ban", "adminop:gift_delete", "adminop:cancel",
+        "adminop:cancel_operation",
+    }
+
+    if action in red_actions:
+        return "danger"
+    if action in green_actions:
+        return "success"
+    if action in blue_actions:
+        return "primary"
+    return None
+
+
 def btn(text, data):
+    style = button_style(data)
+    if style:
+        try:
+            return types.InlineKeyboardButton(text, callback_data=data, style=style)
+        except TypeError:
+            # سازگاری با نسخه‌های قدیمی pyTelegramBotAPI؛ در آن‌ها رنگ اعمال نمی‌شود.
+            pass
     return types.InlineKeyboardButton(text, callback_data=data)
 
 
@@ -491,7 +533,10 @@ def main_markup(user_id=None):
         kb.add(btn("🔴 مرکز فرماندهی ادمین", "m:admin"))
     kb.add(btn("📖 راهنمای بازی", "m:help"))
     if CHANNEL_URL:
-        kb.add(types.InlineKeyboardButton("📢 کانال ما", url=CHANNEL_URL))
+        try:
+            kb.add(types.InlineKeyboardButton("📢 کانال ما", url=CHANNEL_URL, style="primary"))
+        except TypeError:
+            kb.add(types.InlineKeyboardButton("📢 کانال ما", url=CHANNEL_URL))
     return kb
 
 
