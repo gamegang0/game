@@ -469,50 +469,105 @@ def edit(c, text, markup=None):
             say(c.message.chat.id, text, markup)
 
 
-# ---------- دکمه‌های شیشه‌ای | رنگ‌بندی واقعی تلگرام ----------
+# ---------- دکمه‌های شیشه‌ای | رنگ‌بندی بخش‌های مختلف ----------
 def button_style(data):
-    """فقط برای بخش‌های عادی بازی، رنگ استاندارد دکمه را برمی‌گرداند.
+    """رنگ دکمه‌های بخش‌های غیرشرطی را بر اساس کارکردشان مشخص می‌کند.
 
-    رنگ‌های رسمی تلگرام: primary (آبی)، success (سبز)، danger (قرمز).
-    callback_data تغییر نمی‌کند؛ کنترل‌های بازی‌های شرطی بدون تغییر می‌مانند.
+    تلگرام برای Inline Keyboard فقط سه رنگ پس‌زمینه واقعی دارد:
+    primary=آبی، success=سبز، danger=قرمز.
+    دکمه‌های شرطی/شانسی و دعوت‌های آرنا عمداً بدون دست‌کاری باقی می‌مانند.
     """
     action = str(data or "").lower()
 
-    # صفحه‌ها و عملیات غیرشرطی
-    blue_actions = {
-        "m:profile", "m:top", "m:help", "m:menu", "m:mine", "m:daily",
-        "m:farm", "m:vault", "m:history", "m:missions", "m:achievements",
-        "m:weekly", "m:giftcodes", "m:referral", "m:admin",
-        "adminop:coins", "adminop:xp", "adminop:gift", "adminop:event",
-        "farm:upgrade", "farm:upgrade5", "v:dep:100", "v:dep:500", "v:dep:all",
-        "top:overall", "top:coins", "top:xp", "top:wins",
-    }
-    green_actions = {
-        "farm:collect", "mission:claim", "adminop:unban",
-        "v:wd:100", "v:wd:500", "v:wd:all",
-    }
-    red_actions = {
-        "adminop:ban", "adminop:gift_delete", "adminop:cancel",
+    # قرمز: لغو، حذف، محدودسازی و عملیات پرریسک مدیریتی/بازی
+    danger_actions = {
+        "adminop:ban",
+        "adminop:gift_delete",
+        "adminop:cancel",
         "adminop:cancel_operation",
+        "bankop:cancel",
+        "bankcancel",
+        "bankop:steal",
+        "bankop:cyber",
+        "m:cyber",
     }
 
-    if action in red_actions:
+    # سبز: درآمد، دریافت جایزه، برداشت و تأیید عملیات موفق
+    success_actions = {
+        "m:mine",
+        "m:daily",
+        "m:farm",
+        "m:referral",
+        "farm:collect",
+        "mission:claim",
+        "adminop:unban",
+        "adminop:event",
+        "adminop:gift",
+        "bankop:withdraw",
+        "bankconfirm",
+        "v:wd:100",
+        "v:wd:500",
+        "v:wd:all",
+    }
+
+    # آبی: ورود به بخش‌ها، اطلاعات، مدیریت حساب و ارتقاها
+    primary_actions = {
+        "m:profile",
+        "m:top",
+        "m:help",
+        "m:menu",
+        "m:shop",
+        "m:bank",
+        "m:history",
+        "m:vault",
+        "m:missions",
+        "m:achievements",
+        "m:weekly",
+        "m:giftcodes",
+        "m:admin",
+        "adminop:coins",
+        "adminop:xp",
+        "farm:upgrade",
+        "farm:upgrade5",
+        "bankstart",
+        "bankop:deposit",
+        "top:overall",
+        "top:coins",
+        "top:xp",
+        "top:wins",
+        "buy:thief",
+        "buy:guard",
+        "buy:pickaxe",
+        "buy:vault",
+        "v:dep:100",
+        "v:dep:500",
+        "v:dep:all",
+    }
+
+    if action in danger_actions:
         return "danger"
-    if action in green_actions:
+    if action in success_actions:
         return "success"
-    if action in blue_actions:
+    if action in primary_actions:
         return "primary"
+
+    # آرنا، بازی‌های شرطی، اسلات، رولت، گردونه و قرعه‌کشی بدون تغییر می‌مانند.
     return None
+
+_BUTTON_STYLE_WARNING_SHOWN = False
 
 
 def btn(text, data):
+    global _BUTTON_STYLE_WARNING_SHOWN
     style = button_style(data)
     if style:
         try:
             return types.InlineKeyboardButton(text, callback_data=data, style=style)
         except TypeError:
-            # سازگاری با نسخه‌های قدیمی pyTelegramBotAPI؛ در آن‌ها رنگ اعمال نمی‌شود.
-            pass
+            # نسخه‌های قدیمی کتابخانه style را نمی‌شناسند؛ فقط یک هشدار در لاگ چاپ می‌شود.
+            if not _BUTTON_STYLE_WARNING_SHOWN:
+                print("⚠️ برای نمایش رنگ دکمه‌ها، pyTelegramBotAPI را به نسخه 4.34.0 یا جدیدتر ارتقا بده.")
+                _BUTTON_STYLE_WARNING_SHOWN = True
     return types.InlineKeyboardButton(text, callback_data=data)
 
 
