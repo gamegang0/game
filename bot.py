@@ -551,7 +551,24 @@ def button_style(data):
     if action in primary_actions:
         return "primary"
 
-    # آرنا، بازی‌های شرطی، اسلات، رولت، گردونه و قرعه‌کشی بدون تغییر می‌مانند.
+    # پوشش سراسری دکمه‌های منو و زیرمنو؛ این شرط‌ها باعث نمی‌شوند
+    # دکمه‌های انتخاب/اجرای خود بازی‌های شرطی رنگ بگیرند.
+    if action.startswith("m:"):
+        return "primary"       # همه ورودی‌های منو، آرنا و سالن بازی‌ها
+    if action.startswith("adminop:"):
+        return "primary"       # سایر عملیات پنل ادمین
+    if action.startswith("bankop:"):
+        return "primary"       # سایر گزینه‌های بانک؛ لغو/سرقت/سایبری بالاتر قرمزند
+    if action.startswith("farm:"):
+        return "primary"       # دکمه‌های باقی‌مانده مزرعه
+    if action.startswith("buy:") or action.startswith("v:"):
+        return "primary"       # تجهیزات و گزینه‌های صندوق
+    if action.startswith("top:") or action.startswith("mission:"):
+        return "primary"
+
+    # دکمه‌های خودِ بازی و شرط‌بندی عمداً بدون رنگ باقی می‌مانند.
+    if action.startswith(("pvp", "bg:", "bj:", "guess:", "slot:", "roulette:", "raffle:")):
+        return None
     return None
 
 _BUTTON_STYLE_WARNING_SHOWN = False
