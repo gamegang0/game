@@ -173,6 +173,10 @@ def init_schema():
         db.execute("""CREATE TABLE IF NOT EXISTS daily_progress(
             user_id INTEGER NOT NULL, day_key TEXT NOT NULL, mine_count INTEGER DEFAULT 0,
             claimed INTEGER DEFAULT 0, PRIMARY KEY(user_id, day_key))""")
+        db.execute("""CREATE TABLE IF NOT EXISTS daily_chests(
+            user_id INTEGER NOT NULL, day_key TEXT NOT NULL, winning_box INTEGER NOT NULL,
+            opened_box INTEGER DEFAULT NULL, reward INTEGER DEFAULT 0, opened_at REAL DEFAULT NULL,
+            PRIMARY KEY(user_id, day_key))""")
         db.execute("""CREATE TABLE IF NOT EXISTS achievement_claims(
             user_id INTEGER NOT NULL, achievement_key TEXT NOT NULL, claimed_at REAL NOT NULL,
             PRIMARY KEY(user_id, achievement_key))""")
@@ -348,7 +352,7 @@ MAX_UPGRADE = EQUIPMENT_MAX_LEVEL  # سازگاری با نسخه‌های قد�
 ARCADE_MAX = MAX_SQLITE_INT  # محدودیت فقط موجودی بازیکن و ظرفیت SQLite است
 SLOT_COST = 0  # متغیر قدیمی؛ مبلغ شرط اسلات را بازیکن خودش وارد می‌کند
 SLOTS_COOLDOWN = 6 * 3600
-CYBER_COST = 50_000
+CYBER_COST = 20_000
 CYBER_COOLDOWN = 24 * 3600
 CYBER_LOCK_SECONDS = 24 * 3600
 GIVE_TAX_PERCENT = 5
@@ -546,6 +550,8 @@ def button_style(data):
 
     if action in danger_actions:
         return "danger"
+    if action.startswith("dailybox:"):
+        return "primary"      # هر سه جعبه رنگ یکسان دارند تا جایزه لو نرود.
     if action in success_actions:
         return "success"
     if action in primary_actions:
@@ -1259,7 +1265,7 @@ def do_bank(user):
                 f"🏦 شماره حساب بازی: <code>{p['account_no']}</code>\n"
                 f"💰 موجودی: <b>{p['coins']}</b> سکه\n"
                 f"🏛 سپرده بانکی: <b>{get_deposit_balance(p['id'])}</b> سکه (سود روزانه ۲٪)\n\n"
-                "از دکمه‌های شیشه‌ای زیر برای انتقال، سپرده‌گذاری، برداشت یا دزدی استفاده کن.\n"
+                "از دکمه‌های شیشه‌ای زیر برای انتقال، سپرده‌گذاری، برداشت یا دزدی استفاده کن.\n⚠️ سپرده بانکی قابل‌سرقت است؛ صندوق امن قابل‌سرقت نیست. سود سپرده روزانه ۲٪ محاسبه می‌شود.\n"
                 "برای انتقال، شماره حساب مقصد و مبلغ را وارد و در پایان تأیید کن.\n"
                 "برای دزدی، شماره حساب ۸ رقمی بازیکن مقصد را وارد کن.\n\n"
                 "این شماره فقط حساب داخل بازی است و به حساب بانکی واقعی ارتباطی ندارد.")
@@ -1490,15 +1496,26 @@ def do_steal(user, target):
         return "❌ حساب مقصد پیدا نشد. شماره حساب را بررسی کن."
     if target["id"] == me["id"]:
         return "❌ از حساب خودت نمی‌توانی دزدی کنی!"
+
+    # سود روزانه سپرده ابتدا محاسبه می‌شود تا موجودی واقعی سپرده هدف در دسترس باشد.
+    # صندوق امن (ستون vault) عمداً در محاسبه وارد نمی‌شود و هرگز قابل سرقت نیست.
+    get_deposit_balance(target["id"])
     with lock:
         me = db.execute("SELECT * FROM players WHERE id=?", (me["id"],)).fetchone()
         victim = db.execute("SELECT * FROM players WHERE id=?", (target["id"],)).fetchone()
+        if not victim:
+            return "❌ حساب مقصد پیدا نشد."
+        dep_row = db.execute("SELECT amount FROM bank_deposits WHERE user_id=?", (victim["id"],)).fetchone()
+        deposit_balance = int(dep_row["amount"] or 0) if dep_row else 0
+        wallet_balance = int(victim["coins"] or 0)
+        eligible_balance = deposit_balance + wallet_balance
+
         wait = STEAL_COOLDOWN - (time.time() - me["last_steal"])
         if wait > 0:
             minutes, seconds = divmod(int(wait), 60)
             return f"⏳ دزدی بعدی پس از {minutes} دقیقه و {seconds} ثانیه فعال می‌شود. فاصله هر تلاش ۱۵ دقیقه است."
-        if int(victim["coins"] or 0) < 2:
-            return "😅 موجودی هدف برای دزدی کافی نیست؛ هیچ‌وقت تمام موجودی بازیکن برداشته نمی‌شود."
+        if eligible_balance < 2:
+            return "😅 موجودی قابل‌سرقت هدف کافی نیست؛ سپرده و کیف پول بررسی می‌شوند، اما صندوق امن قابل‌سرقت نیست."
 
         # هر تلاش، حتی وقتی نگهبان قوی‌تر است، زمان انتظار دارد.
         db.execute("UPDATE players SET last_steal=? WHERE id=?", (time.time(), me["id"]))
@@ -1521,7 +1538,6 @@ def do_steal(user, target):
             victim_account = victim["account_no"]
             thief_level = me["thief"]
             guard_level = victim["guard"]
-            # اطلاع خصوصی به صاحب حساب؛ اگر هنوز ربات را استارت نکرده باشد خطا نادیده گرفته می‌شود.
             try:
                 bot.send_message(
                     victim_id,
@@ -1530,7 +1546,7 @@ def do_steal(user, target):
                     f"👤 بازیکن مهاجم: <b>{thief_name}</b>\n"
                     f"🏦 شماره حساب مهاجم: <code>{thief_account}</code>\n"
                     f"💸 جریمه‌ای که از او کم شد: <b>{fine}</b> سکه\n"
-                    f"💰 این مبلغ به حساب تو اضافه شد. موجودی جدید: <b>{get_by_id(victim_id)['coins']}</b> سکه",
+                    f"💰 این مبلغ به کیف پول تو اضافه شد. موجودی جدید: <b>{get_by_id(victim_id)['coins']}</b> سکه",
                     parse_mode="HTML"
                 )
             except Exception:
@@ -1538,20 +1554,30 @@ def do_steal(user, target):
             return (f"🛡 <b>دزد دستگیر شد!</b> نگهبان {victim_name} جلوی دزدی را گرفت.\n"
                     f"🏦 شماره حساب بازیکنی که قصد دزدی داشت: <code>{thief_account}</code>\n"
                     f"💸 جریمه تصادفی پرداخت کردی: <b>{fine}</b> سکه\n"
-                    f"📥 این مبلغ به حساب {victim_name} رسید.\n"
+                    f"📥 این مبلغ به کیف پول {victim_name} رسید.\n"
                     f"🥷 سطح دزد تو: <b>{thief_level}</b> | 🛡 سطح نگهبان مقصد: <b>{guard_level}</b>")
 
-        # سرقت عادی با سطح دزد قوی‌تر می‌شود؛ ۴٪ احتمال دارد دقیقاً نصف موجودی هدف برداشته شود.
+        # سقف سرقت حداکثر نصف مجموع کیف پول و سپرده است؛ صندوق امن خارج از این محاسبه است.
         half_chance = random.random() < 0.04
         if half_chance:
-            amount = int(victim["coins"]) // 2
-            steal_note = "💥 ضربه ویژه! نصف موجودی حساب هدف را برداشتی."
+            amount = eligible_balance // 2
+            steal_note = "💥 ضربه ویژه! نصف موجودی قابل‌سرقت هدف را برداشتی."
         else:
-            max_take = min(int(victim["coins"]) // 2, 100 + int(me["thief"]) * 150)
+            max_take = min(eligible_balance // 2, 100 + int(me["thief"]) * 150)
             min_take = max(1, max_take // 3)
             amount = random.randint(min_take, max_take)
             steal_note = "🥷 سطح دزد بالاتر، سقف سرقتت را بیشتر می‌کند."
-        db.execute("UPDATE players SET coins=coins-? WHERE id=?", (amount, victim["id"]))
+
+        # اول از سپرده بانکی برداشت می‌شود؛ اگر کافی نبود، باقی‌مانده از کیف پول کم می‌شود.
+        # صندوق امن عمداً دست‌نخورده باقی می‌ماند.
+        from_deposit = min(deposit_balance, amount)
+        from_wallet = amount - from_deposit
+        if from_deposit:
+            db.execute("UPDATE bank_deposits SET amount=amount-? WHERE user_id=?",
+                       (from_deposit, victim["id"]))
+        if from_wallet:
+            db.execute("UPDATE players SET coins=coins-? WHERE id=?",
+                       (from_wallet, victim["id"]))
         db.execute("UPDATE players SET coins=coins+?, xp=xp+3 WHERE id=?",
                    (amount, me["id"]))
         db.execute("""INSERT INTO coin_transactions
@@ -1559,20 +1585,31 @@ def do_steal(user, target):
             VALUES(?, ?, ?, 'steal', ?)""",
             (me["id"], victim["id"], amount, time.time()))
         db.commit()
+
+        fresh_victim = db.execute("SELECT * FROM players WHERE id=?", (victim["id"],)).fetchone()
+        fresh_deposit = db.execute("SELECT amount FROM bank_deposits WHERE user_id=?", (victim["id"],)).fetchone()
+        new_deposit_balance = int(fresh_deposit["amount"] or 0) if fresh_deposit else 0
+
     # به قربانی فقط خبر دزدی داده می‌شود؛ هویت دزد نمایش داده نمی‌شود.
     try:
         bot.send_message(
             victim["id"],
             f"🚨 <b>از حساب شما دزدی شد!</b>\n"
-            f"💸 <b>{amount}</b> سکه برداشته شد.\n"
-            f"💰 موجودی جدید: <b>{victim['coins'] - amount}</b> سکه\n"
-            f"🧱 برای جلوگیری از دزدی بعدی، نگهبانت رو ارتقا بده.",
+            f"💸 مجموعاً <b>{amount:,}</b> سکه برداشته شد.\n"
+            f"🏛 برداشت از سپرده: <b>{from_deposit:,}</b> سکه\n"
+            f"💰 برداشت از کیف پول: <b>{from_wallet:,}</b> سکه\n"
+            f"💳 موجودی کیف پول: <b>{int(fresh_victim['coins']):,}</b> سکه\n"
+            f"🏛 موجودی سپرده: <b>{new_deposit_balance:,}</b> سکه\n"
+            f"🔐 صندوق امن تو دست‌نخورده باقی ماند.",
             parse_mode="HTML"
         )
     except Exception:
         pass
     return (f"🥷 <b>دزدی موفق بود!</b>\n"
-            f"از حساب {nm(victim)} مقدار تصادفی <b>{amount:,}</b> سکه برداشتی.\n"
+            f"از حساب {nm(victim)} مجموعاً <b>{amount:,}</b> سکه برداشتی.\n"
+            f"🏛 از سپرده بانکی: <b>{from_deposit:,}</b> سکه\n"
+            f"💰 از کیف پول: <b>{from_wallet:,}</b> سکه\n"
+            f"🔐 صندوق امن هدف قابل‌سرقت نیست و دست‌نخورده ماند.\n"
             f"🏦 شماره حساب هدف: <code>{victim['account_no']}</code>\n"
             f"⭐ سطح دزد تو: {me['thief']} | 🛡 نگهبان هدف: {victim['guard']}\n{steal_note}")
 
@@ -1667,7 +1704,7 @@ def do_cyber(user, target):
 def cmd_cyber(m):
     parts = (m.text or "").split()
     if len(parts) != 2:
-        return reply(m, "فرمت: <code>/cyber آیدی_تلگرام_یا_شماره_حساب</code>\nهزینه ثابت: ۵۰٬۰۰۰ سکه؛ تمام ربات را ۲۴ ساعت محدود می‌کند.")
+        return reply(m, "فرمت: <code>/cyber آیدی_تلگرام_یا_شماره_حساب</code>\nهزینه ثابت: ۲۰٬۰۰۰ سکه؛ تمام ربات را ۲۴ ساعت محدود می‌کند.")
     target = resolve_player_identifier(parts[1])
     reply(m, do_cyber(m.from_user, target), back_markup())
 
@@ -1764,14 +1801,14 @@ def menu_text(user):
 
 HELP_TEXT = card("راهنمای بازی | GAME GUIDE", (
     "⛏ /mine — معدن هر ۶۰ ثانیه؛ جایزه تا ۵٬۰۰۰ سکه و رویداد راهزن تا ۱٬۰۰۰ سکه\n"
-    "🎁 /daily — جایزه روزانه و رکورد پیوسته\n"
+    "🎁 /daily — هر روز انتخاب یک جعبه از سه جعبه؛ شانس ۵٬۰۰۰ سکه\n"
     "👤 /profile — سطح، XP، موجودی، شماره حساب و آمار برد/باخت\n"
     "🏆 /top — لیدربورد فقط بر اساس XP، همراه شماره حساب\n"
     "🛒 /shop — ارتقای دزد، نگهبان و کلنگ؛ شمشیر و زره حذف شده‌اند\n"
     "🏦 /bank — شماره حساب | /transfer 12345678 100 — انتقال سکه\n"
     "🧾 /history — گردش حساب | /invite — لینک دعوت\n"
     "🎯 /arena 12345678 — دعوت به آرنا؛ مبلغ شرط را وارد می‌کنی و حریف با موجودی کافی قبول می‌کند\n"
-    "💻 /cyber 12345678 — هزینه ۵۰٬۰۰۰ سکه؛ تمام پیام‌ها، فرمان‌ها و دکمه‌های ربات هدف را ۲۴ ساعت مسدود می‌کند\n"
+    "💻 /cyber 12345678 — هزینه ۲۰٬۰۰۰ سکه؛ تمام پیام‌ها، فرمان‌ها و دکمه‌های ربات هدف را ۲۴ ساعت مسدود می‌کند\n"
     "🥷 /steal 12345678 — تلاش برای دزدی؛ هر ۱۵ دقیقه یک‌بار\n"
     "🎰 /slots مبلغ — اسلات با شرط دلخواه؛ هر ۶ ساعت یک‌بار\n"
     "🎡 /wheel — چرخ پاداش | /dice مبلغ — تاس با ربات | /flip مبلغ — شیر یا خط\n"
@@ -2226,9 +2263,134 @@ def cmd_farm(m):
     reply(m, text, markup)
 
 
+def daily_chest_day_key():
+    """روز تقویمی بر اساس ساعت محلی سرور بازی."""
+    return time.strftime("%Y-%m-%d", time.localtime())
+
+
+def daily_chest_markup(available=True):
+    kb = types.InlineKeyboardMarkup()
+    if available:
+        kb.row(
+            btn("📦 جعبه اول", "dailybox:1"),
+            btn("📦 جعبه دوم", "dailybox:2"),
+            btn("📦 جعبه سوم", "dailybox:3"),
+        )
+    kb.add(btn("🔙 منو", "m:menu"))
+    return kb
+
+
+def daily_chests_page(user):
+    """برای هر بازیکن در هر روز، سه جعبه با یک جایزه پنهان ۵۰۰۰ سکه‌ای می‌سازد."""
+    p = get_player(user)
+    day_key = daily_chest_day_key()
+    with lock:
+        db.execute(
+            "INSERT OR IGNORE INTO daily_chests(user_id,day_key,winning_box,opened_box,reward,opened_at) "
+            "VALUES(?,?,?,NULL,0,NULL)",
+            (p["id"], day_key, random.randint(1, 3)),
+        )
+        db.commit()
+        row = db.execute(
+            "SELECT opened_box,reward FROM daily_chests WHERE user_id=? AND day_key=?",
+            (p["id"], day_key),
+        ).fetchone()
+    if row and row["opened_box"] is not None:
+        reward = int(row["reward"] or 0)
+        outcome = f"🎉 جعبه‌ات <b>{'۵٬۰۰۰ سکه' if reward else 'پوچ'}</b> بود!" if reward else "💨 این جعبه پوچ بود؛ امروز جایزه‌ای نداشت."
+        text_value = (
+            "🎁 <b>جعبه‌های شانس روزانه</b>\n\n"
+            f"✅ جعبه شماره <b>{int(row['opened_box'])}</b> را باز کردی.\n"
+            f"{outcome}\n\n"
+            "⏰ هر روز فقط یک جعبه می‌توانی باز کنی. فردا سه جعبه تازه داری."
+        )
+        return card("جایزه روزانه", text_value), daily_chest_markup(False)
+
+    text_value = (
+        "🎁 <b>سه جعبه شانس روزانه</b>\n\n"
+        "یکی از این سه جعبه داخلش <b>۵٬۰۰۰ سکه</b> دارد و دو جعبه دیگر پوچ هستند.\n"
+        "🎲 جایزه هر روز به‌صورت تصادفی جابه‌جا می‌شود.\n"
+        "⚠️ فقط می‌توانی یکی را انتخاب کنی؛ انتخابت قابل تغییر نیست."
+    )
+    return card("جایزه روزانه", text_value), daily_chest_markup(True)
+
+
+def open_daily_chest(user, box_number):
+    """باز کردن یک جعبه؛ تراکنش اتمی جلوی دریافت چندباره جایزه را می‌گیرد."""
+    if box_number not in (1, 2, 3):
+        return "❌ شماره جعبه معتبر نیست.", daily_chest_markup(False)
+    p = get_player(user)
+    now = time.time()
+    day_key = daily_chest_day_key()
+    with lock:
+        db.execute("BEGIN IMMEDIATE")
+        db.execute(
+            "INSERT OR IGNORE INTO daily_chests(user_id,day_key,winning_box,opened_box,reward,opened_at) "
+            "VALUES(?,?,?,NULL,0,NULL)",
+            (p["id"], day_key, random.randint(1, 3)),
+        )
+        row = db.execute(
+            "SELECT winning_box,opened_box,reward FROM daily_chests WHERE user_id=? AND day_key=?",
+            (p["id"], day_key),
+        ).fetchone()
+        if row["opened_box"] is not None:
+            db.rollback()
+            reward = int(row["reward"] or 0)
+            message = "💨 قبلاً جعبه روزانه‌ات را باز کردی؛ امروز دوباره امکان انتخاب نداری."
+            if reward:
+                message += "\n🎉 جایزه امروزت: <b>۵٬۰۰۰ سکه</b>"
+            return message, daily_chest_markup(False)
+
+        reward = 5000 if int(row["winning_box"]) == box_number else 0
+        player_state = db.execute(
+            "SELECT last_daily,daily_streak FROM players WHERE id=?", (p["id"],)
+        ).fetchone()
+        previous = float(player_state["last_daily"] or 0)
+        streak = int(player_state["daily_streak"] or 0) + 1 if previous and now - previous <= DAILY_STREAK_WINDOW else 1
+        db.execute(
+            "UPDATE players SET last_daily=?,daily_streak=?,coins=MIN(?,coins+?) WHERE id=?",
+            (now, streak, MAX_SQLITE_INT, reward, p["id"]),
+        )
+        db.execute(
+            "UPDATE daily_chests SET opened_box=?,reward=?,opened_at=? WHERE user_id=? AND day_key=?",
+            (box_number, reward, now, p["id"], day_key),
+        )
+        db.commit()
+
+    if reward:
+        record_weekly_points(p["id"], 10)
+        result = (
+            "🎉 <b>تبریک! جعبه برنده را انتخاب کردی!</b>\n\n"
+            "💰 جایزه تو: <b>+۵٬۰۰۰ سکه</b>\n"
+            f"🏦 موجودی جدید: <b>{int(get_by_id(p['id'])['coins']):,} سکه</b>"
+        )
+    else:
+        result = (
+            "💨 <b>این جعبه پوچ بود!</b>\n\n"
+            "این بار جایزه‌ای نگرفتی؛ دو جعبه دیگر بعد از انتخاب قفل می‌شوند.\n"
+            "🎁 فردا دوباره سه جعبه تازه و یک شانس جدید داری."
+        )
+    return card("نتیجه جعبه روزانه", result), daily_chest_markup(False)
+
+
+@bot.callback_query_handler(func=lambda c: bool(c.data and c.data.startswith("dailybox:")))
+def daily_chest_callback(c):
+    try:
+        box_number = int(c.data.split(":", 1)[1])
+    except (ValueError, IndexError):
+        return bot.answer_callback_query(c.id, "شماره جعبه معتبر نیست.", show_alert=True)
+    try:
+        bot.answer_callback_query(c.id)
+    except Exception:
+        pass
+    result_text, markup = open_daily_chest(c.from_user, box_number)
+    return edit(c, result_text, markup)
+
+
 @bot.message_handler(commands=["daily"])
 def cmd_daily(m):
-    reply(m, do_daily(m.from_user), back_markup())
+    page_text, page_markup = daily_chests_page(m.from_user)
+    reply(m, page_text, page_markup)
 
 
 @bot.message_handler(commands=["top"])
@@ -2868,7 +3030,8 @@ def menu_router(c):
         elif arg == "mine":
             edit(c, do_mine(user), result_markup("m:mine"))
         elif arg == "daily":
-            edit(c, do_daily(user), back_markup())
+            daily_text_value, daily_kb = daily_chests_page(user)
+            edit(c, daily_text_value, daily_kb)
         elif arg == "profile":
             edit(c, do_profile(user), back_markup())
         elif arg == "top":
@@ -3098,7 +3261,7 @@ def shop_text(p):
                 f"🧱 نگهبان: سطح {p['guard']}/{EQUIPMENT_MAX_LEVEL} — محافظت در برابر سرقت عادی\n"
                 f"⛏ کلنگ: سطح {p['pickaxe'] or 0}/{EQUIPMENT_MAX_LEVEL} — +{PICKAXE_BONUS} سکه پایه در معدن به‌ازای هر سطح\n"
                 f"🔐 صندوق امن: سطح {p['vault_level'] or 0}/{VAULT_MAX_LEVEL} — هر سطح ۱۰۰۰ ظرفیت بیشتر\n\n"
-                "💻 حمله سایبری ارتقا ندارد و همیشه ۵۰٬۰۰۰ سکه هزینه دارد.\n"
+                "💻 حمله سایبری ارتقا ندارد و همیشه ۲۰٬۰۰۰ سکه هزینه دارد.\n"
                 "⚔️ شمشیر و زره از قدرت دوئل حذف شده‌اند.")
 
 
@@ -4127,7 +4290,7 @@ if __name__ == "__main__":
             types.BotCommand("dice", "🎲 تاس (مثلاً /dice 50)"),
             types.BotCommand("slots", "🎰 اسلات با شرط دلخواه هر ۶ ساعت"),
             types.BotCommand("arena", "🎯 آرنا با شرط دلخواه"),
-            types.BotCommand("cyber", "💻 حمله سایبری درون‌بازی (۵۰۰۰۰ سکه)"),
+            types.BotCommand("cyber", "💻 حمله سایبری درون‌بازی (۲۰۰۰۰ سکه)"),
             types.BotCommand("giftcodes", "🎁 کدهای هدیه و شمارنده استفاده"),
             types.BotCommand("setgiftchannel", "📌 تنظیم گروه عمومی کد هدیه (ادمین)"),
             types.BotCommand("flip", "🪙 شیر یا خط (مثلاً /flip 50)"),
