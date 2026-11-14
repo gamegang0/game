@@ -219,6 +219,61 @@ def init_schema():
 
 
 init_schema()
+
+
+def iran_day_key(offset_days=0):
+    tz = datetime.timezone(datetime.timedelta(hours=3, minutes=30))
+    return (datetime.datetime.now(tz) - datetime.timedelta(days=offset_days)).strftime("%Y-%m-%d")
+
+
+def init_extra_schema():
+    """جدول‌های پت، فعالیت روزانه و آمار بازی‌ها؛ روی دیتابیس پر هم امن است."""
+    with lock:
+        db.execute("""CREATE TABLE IF NOT EXISTS pets(
+            user_id INTEGER PRIMARY KEY, kind TEXT NOT NULL, level INTEGER DEFAULT 1,
+            feeds INTEGER DEFAULT 0, last_feed REAL DEFAULT 0, fed_until REAL DEFAULT 0,
+            bought_at REAL DEFAULT 0)""")
+        db.execute("""CREATE TABLE IF NOT EXISTS daily_active(
+            day_key TEXT NOT NULL, user_id INTEGER NOT NULL, PRIMARY KEY(day_key, user_id))""")
+        db.execute("""CREATE TABLE IF NOT EXISTS game_stats(
+            day_key TEXT NOT NULL, game TEXT NOT NULL, plays INTEGER DEFAULT 0,
+            wins INTEGER DEFAULT 0, losses INTEGER DEFAULT 0, draws INTEGER DEFAULT 0,
+            wagered INTEGER DEFAULT 0, house_net INTEGER DEFAULT 0,
+            PRIMARY KEY(day_key, game))""")
+        db.commit()
+
+
+init_extra_schema()
+_ACTIVE_SEEN = {}
+
+
+def _mark_active(uid):
+    """ثبت فعالیت امروز بازیکن (برای داشبورد)؛ هر بازیکن در روز فقط یک‌بار نوشته می‌شود."""
+    day = iran_day_key()
+    if _ACTIVE_SEEN.get(uid) == day:
+        return
+    try:
+        db.execute("INSERT OR IGNORE INTO daily_active(day_key,user_id) VALUES(?,?)", (day, int(uid)))
+        _ACTIVE_SEEN[uid] = day
+    except Exception as e:
+        print("activity mark failed:", e)
+
+
+def record_game_stat(game, outcome, wagered, house_net=0):
+    """آمار بازی را داخل همان تراکنش تسویه ثبت می‌کند؛ هیچ‌وقت نباید بازی را خراب کند."""
+    try:
+        db.execute("""INSERT INTO game_stats(day_key,game,plays,wins,losses,draws,wagered,house_net)
+                      VALUES(?,?,1,?,?,?,?,?)
+                      ON CONFLICT(day_key,game) DO UPDATE SET
+                        plays=plays+1, wins=wins+excluded.wins, losses=losses+excluded.losses,
+                        draws=draws+excluded.draws, wagered=wagered+excluded.wagered,
+                        house_net=house_net+excluded.house_net""",
+                   (iran_day_key(), str(game), 1 if outcome == "win" else 0, 1 if outcome == "lose" else 0,
+                    1 if outcome == "draw" else 0, int(wagered), int(house_net)))
+    except Exception as e:
+        print("game stat failed:", e)
+
+
 # اگر آیدی کانال/گروه در محیط هاست داده نشده باشد، از تنظیم ذخیره‌شده استفاده می‌شود.
 if not ANNOUNCEMENT_CHAT_ID:
     try:
@@ -348,7 +403,7 @@ MAX_UPGRADE = EQUIPMENT_MAX_LEVEL  # سازگاری با نسخه‌های قد�
 ARCADE_MAX = MAX_SQLITE_INT  # محدودیت فقط موجودی بازیکن و ظرفیت SQLite است
 SLOT_COST = 0  # متغیر قدیمی؛ مبلغ شرط اسلات را بازیکن خودش وارد می‌کند
 SLOTS_COOLDOWN = 6 * 3600
-CYBER_COST = 20_000
+CYBER_COST = 50_000
 CYBER_COOLDOWN = 6 * 3600
 CYBER_LOCK_SECONDS = 6 * 3600
 BADLUCK_COST = 10_000
@@ -516,6 +571,12 @@ def button_style(data):
     # آبی: ورود به بخش‌ها، اطلاعات، مدیریت حساب و ارتقاها
     primary_actions = {
         "m:profile",
+        "m:detective",
+        "m:pet",
+        "pet:feed",
+        "det:cyber",
+        "det:badluck",
+        "bankop:spy",
         "m:top",
         "m:help",
         "m:menu",
@@ -596,6 +657,8 @@ def main_markup(user_id=None):
     kb.add(btn("⛏️ | معدن سکه", "m:mine"), btn("🎁 | جایزه روزانه", "m:daily"))
     kb.add(btn("👑 پروفایل من", "m:profile"), btn("🏆 تالار قهرمانان", "m:top"))
     kb.add(btn("⚔️ میدان آرنا", "m:arena"), btn("🟥 عملیات سایبری", "m:cyber"))
+    kb.add(btn("🕵️ کارآگاه (محافظ)", "m:detective"), btn("🔎 جاسوسی", "bankop:spy"))
+    kb.add(btn("🐾 پت من", "m:pet"))
     kb.add(btn("🎰 جکپات اسلات", "m:slots"), btn("🕹️ سالن آرکید", "m:games"))
     kb.add(btn("⚒️ کارگاه ارتقای تجهیزات", "m:shop"))
     kb.add(btn("🏛 خزانه و بانک", "m:bank"), btn("📜 سوابق تراکنش", "m:history"))
@@ -628,6 +691,8 @@ def admin_actions_markup():
     kb.add(btn("🚫 محدودسازی حساب", "adminop:ban"), btn("🟢 آزادسازی حساب", "adminop:unban"))
     kb.add(btn("🎁 صدور کد هدیه", "adminop:gift"), btn("🗑 ابطال کد هدیه", "adminop:gift_delete"))
     kb.add(btn("⚡ فعال‌سازی رویداد دوبرابر", "adminop:event"))
+    kb.add(btn("🧿 مصونیت سایبری (حمله بی‌اثر)", "adminop:immune"))
+    kb.add(btn("📊 داشبورد آمار", "adminop:dashboard"))
     kb.add(btn("❌ بستن پنل", "adminop:cancel"))
     return kb
 
@@ -679,6 +744,7 @@ def get_player(user):
         farm_clock = db.execute("SELECT farm_last_claim FROM players WHERE id=?", (user.id,)).fetchone()
         if farm_clock and (farm_clock["farm_last_claim"] is None or farm_clock["farm_last_claim"] <= 0):
             db.execute("UPDATE players SET farm_last_claim=? WHERE id=?", (time.time(), user.id))
+        _mark_active(user.id)
         db.commit()
         return db.execute("SELECT * FROM players WHERE id=?", (user.id,)).fetchone()
 
@@ -849,7 +915,9 @@ def settle_bot_wager(uid, escrow_id, outcome, xp=0):
             db.rollback()
             return "⚠️ شرط قبلاً تسویه شده یا پیدا نشد."
         amount = int(row["amount"])
-        payout = amount * 2 if outcome == "win" else amount if outcome == "draw" else 0
+        mult = active_income_multiplier()          # رویداد ۲ برابر: سود برد دو برابر می‌شود
+        profit = amount * mult
+        payout = amount + profit if outcome == "win" else amount if outcome == "draw" else 0
         if payout:
             db.execute("UPDATE players SET coins=MIN(?,coins+?), xp=xp+? WHERE id=?",
                        (MAX_SQLITE_INT, payout, int(xp), int(uid)))
@@ -860,9 +928,12 @@ def settle_bot_wager(uid, escrow_id, outcome, xp=0):
         elif outcome == "lose":
             db.execute("UPDATE players SET losses=losses+1 WHERE id=?", (int(uid),))
         db.execute("DELETE FROM wager_escrows WHERE escrow_id=?", (str(escrow_id),))
+        record_game_stat(str(escrow_id).split(":")[0].replace("bot-", "", 1), outcome, amount,
+                         -profit if outcome == "win" else amount if outcome == "lose" else 0)
         db.commit()
     if outcome == "win":
-        return f"💰 شرط {amount:,} برگشت و {amount:,} سکه سود گرفتی؛ سود خالص: +{amount:,} سکه."
+        return (f"💰 شرط {amount:,} برگشت و {profit:,} سکه سود گرفتی؛ سود خالص: +{profit:,} سکه."
+                + ("\n⚡ سود با رویداد ۲ برابر دوبرابر شد" if mult == 2 else ""))
     if outcome == "draw":
         return f"🤝 شرط {amount:,} سکه به کیف پولت برگشت؛ نه سود کردی نه ضرر."
     return f"💸 این دور باختی؛ {amount:,} سکه شرط از دست رفت."
@@ -923,15 +994,16 @@ def settle_pvp_wagers(challenge, winner_id):
         elif int(winner_id) in (a_id, b_id):
             loser_id = b_id if int(winner_id) == a_id else a_id
             db.execute("UPDATE players SET coins=MIN(?,coins+?), xp=xp+30, wins=wins+1 WHERE id=?",
-                       (MAX_SQLITE_INT, bet * 2, int(winner_id)))
+                       (MAX_SQLITE_INT, bet + bet * active_income_multiplier(), int(winner_id)))
             db.execute("UPDATE players SET xp=xp+10, losses=losses+1 WHERE id=?", (loser_id,))
             outcome_text = (f"🏆 برنده {nm(get_by_id(int(winner_id)))} شد و مجموع شرط‌ها یعنی "
-                            f"{bet*2:,} سکه را گرفت؛ سود خالص برنده +{bet:,} سکه است.\n"
+                            f"{bet + bet * active_income_multiplier():,} سکه را گرفت؛ سود خالص برنده +{bet * active_income_multiplier():,} سکه است.\n"
                             f"💸 بازنده {bet:,} سکه از دست داد.")
         else:
             db.rollback()
             return "❌ برنده مسابقه معتبر نیست."
         db.execute("DELETE FROM wager_escrows WHERE escrow_id IN (?,?)", tuple(escrow_ids))
+        record_game_stat("pvp-" + str(challenge.get("game", "")), "draw" if winner_id is None else "win", bet * 2, 0)
         db.commit()
     try:
         if winner_id is None:
@@ -964,7 +1036,7 @@ def ask_bot_bet(chat_id, user, game):
     bank_transfer_state.pop(user.id, None)
     bank_action_state.pop(user.id, None)
     PVP_TARGET_INPUT.pop(user.id, None)
-    return say(chat_id, f"💰 مبلغ شرط بازی <b>{esc(game)}</b> را به سکه وارد کن.\n"
+    return say(chat_id, f"💰 مبلغ شرط بازی <b>{esc(NEW_GAMES[game][1] if game in NEW_GAMES else game)}</b> را به سکه وارد کن.\n"
                     "هر مبلغ مثبتی تا سقف موجودی کیف پولت قابل قبول است. برای لغو /cancel را بزن.", back_markup())
 
 
@@ -981,7 +1053,71 @@ def bot_choice_markup(game):
     return kb
 
 
+# ---------- بازی‌های جدید: هم تکی (با ربات) هم آرنایی (با بازیکن) ----------
+NEW_GAMES = {
+    "highcard": ("🃏", "کارت بالاتر"),
+    "twodice": ("🎲🎲", "دو تاس"),
+    "luck100": ("🔢", "عدد شانسی"),
+}
+_CARD_NAMES = {11: "J", 12: "Q", 13: "K", 14: "A"}
+
+
+def new_game_draw(game):
+    """یک دست از بازی جدید؛ (مقدار قابل‌مقایسه، متن نمایشی) را برمی‌گرداند."""
+    if game == "highcard":
+        v = random.randint(2, 14)
+        return v, f"{_CARD_NAMES.get(v, v)}{random.choice('♠♥♦♣')}"
+    if game == "twodice":
+        d1, d2 = random.randint(1, 6), random.randint(1, 6)
+        return d1 + d2, f"🎲{d1} 🎲{d2} = {d1 + d2}"
+    v = random.randint(1, 100)
+    return v, str(v)
+
+
+def do_new_game(user, game, bet):
+    emoji, title = NEW_GAMES[game]
+    p = get_player(user)
+    if too_fast(p["id"]):
+        return "⏳ یکم صبر کن."
+    escrow_id = _new_escrow_id(f"bot-{game}", p["id"])
+    ok, error = reserve_wager(p["id"], bet, escrow_id)
+    if not ok:
+        return error
+    mine, mine_txt = new_game_draw(game)
+    bots, bot_txt = new_game_draw(game)
+    head = (f"{emoji} <b>{title}</b>\n💰 شرط: <b>{int(bet):,} سکه</b>\n"
+            f"👤 تو: <b>{mine_txt}</b>\n🤖 ربات: <b>{bot_txt}</b>\n")
+    if mine > bots:
+        return head + "🏆 بردی! +۵ XP\n" + settle_bot_wager(p["id"], escrow_id, "win", xp=5)
+    if mine == bots:
+        return head + "🤝 مساوی شد.\n" + settle_bot_wager(p["id"], escrow_id, "draw", xp=3)
+    return head + "💪 این بار نشد؛ +۱ XP\n" + settle_bot_wager(p["id"], escrow_id, "lose", xp=1)
+
+
+def _new_game_command(m, game, command):
+    bet = parse_bet_argument(m)
+    if bet is False:
+        return reply(m, f"فرمت: <code>/{command} مبلغ</code>")
+    if bet is None:
+        return ask_bot_bet(m.chat.id, m.from_user, game)
+    return play_bot_game(m.chat.id, m.from_user, game, bet)
+
+
+@bot.message_handler(commands=["highcard"])
+def cmd_highcard(m): _new_game_command(m, "highcard", "highcard")
+
+
+@bot.message_handler(commands=["twodice"])
+def cmd_twodice(m): _new_game_command(m, "twodice", "twodice")
+
+
+@bot.message_handler(commands=["luck"])
+def cmd_luck(m): _new_game_command(m, "luck100", "luck")
+
+
 def play_bot_game(chat_id, user, game, bet):
+    if game in NEW_GAMES:
+        return say(chat_id, do_new_game(user, game, bet), result_markup(f"m:{game}"))
     if game == "dice":
         return say(chat_id, do_dice(user, chat_id, bet), result_markup("m:dice"))
     if game == "slots":
@@ -1079,6 +1215,7 @@ def do_mine(user):
             return f"⏳ {int(wait)} ثانیه دیگه صبر کن."
         r = random.random()
         pickaxe_bonus = int(current["pickaxe"] or 0) * PICKAXE_BONUS
+        pet_mine = pet_multiplier(p["id"], "mine")
         badluck_key = f"badluck_remaining_{p['id']}"
         badluck_row = db.execute("SELECT value FROM settings WHERE key=?", (badluck_key,)).fetchone()
         badluck_remaining = max(0, int(badluck_row["value"])) if badluck_row else 0
@@ -1100,17 +1237,17 @@ def do_mine(user):
                        (now, loss, p["id"]))
             result = f"🏴‍☠️ راهزن کمین کرده بود! <b>{loss}</b> سکه از دست دادی (حداکثر ۱۰۰۰)."
         elif r < 0.09:
-            gain = min(5000, int((random.randint(500, 5000) + pickaxe_bonus) * active_income_multiplier()))
+            gain = min(int(5000 * active_income_multiplier() * pet_mine), int((random.randint(500, 5000) + pickaxe_bonus) * active_income_multiplier() * pet_mine))
             db.execute("UPDATE players SET last_mine=?, coins=coins+?, xp=xp+25 WHERE id=?",
                        (now, gain, p["id"]))
             result = f"💎 صندوق افسانه‌ای پیدا کردی! <b>+{gain:,}</b> سکه! 🎉"
         elif r < 0.25:
-            gain = min(5000, int((random.randint(100, 700) + pickaxe_bonus) * active_income_multiplier()))
+            gain = min(int(5000 * active_income_multiplier() * pet_mine), int((random.randint(100, 700) + pickaxe_bonus) * active_income_multiplier() * pet_mine))
             db.execute("UPDATE players SET last_mine=?, coins=coins+?, xp=xp+8 WHERE id=?",
                        (now, gain, p["id"]))
             result = f"⛏ رگه طلای ارزشمند پیدا کردی: <b>+{gain:,}</b> سکه!"
         else:
-            gain = min(5000, int((random.randint(20, 150) + pickaxe_bonus) * active_income_multiplier()))
+            gain = min(int(5000 * active_income_multiplier() * pet_mine), int((random.randint(20, 150) + pickaxe_bonus) * active_income_multiplier() * pet_mine))
             db.execute("UPDATE players SET last_mine=?, coins=coins+?, xp=xp+3 WHERE id=?",
                        (now, gain, p["id"]))
             flavor = random.choice(["⛏ معدن امروز پربار بود", "🪙 کیسه سکه پیدا کردی",
@@ -1120,6 +1257,10 @@ def do_mine(user):
         db.commit()
     update_daily_mine_progress(p["id"])
     record_weekly_points(p["id"], 5)
+    if "+" in result and active_income_multiplier() == 2:
+        result += "\n⚡ رویداد ۲ برابر فعال است"
+    if "+" in result and pet_mine > 1:
+        result += f"\n🐾 بونوس پت: ×{pet_mine:.2f}"
     return result
 
 
@@ -1138,13 +1279,16 @@ def do_daily(user):
             streak = int(current["daily_streak"] or 0) + 1
         else:
             streak = 1
-        bonus = min(streak - 1, DAILY_STREAK_MAX_DAYS) * DAILY_STREAK_STEP
-        reward = DAILY_REWARD + bonus
+        day_mult = active_income_multiplier()
+        bonus = min(streak - 1, DAILY_STREAK_MAX_DAYS) * DAILY_STREAK_STEP * day_mult
+        reward = DAILY_REWARD * day_mult + bonus
         db.execute("UPDATE players SET last_daily=?, daily_streak=?, coins=coins+?, xp=xp+10 WHERE id=?",
                    (now, streak, reward, p["id"]))
         db.commit()
     record_weekly_points(p["id"], 10)
     text = f"🎁 جایزه روزانه: <b>+{reward}</b> سکه!"
+    if day_mult == 2:
+        text += "\n⚡ رویداد ۲ برابر فعال بود"
     if bonus:
         text += f"\n🔥 {streak} روز پشت‌سرهم! پاداش رکورد: <b>+{bonus}</b> سکه"
     else:
@@ -1264,6 +1408,7 @@ def do_profile(user):
             f"{level_progress(p['xp'])[1]}/{level_progress(p['xp'])[2] if level(p) < 100 else 'MAX'} XP تا سطح بعد\n"
             f"🥷 دزد: سطح {p['thief']}  |  🛡 نگهبان: سطح {p['guard']}  |  ⛏ کلنگ: سطح {p['pickaxe'] or 0}\n"
             f"🔐 صندوق امن: سطح {p['vault_level'] or 0}/{VAULT_MAX_LEVEL} — {p['vault'] or 0} سکه  |  🔥 رکورد روزانه: {p['daily_streak'] or 0} روز\n"
+            f"{pet_profile_line(p['id'])}\n"
             f"🏅 برد: {p['wins']} | 💀 باخت: {p['losses']}\n"
             f"🎯 وضعیت آرنا: {'محدود تا پایان زمان حمله' if float(p['cyber_lock_until'] or 0) > time.time() else 'آزاد'}")
     return card("پروفایل", body)
@@ -1287,6 +1432,7 @@ def bank_markup():
     kb.add(btn("💸 انتقال بین‌حسابی", "bankstart"))
     kb.add(btn("📥 سرمایه‌گذاری سپرده", "bankop:deposit"), btn("📤 برداشت سپرده", "bankop:withdraw"))
     kb.add(btn("🕵️ عملیات سرقت", "bankop:steal"), btn("🍀 بدشانسی", "bankop:badluck"))
+    kb.add(btn("🔎 جاسوسی", "bankop:spy"))
     kb.add(btn("📑 گزارش تراکنش‌ها", "m:history"), btn("♻️ به‌روزرسانی", "m:bank"))
     kb.add(btn("🔙 منو", "m:menu"))
     return kb
@@ -1568,9 +1714,16 @@ def do_steal(user, target):
             min_take = max(1, max_take // 3)
             amount = random.randint(min_take, max_take)
             steal_note = "🥷 سطح دزد بالاتر، سقف سرقتت را بیشتر می‌کند."
+        event_mult = active_income_multiplier()      # رویداد ۲ برابر: دزد دو برابر می‌گیرد، قربانی فقط مقدار عادی را از دست می‌دهد
+        pet_steal = pet_multiplier(me["id"], "steal")
+        gain = int(amount * event_mult * pet_steal)
+        if event_mult == 2:
+            steal_note += "\n⚡ رویداد ۲ برابر: دزدی دو برابر شد"
+        if pet_steal > 1:
+            steal_note += f"\n🐾 بونوس پت: ×{pet_steal:.2f}"
         db.execute("UPDATE players SET coins=coins-? WHERE id=?", (amount, victim["id"]))
         db.execute("UPDATE players SET coins=coins+?, xp=xp+3 WHERE id=?",
-                   (amount, me["id"]))
+                   (gain, me["id"]))
         db.execute("""INSERT INTO coin_transactions
             (sender_id, receiver_id, amount, kind, created_at)
             VALUES(?, ?, ?, 'steal', ?)""",
@@ -1589,7 +1742,7 @@ def do_steal(user, target):
     except Exception:
         pass
     return (f"🥷 <b>دزدی موفق بود!</b>\n"
-            f"از حساب {nm(victim)} مقدار تصادفی <b>{amount:,}</b> سکه برداشتی.\n"
+            f"از حساب {nm(victim)} مقدار تصادفی <b>{gain:,}</b> سکه برداشتی.\n"
             f"🏦 شماره حساب هدف: <code>{victim['account_no']}</code>\n"
             f"⭐ سطح دزد تو: {me['thief']} | 🛡 نگهبان هدف: {victim['guard']}\n{steal_note}")
 
@@ -1624,6 +1777,495 @@ def cmd_steal(m):
     return reply(m, do_steal(m.from_user, target), bank_markup())
 
 
+# ================== کارآگاه (محافظ‌ها)، مصونیت ادمین و اعلان رویداد ==================
+DETECTIVE_ANTI_CYBER_COST = 10_000
+DETECTIVE_ANTI_BADLUCK_COST = 7_000
+DETECTIVE_DURATION = 24 * 3600  # هر محافظ ۱ روز فعال می‌ماند
+IRAN_TZ = datetime.timezone(datetime.timedelta(hours=3, minutes=30))
+
+SHIELD_KINDS = {
+    "cyber": {"key": "shield_cyber_until_", "cost": DETECTIVE_ANTI_CYBER_COST,
+              "title": "ضد حمله سایبری", "emoji": "💻"},
+    "badluck": {"key": "shield_badluck_until_", "cost": DETECTIVE_ANTI_BADLUCK_COST,
+                "title": "ضد بدشانسی", "emoji": "🍀"},
+}
+
+
+def fmt_iran_time(ts):
+    return datetime.datetime.fromtimestamp(float(ts), tz=IRAN_TZ).strftime("%Y-%m-%d %H:%M")
+
+
+def _setting_float(key):
+    with lock:
+        row = db.execute("SELECT value FROM settings WHERE key=?", (key,)).fetchone()
+    try:
+        return float(row["value"]) if row else 0.0
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def shield_until(kind, uid):
+    return _setting_float(f"{SHIELD_KINDS[kind]['key']}{int(uid)}")
+
+
+def cyber_immune(uid):
+    """مصونیت مخفی ادمین: حمله برای مهاجم موفق نشان داده می‌شود ولی روی این بازیکن اثری ندارد."""
+    with lock:
+        row = db.execute("SELECT value FROM settings WHERE key=?", (f"cyber_immune_{int(uid)}",)).fetchone()
+    return bool(row and str(row["value"]) == "1")
+
+
+def set_cyber_immune(uid, on):
+    key = f"cyber_immune_{int(uid)}"
+    with lock:
+        if on:
+            db.execute("INSERT OR REPLACE INTO settings(key,value) VALUES(?,'1')", (key,))
+        else:
+            db.execute("DELETE FROM settings WHERE key=?", (key,))
+        db.commit()
+
+
+def immune_prompt_text():
+    with lock:
+        rows = db.execute("SELECT key FROM settings WHERE key LIKE 'cyber_immune_%'").fetchall()
+    names = []
+    for r in rows:
+        tail = str(r["key"]).replace("cyber_immune_", "", 1)
+        if tail.isdigit():
+            p = get_by_id(int(tail))
+            names.append(f"• {nm(p)} — <code>{esc(p['account_no'])}</code>" if p else f"• {tail}")
+    listing = "\n".join(names) if names else "— هنوز کسی ثبت نشده —"
+    return ("🧿 <b>مصونیت سایبری</b>\n"
+            "آیدی عددی تلگرام یا شماره حساب ۸ رقمی بازیکن را بفرست تا مصونیتش روشن/خاموش شود.\n"
+            "حمله‌کننده هزینه را می‌دهد و پیام موفقیت می‌بیند، ولی روی این بازیکن اثری ندارد.\n\n"
+            f"👥 مصون‌های فعلی:\n{listing}")
+
+
+def buy_shield(user, kind):
+    info = SHIELD_KINDS.get(kind)
+    if not info:
+        return "❌ درخواست نامعتبر است."
+    p = get_player(user)
+    now = time.time()
+    key = f"{info['key']}{int(p['id'])}"
+    with lock:
+        db.execute("BEGIN IMMEDIATE")
+        cur = db.execute("SELECT coins FROM players WHERE id=?", (p["id"],)).fetchone()
+        row = db.execute("SELECT value FROM settings WHERE key=?", (key,)).fetchone()
+        try:
+            until = float(row["value"]) if row else 0.0
+        except (TypeError, ValueError):
+            until = 0.0
+        if until > now:
+            db.rollback()
+            left = int(until - now)
+            return f"🛡 {info['title']} هنوز فعال است ({left // 3600} ساعت و {(left % 3600) // 60} دقیقه مانده)."
+        if int(cur["coins"] or 0) < info["cost"]:
+            db.rollback()
+            return f"❌ برای خرید «{info['title']}» {info['cost']:,} سکه لازم داری."
+        db.execute("UPDATE players SET coins=coins-? WHERE id=?", (info["cost"], p["id"]))
+        db.execute("INSERT OR REPLACE INTO settings(key,value) VALUES(?,?)", (key, str(now + DETECTIVE_DURATION)))
+        db.commit()
+    return (f"✅ «{info['title']}» خریداری شد (−{info['cost']:,} سکه).\n"
+            f"⏰ فعال تا {fmt_iran_time(now + DETECTIVE_DURATION)} (به وقت ایران)")
+
+
+def detective_page(user):
+    p = get_player(user)
+    now = time.time()
+    lines = ["هر محافظ ۱ روز (۲۴ ساعت) فعال است. اگر کسی در این مدت حمله کند، سکه‌ی خودش کم می‌شود ولی روی تو اثری ندارد و برایش می‌نویسد که محافظ داشتی.\n"]
+    kb = types.InlineKeyboardMarkup()
+    for kind, info in SHIELD_KINDS.items():
+        until = shield_until(kind, p["id"])
+        status = f"✅ فعال تا {fmt_iran_time(until)}" if until > now else "❌ غیرفعال"
+        lines.append(f"{info['emoji']} <b>{info['title']}</b> — {info['cost']:,} سکه\n   {status}")
+        kb.add(btn(f"{info['emoji']} خرید {info['title']} — {info['cost']:,} سکه", f"det:{kind}"))
+    lines.append(f"🔎 <b>جاسوسی</b> — {SPY_COST:,} سکه\n   کیف پول، سپرده، گاوصندوق و تجهیزات یک بازیکن را {SPY_SECONDS} ثانیه می‌بینی؛ بعد پیام پاک می‌شود.")
+    kb.add(btn(f"🔎 جاسوسی — {SPY_COST:,} سکه", "bankop:spy"))
+    kb.add(btn("🔙 منو", "m:menu"))
+    return card("🕵️ کارآگاه", "\n".join(lines)), kb
+
+
+@bot.callback_query_handler(func=lambda c: c.data.startswith("det:"))
+def detective_callback(c):
+    kind = c.data.split(":", 1)[1]
+    try:
+        bot.answer_callback_query(c.id)
+    except Exception:
+        pass
+    result = buy_shield(c.from_user, kind) if kind in SHIELD_KINDS else ""
+    text, kb = detective_page(c.from_user)
+    return edit(c, (result + "\n\n" if result else "") + text, kb)
+
+
+@bot.message_handler(commands=["detective"])
+def cmd_detective(m):
+    text, kb = detective_page(m.from_user)
+    reply(m, text, kb)
+
+
+def broadcast_to_players(text):
+    """پیام را در یک نخ جداگانه برای همه بازیکنان (به‌جز بن‌شده‌ها) می‌فرستد؛ تعداد هدف‌ها را برمی‌گرداند."""
+    with lock:
+        ids = [int(r["id"]) for r in db.execute("SELECT id FROM players").fetchall()]
+
+    def worker():
+        for uid in ids:
+            try:
+                if is_banned(uid):
+                    continue
+                bot.send_message(uid, text, parse_mode="HTML")
+            except Exception as e:
+                if "429" in str(e) or "Too Many" in str(e):
+                    time.sleep(3)
+                    try:
+                        bot.send_message(uid, text, parse_mode="HTML")
+                    except Exception:
+                        pass
+            time.sleep(0.05)
+
+    threading.Thread(target=worker, daemon=True).start()
+    return len(ids)
+
+
+# ================== پت (حیوان همراه) ==================
+PET_MAX_LEVEL = 20
+PET_FEED_COOLDOWN = 3600          # حداقل فاصله‌ی دو بار غذا دادن
+PET_FED_SECONDS = 24 * 3600       # بعد از غذا، پت ۲۴ ساعت سیر است و بونوس می‌دهد
+PET_KINDS = {
+    "eagle": {"emoji": "🦅", "title": "عقاب", "price": 20_000, "mine": 3, "steal": 0},
+    "cat": {"emoji": "🐱", "title": "گربه", "price": 20_000, "mine": 0, "steal": 3},
+    "dragon": {"emoji": "🐉", "title": "اژدها", "price": 100_000, "mine": 2, "steal": 2},
+}
+
+
+def pet_feed_cost(level):
+    return 300 + 150 * int(level)
+
+
+def pet_needed(level):
+    return 2 * int(level)          # تعداد غذا برای رفتن به سطح بعد
+
+
+def get_pet(uid):
+    with lock:
+        return db.execute("SELECT * FROM pets WHERE user_id=?", (int(uid),)).fetchone()
+
+
+def pet_multiplier(uid, area):
+    """ضریب بونوس پت (۱٫۰ یعنی بدون بونوس). فقط وقتی پت سیر است اثر می‌کند."""
+    row = get_pet(uid)
+    if not row or row["kind"] not in PET_KINDS or float(row["fed_until"] or 0) <= time.time():
+        return 1.0
+    return 1.0 + PET_KINDS[row["kind"]].get(area, 0) * int(row["level"] or 1) / 100.0
+
+
+def pet_profile_line(uid):
+    row = get_pet(uid)
+    if not row or row["kind"] not in PET_KINDS:
+        return "🐾 پت: ندارد"
+    info = PET_KINDS[row["kind"]]
+    state = "سیر" if float(row["fed_until"] or 0) > time.time() else "گرسنه"
+    return f"🐾 پت: {info['emoji']} {info['title']} سطح {int(row['level'])}/{PET_MAX_LEVEL} ({state})"
+
+
+def buy_pet(user, kind):
+    info = PET_KINDS.get(kind)
+    if not info:
+        return "❌ درخواست نامعتبر است."
+    p = get_player(user)
+    now = time.time()
+    with lock:
+        db.execute("BEGIN IMMEDIATE")
+        if db.execute("SELECT 1 FROM pets WHERE user_id=?", (p["id"],)).fetchone():
+            db.rollback()
+            return "🐾 تو از قبل یک پت داری."
+        cur = db.execute("SELECT coins FROM players WHERE id=?", (p["id"],)).fetchone()
+        if int(cur["coins"] or 0) < info["price"]:
+            db.rollback()
+            return f"❌ برای خرید {info['title']} {info['price']:,} سکه لازم داری."
+        db.execute("UPDATE players SET coins=coins-? WHERE id=?", (info["price"], p["id"]))
+        db.execute("""INSERT INTO pets(user_id,kind,level,feeds,last_feed,fed_until,bought_at)
+                      VALUES(?,?,1,0,?,?,?)""", (p["id"], kind, now, now + PET_FED_SECONDS, now))
+        db.commit()
+    return f"🎉 {info['emoji']} {info['title']} مال تو شد! (−{info['price']:,} سکه)\nهر روز بهش غذا بده تا بونوس بده."
+
+
+def feed_pet(user):
+    p = get_player(user)
+    now = time.time()
+    with lock:
+        db.execute("BEGIN IMMEDIATE")
+        row = db.execute("SELECT * FROM pets WHERE user_id=?", (p["id"],)).fetchone()
+        if not row or row["kind"] not in PET_KINDS:
+            db.rollback()
+            return "❌ هنوز پت نداری."
+        wait = PET_FEED_COOLDOWN - (now - float(row["last_feed"] or 0))
+        if wait > 0:
+            db.rollback()
+            return f"🍖 پت هنوز سیره؛ {int(wait // 60) + 1} دقیقه دیگر می‌توانی غذا بدهی."
+        level = int(row["level"] or 1)
+        cost = pet_feed_cost(level)
+        cur = db.execute("SELECT coins FROM players WHERE id=?", (p["id"],)).fetchone()
+        if int(cur["coins"] or 0) < cost:
+            db.rollback()
+            return f"❌ غذای پت {cost:,} سکه است و موجودی کافی نداری."
+        feeds = int(row["feeds"] or 0) + 1
+        leveled = False
+        while level < PET_MAX_LEVEL and feeds >= pet_needed(level):
+            feeds -= pet_needed(level)
+            level += 1
+            leveled = True
+        if level >= PET_MAX_LEVEL:
+            feeds = 0
+        db.execute("UPDATE players SET coins=coins-? WHERE id=?", (cost, p["id"]))
+        db.execute("UPDATE pets SET level=?, feeds=?, last_feed=?, fed_until=? WHERE user_id=?",
+                   (level, feeds, now, now + PET_FED_SECONDS, p["id"]))
+        db.commit()
+    info = PET_KINDS[row["kind"]]
+    text = f"🍖 {info['emoji']} {info['title']} غذا خورد (−{cost:,} سکه) و تا ۲۴ ساعت سیر است."
+    if leveled:
+        text += f"\n⬆️ ارتقا! سطح پت حالا {level}/{PET_MAX_LEVEL} است."
+    return text
+
+
+def pet_page(user):
+    p = get_player(user)
+    row = get_pet(p["id"])
+    kb = types.InlineKeyboardMarkup()
+    if not row or row["kind"] not in PET_KINDS:
+        lines = ["هنوز پت نداری! پت با غذا خوردن قوی می‌شود و روی معدن یا دزدی بونوس می‌دهد.\n"]
+        for kind, info in PET_KINDS.items():
+            lines.append(f"{info['emoji']} <b>{info['title']}</b> — {info['price']:,} سکه\n"
+                         f"   بونوس هر سطح: ⛏ معدن +{info['mine']}٪ | 🥷 دزدی +{info['steal']}٪")
+            kb.add(btn(f"{info['emoji']} خرید {info['title']} — {info['price']:,} سکه", f"pet:buy:{kind}"))
+        kb.add(btn("🔙 منو", "m:menu"))
+        return card("🐾 پت", "\n".join(lines)), kb
+    info = PET_KINDS[row["kind"]]
+    level = int(row["level"] or 1)
+    now = time.time()
+    fed_left = float(row["fed_until"] or 0) - now
+    status = (f"🍖 سیر — {int(fed_left // 3600)} ساعت و {int((fed_left % 3600) // 60)} دقیقه مانده"
+              if fed_left > 0 else "😿 گرسنه — بونوس غیرفعال است؛ غذا بده!")
+    need = pet_needed(level) if level < PET_MAX_LEVEL else 0
+    progress = f"{int(row['feeds'] or 0)}/{need} غذا تا سطح بعد" if need else "حداکثر سطح 🎉"
+    wait = PET_FEED_COOLDOWN - (now - float(row["last_feed"] or 0))
+    cooldown = f"\n⏳ غذای بعدی: {int(wait // 60) + 1} دقیقه دیگر" if wait > 0 else ""
+    body = (f"{info['emoji']} <b>{info['title']}</b> — سطح <b>{level}/{PET_MAX_LEVEL}</b>\n"
+            f"📈 {progress}\n{status}{cooldown}\n\n"
+            f"🎁 بونوس فعلی: ⛏ معدن <b>+{info['mine'] * level}٪</b> | 🥷 دزدی <b>+{info['steal'] * level}٪</b>\n"
+            f"🍖 هزینه غذا: <b>{pet_feed_cost(level):,} سکه</b> (هر ساعت یک‌بار)")
+    kb.add(btn(f"🍖 غذا دادن — {pet_feed_cost(level):,} سکه", "pet:feed"))
+    kb.add(btn("♻️ به‌روزرسانی", "pet:page"), btn("🔙 منو", "m:menu"))
+    return card("🐾 پت من", body), kb
+
+
+@bot.callback_query_handler(func=lambda c: c.data.startswith("pet:"))
+def pet_callback(c):
+    parts = c.data.split(":")
+    try:
+        bot.answer_callback_query(c.id)
+    except Exception:
+        pass
+    result = ""
+    if parts[1] == "buy" and len(parts) > 2:
+        result = buy_pet(c.from_user, parts[2])
+    elif parts[1] == "feed":
+        result = feed_pet(c.from_user)
+    text, kb = pet_page(c.from_user)
+    return edit(c, (result + "\n\n" if result else "") + text, kb)
+
+
+@bot.message_handler(commands=["pet", "pets"])
+def cmd_pet(m):
+    text, kb = pet_page(m.from_user)
+    reply(m, text, kb)
+
+
+# ================== داشبورد ادمین ==================
+GAME_LABELS = {
+    "dice": "🎲 تاس", "slots": "🎰 اسلات", "darts": "🎯 دارت", "hoops": "🏀 بسکتبال",
+    "goal": "⚽ فوتبال", "bowl": "🎳 بولینگ", "flip": "🪙 شیر یا خط", "rps": "✊ سنگ‌کاغذقیچی",
+    "roulette": "🎡 رولت", "blackjack": "🃏 بلک‌جک", "guess": "🔮 حدس عدد",
+    "highcard": "🃏 کارت بالاتر", "twodice": "🎲🎲 دو تاس", "luck100": "🔢 عدد شانسی",
+    "football": "⚽ فوتبال", "basketball": "🏀 بسکتبال", "bowling": "🎳 بولینگ", "coin": "🪙 شیر یا خط",
+}
+TX_LABELS = {"transfer": "انتقال بین بازیکنان", "steal": "دزدی", "guard_fine": "جریمه نگهبان"}
+
+
+def _game_label(game):
+    if game.startswith("pvp-"):
+        return "⚔️ آرنا " + _game_label(game[4:])
+    return GAME_LABELS.get(game, game)
+
+
+def dashboard_text():
+    now = time.time()
+    today = iran_day_key()
+    week_start = iran_day_key(6)
+    with lock:
+        totals = db.execute("SELECT COUNT(*) AS n, COALESCE(SUM(coins),0) AS c, COALESCE(SUM(vault),0) AS v FROM players").fetchone()
+        deposits = int(db.execute("SELECT COALESCE(SUM(amount),0) AS s FROM bank_deposits").fetchone()["s"])
+        banned = db.execute("SELECT COUNT(*) AS n FROM banned_players").fetchone()["n"]
+        active_today = db.execute("SELECT COUNT(*) AS n FROM daily_active WHERE day_key=?", (today,)).fetchone()["n"]
+        active_week = db.execute("SELECT COUNT(DISTINCT user_id) AS n FROM daily_active WHERE day_key>=?", (week_start,)).fetchone()["n"]
+        flows = db.execute("""SELECT kind, COUNT(*) AS n, COALESCE(SUM(amount),0) AS s
+                              FROM coin_transactions WHERE created_at>=? GROUP BY kind ORDER BY s DESC""",
+                           (now - 86400,)).fetchall()
+        rich = db.execute("SELECT * FROM players ORDER BY coins DESC LIMIT 5").fetchall()
+        games_today = db.execute("""SELECT game,plays,wins,losses,draws,wagered,house_net FROM game_stats
+                                    WHERE day_key=? ORDER BY plays DESC LIMIT 8""", (today,)).fetchall()
+        games_all = db.execute("""SELECT game, SUM(plays) AS plays, SUM(wagered) AS w, SUM(house_net) AS h
+                                  FROM game_stats GROUP BY game ORDER BY plays DESC LIMIT 6""").fetchall()
+        pet_count = db.execute("SELECT COUNT(*) AS n FROM pets").fetchone()["n"]
+    wallet, vault = int(totals["c"]), int(totals["v"])
+    lines = [
+        "📊 <b>داشبورد ادمین</b>",
+        f"🕒 {fmt_iran_time(now)} (به وقت ایران)",
+        "━━━━━━━━━━━━━━",
+        f"👥 بازیکن‌ها: <b>{int(totals['n']):,}</b>  |  🚫 بن‌شده: {int(banned):,}  |  🐾 دارای پت: {int(pet_count):,}",
+        f"🟢 فعال امروز: <b>{int(active_today):,}</b>  |  ۷ روز اخیر: <b>{int(active_week):,}</b>",
+        "━━━━━━━━━━━━━━",
+        "💰 <b>اقتصاد</b>",
+        f"کیف پول‌ها: {wallet:,}\nسپرده‌ها: {deposits:,}\nگاوصندوق‌ها: {vault:,}\nمجموع سکه‌های بازی: <b>{wallet + deposits + vault:,}</b>",
+        "━━━━━━━━━━━━━━",
+        "🔄 <b>گردش ۲۴ ساعت اخیر</b>",
+    ]
+    if flows:
+        for f in flows:
+            lines.append(f"• {TX_LABELS.get(f['kind'], f['kind'])}: {int(f['n']):,} بار — {int(f['s']):,} سکه")
+    else:
+        lines.append("— چیزی ثبت نشده —")
+    lines += ["━━━━━━━━━━━━━━", "🏆 <b>پولدارترین‌ها (کیف پول)</b>"]
+    for i, r in enumerate(rich, 1):
+        lines.append(f"{i}. {nm(r)} — {int(r['coins'] or 0):,}")
+    lines += ["━━━━━━━━━━━━━━", "🎮 <b>بازی‌های امروز</b>"]
+    if games_today:
+        for g in games_today:
+            if str(g["game"]).startswith("pvp-"):
+                lines.append(f"{_game_label(g['game'])}: {int(g['plays']):,} دست | شرط {int(g['wagered']):,}")
+            else:
+                net = int(g["house_net"])
+                lines.append(f"{_game_label(g['game'])}: {int(g['plays']):,} دست | برد {int(g['wins'])} · باخت {int(g['losses'])} · مساوی {int(g['draws'])} | سود ربات {net:+,}")
+    else:
+        lines.append("— هنوز بازی‌ای ثبت نشده —")
+    if games_all:
+        lines += ["━━━━━━━━━━━━━━", "📈 <b>پرطرفدارترین‌ها (از زمان فعال‌شدن آمار)</b>"]
+        for g in games_all:
+            extra = "" if str(g["game"]).startswith("pvp-") else f" | سود ربات {int(g['h'] or 0):+,}"
+            lines.append(f"{_game_label(g['game'])}: {int(g['plays']):,} دست | شرط {int(g['w'] or 0):,}{extra}")
+    lines.append("\nℹ️ «سود ربات» یعنی شرط‌های باخته منهای سودهای پرداختی به بازیکن‌ها.")
+    return "\n".join(lines)
+
+
+SPY_COST = 5_000
+SPY_SECONDS = 10
+
+
+def broadcast_gift_code(text):
+    """کد هدیه را برای همه بازیکنان می‌فرستد و در چت خصوصی هرکدام سنجاق می‌کند.
+    چت ادمین سنجاق نمی‌شود، چون بکاپ دیتابیس همان‌جا سنجاق می‌شود و بازیابی خودکار به آن وابسته است."""
+    with lock:
+        ids = [int(r["id"]) for r in db.execute("SELECT id FROM players").fetchall()]
+
+    def worker():
+        for uid in ids:
+            try:
+                if is_banned(uid):
+                    continue
+                msg = bot.send_message(uid, text, parse_mode="HTML")
+                if uid != ADMIN_ID:
+                    try:
+                        bot.pin_chat_message(uid, msg.message_id, disable_notification=True)
+                    except Exception as pin_error:
+                        print("gift pin failed:", uid, pin_error)
+            except Exception as e:
+                if "429" in str(e) or "Too Many" in str(e):
+                    time.sleep(3)
+            time.sleep(0.05)
+
+    threading.Thread(target=worker, daemon=True).start()
+    return len(ids)
+
+
+def do_spy(user, target, chat_id):
+    """جاسوسی: اطلاعات هدف ۱۰ ثانیه نمایش داده می‌شود و بعد پیام پاک می‌شود. موفق باشد None برمی‌گرداند."""
+    actor = get_player(user)
+    if not target:
+        return "❌ بازیکن مقصد پیدا نشد."
+    if int(target["id"]) == int(actor["id"]):
+        return "❌ نمی‌توانی از خودت جاسوسی کنی."
+    with lock:
+        db.execute("BEGIN IMMEDIATE")
+        cur = db.execute("SELECT coins FROM players WHERE id=?", (actor["id"],)).fetchone()
+        victim = db.execute("SELECT * FROM players WHERE id=?", (target["id"],)).fetchone()
+        if not victim:
+            db.rollback(); return "❌ بازیکن مقصد پیدا نشد."
+        if int(cur["coins"] or 0) < SPY_COST:
+            db.rollback(); return f"❌ برای جاسوسی {SPY_COST:,} سکه لازم داری."
+        db.execute("UPDATE players SET coins=coins-? WHERE id=?", (SPY_COST, actor["id"]))
+        db.commit()
+    deposit = get_deposit_balance(int(victim["id"]))
+    body = (f"👤 <b>{nm(victim)}</b>\n"
+            f"🏦 شماره حساب: <code>{esc(victim['account_no'])}</code>\n"
+            f"💰 کیف پول: <b>{int(victim['coins'] or 0):,}</b> سکه\n"
+            f"🏛 سپرده بانک: <b>{int(deposit):,}</b> سکه\n"
+            f"🔐 گاوصندوق: <b>{int(victim['vault'] or 0):,}</b> سکه (سطح {int(victim['vault_level'] or 0)}/{VAULT_MAX_LEVEL})\n"
+            f"🥷 دزد: سطح {int(victim['thief'] or 0)}  |  🛡 نگهبان: سطح {int(victim['guard'] or 0)}\n"
+            f"⛏ کلنگ: سطح {int(victim['pickaxe'] or 0)}  |  🌿 مزرعه: سطح {int(victim['farm_level'] or 1)}\n"
+            f"⭐ سطح بازیکن: {level(victim)}/100\n\n"
+            f"⏳ این پیام {SPY_SECONDS} ثانیه دیگر خودکار پاک می‌شود.")
+    try:
+        msg = bot.send_message(chat_id, card("🔎 گزارش جاسوسی", body), parse_mode="HTML")
+    except Exception:
+        with lock:
+            db.execute("UPDATE players SET coins=coins+? WHERE id=?", (SPY_COST, actor["id"]))
+            db.commit()
+        return "❌ ارسال گزارش ناموفق بود؛ هزینه جاسوسی برگشت داده شد."
+
+    def _wipe():
+        try:
+            bot.delete_message(chat_id, msg.message_id)
+        except Exception as e:
+            print("spy wipe failed:", e)
+
+    t = threading.Timer(SPY_SECONDS, _wipe)
+    t.daemon = True
+    t.start()
+    return None
+
+
+@bot.message_handler(commands=["spy"])
+def cmd_spy(m):
+    if m.chat.type != "private":
+        return reply(m, "🔒 جاسوسی فقط در چت خصوصی با ربات کار می‌کند.")
+    parts = (m.text or "").split()
+    if len(parts) != 2:
+        return reply(m, f"فرمت: <code>/spy آیدی_تلگرام_یا_شماره_حساب</code>\nهزینه: {SPY_COST:,} سکه؛ اطلاعات هدف {SPY_SECONDS} ثانیه نمایش داده می‌شود و بعد پاک می‌شود.")
+    target = resolve_player_identifier(parts[1])
+    error = do_spy(m.from_user, target, m.chat.id)
+    if error:
+        reply(m, error, back_markup())
+
+
+def event_end_watcher():
+    """وقتی رویداد ۲ برابر تمام شد، یک‌بار برای همه بازیکنان اعلام می‌کند (بعد از ری‌استارت هم درست کار می‌کند)."""
+    while True:
+        time.sleep(15)
+        try:
+            until = _setting_float("double_income_until")
+            now = time.time()
+            if until <= 0 or until > now or _setting_float("double_income_end_notified") == until:
+                continue
+            with lock:
+                db.execute("INSERT OR REPLACE INTO settings(key,value) VALUES('double_income_end_notified',?)", (str(until),))
+                db.commit()
+            if now - until <= 600:  # رویدادهای خیلی قدیمی بی‌صدا بسته می‌شوند
+                broadcast_to_players("⌛ <b>رویداد درآمد ۲ برابر تمام شد.</b>\nدرآمد معدن و مزرعه به حالت عادی برگشت. منتظر رویداد بعدی باش! ⚡")
+        except Exception as e:
+            print("event watcher failed:", e)
+
+
 def do_cyber(user, target):
     """رویداد کاملاً خیالی درون‌بازی؛ تمام امکانات ربات هدف را ۶ ساعت محدود می‌کند."""
     actor = get_player(user)
@@ -1632,6 +2274,7 @@ def do_cyber(user, target):
     if int(target["id"]) == int(actor["id"]):
         return "❌ نمی‌توانی به حساب خودت حمله کنی."
     now = time.time()
+    blocked = None
     with lock:
         db.execute("BEGIN IMMEDIATE")
         current_actor = db.execute("SELECT * FROM players WHERE id=?", (actor["id"],)).fetchone()
@@ -1651,25 +2294,45 @@ def do_cyber(user, target):
             return f"❌ برای حمله سایبری درون‌بازی {CYBER_COST:,} سکه لازم داری."
         attacker_name = str(current_actor["name"] or f"user_{actor['id']}")
         lock_until = now + CYBER_LOCK_SECONDS
+        if cyber_immune(target["id"]):
+            blocked = "fake"      # مصونیت ادمین: ظاهراً موفق، در عمل بی‌اثر
+        elif shield_until("cyber", target["id"]) > now:
+            blocked = "shield"    # محافظ کارآگاه
         db.execute("UPDATE players SET coins=coins-?, last_cyber=? WHERE id=?",
                    (CYBER_COST, now, actor["id"]))
-        db.execute("""UPDATE players
-                      SET cyber_lock_until=?, cyber_attacker_id=?, cyber_attacker_name=?
-                      WHERE id=?""",
-                   (lock_until, actor["id"], attacker_name, target["id"]))
+        if blocked is None:
+            db.execute("""UPDATE players
+                          SET cyber_lock_until=?, cyber_attacker_id=?, cyber_attacker_name=?
+                          WHERE id=?""",
+                       (lock_until, actor["id"], attacker_name, target["id"]))
         db.commit()
         fresh_actor = db.execute("SELECT * FROM players WHERE id=?", (actor["id"],)).fetchone()
         fresh_target = db.execute("SELECT * FROM players WHERE id=?", (target["id"],)).fetchone()
-    try:
-        bot.send_message(target["id"],
-            f"🛡 <b>هشدار حمله سایبری</b>\n"
-            f"👤 حمله‌کننده: <b>{nm(fresh_actor)}</b>\n"
-            f"🏦 شماره حساب حمله‌کننده: <code>{esc(fresh_actor['account_no'])}</code>\n"
-            f"⏰ محرومیت تا: <b>{time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(lock_until))}</b>\n"
-            "تمام امکانات ربات تو برای ۶ ساعت غیرفعال شده‌اند.",
-            parse_mode="HTML")
-    except Exception:
-        pass
+    if blocked == "shield":
+        try:
+            bot.send_message(target["id"],
+                f"🕵️ <b>کارآگاه یک حمله سایبری را خنثی کرد!</b>\n"
+                f"👤 حمله‌کننده: <b>{nm(fresh_actor)}</b>\n"
+                f"🏦 شماره حساب: <code>{esc(fresh_actor['account_no'])}</code>\n"
+                "محافظ «ضد حمله سایبری» تو فعال بود و هیچ اتفاقی برایت نیفتاد.",
+                parse_mode="HTML")
+        except Exception:
+            pass
+        return (f"🛡 <b>حمله ثبت شد، اما بی‌اثر بود!</b>\n"
+                f"🎯 هدف: <b>{nm(fresh_target)}</b> «ضد حمله سایبری» داشت.\n"
+                f"💸 هزینه حمله ({CYBER_COST:,} سکه) از حسابت کم شد.\n"
+                "🚫 حمله بعدی تو پس از ۶ ساعت آزاد می‌شود.")
+    if blocked is None:
+        try:
+            bot.send_message(target["id"],
+                f"🛡 <b>هشدار حمله سایبری</b>\n"
+                f"👤 حمله‌کننده: <b>{nm(fresh_actor)}</b>\n"
+                f"🏦 شماره حساب حمله‌کننده: <code>{esc(fresh_actor['account_no'])}</code>\n"
+                f"⏰ محرومیت تا: <b>{time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(lock_until))}</b>\n"
+                "تمام امکانات ربات تو برای ۶ ساعت غیرفعال شده‌اند.",
+                parse_mode="HTML")
+        except Exception:
+            pass
     return (f"💻 <b>رویداد سایبری درون‌بازی ثبت شد!</b>\n"
             f"🎯 هدف: <b>{nm(fresh_target)}</b>\n"
             f"💸 هزینه ثابت: <b>{CYBER_COST:,} سکه</b>\n"
@@ -1689,6 +2352,7 @@ def do_badluck(user, target):
         return "❌ نمی‌توانی روی حساب خودت بدشانسی فعال کنی."
     key = f"badluck_remaining_{int(target['id'])}"
     now = time.time()
+    shielded = False
     with lock:
         db.execute("BEGIN IMMEDIATE")
         fresh_actor = db.execute("SELECT * FROM players WHERE id=?", (actor["id"],)).fetchone()
@@ -1700,9 +2364,23 @@ def do_badluck(user, target):
             db.rollback(); return "🍀 بدشانسی این بازیکن هنوز فعال است؛ پنج حمله قبلی تمام نشده‌اند."
         if int(fresh_actor["coins"] or 0) < BADLUCK_COST:
             db.rollback(); return f"❌ برای فعال‌سازی بدشانسی {BADLUCK_COST:,} سکه لازم داری."
+        shielded = shield_until("badluck", target["id"]) > now
         db.execute("UPDATE players SET coins=coins-? WHERE id=?", (BADLUCK_COST, actor["id"]))
-        db.execute("INSERT OR REPLACE INTO settings(key,value) VALUES(?,?)", (key, str(BADLUCK_HITS)))
+        if not shielded:
+            db.execute("INSERT OR REPLACE INTO settings(key,value) VALUES(?,?)", (key, str(BADLUCK_HITS)))
         db.commit()
+    if shielded:
+        try:
+            bot.send_message(target["id"],
+                "🕵️ <b>کارآگاه یک اثر بدشانسی را خنثی کرد!</b>\n"
+                "محافظ «ضد بدشانسی» تو فعال بود و معدنت سالم ماند.\n"
+                "👤 اطلاعات فعال‌کننده نمایش داده نمی‌شود.",
+                parse_mode="HTML")
+        except Exception:
+            pass
+        return (f"🛡 <b>بدشانسی ثبت شد، اما بی‌اثر بود!</b>\n"
+                f"🎯 هدف: <b>{nm(fresh_target)}</b> «ضد بدشانسی» داشت.\n"
+                f"💸 هزینه ({BADLUCK_COST:,} سکه) از حسابت کم شد.")
     try:
         bot.send_message(target["id"],
             "🍀 یک اثر بدشانسی روی معدن تو فعال شده است!\n"
@@ -1834,6 +2512,10 @@ HELP_TEXT = card("راهنمای بازی | GAME GUIDE", (
     "🧾 /history — گردش حساب | /invite — لینک دعوت\n"
     "🎯 /arena 12345678 — دعوت به آرنا؛ مبلغ شرط را وارد می‌کنی و حریف با موجودی کافی قبول می‌کند\n"
     f"💻 /cyber 12345678 — هزینه {CYBER_COST:,} سکه؛ تمام پیام‌ها، فرمان‌ها و دکمه‌های ربات هدف را ۶ ساعت مسدود می‌کند\n"
+    f"🕵️ /detective — محافظ ضد حمله سایبری ({DETECTIVE_ANTI_CYBER_COST:,}) و ضد بدشانسی ({DETECTIVE_ANTI_BADLUCK_COST:,}) برای ۱ روز\n"
+    "🔎 /spy 12345678 — جاسوسی با ۵٬۰۰۰ سکه؛ اطلاعات هدف ۱۰ ثانیه نمایش داده و پاک می‌شود\n"
+    "🆕 /highcard مبلغ | /twodice مبلغ | /luck مبلغ — بازی تکی با ربات؛ همه‌شان در آرنا هم هستند\n"
+    "🐾 /pet — پت بخر و غذا بده؛ عقاب بونوس معدن، گربه بونوس دزدی و اژدها هر دو را می‌دهد\n"
     "🥷 /steal 12345678 — تلاش برای دزدی؛ هر ۱۵ دقیقه یک‌بار\n"
     "🎰 /slots مبلغ — اسلات با شرط دلخواه؛ هر ۶ ساعت یک‌بار\n"
     "🎡 /wheel — چرخ پاداش | /dice مبلغ — تاس با ربات | /flip مبلغ — شیر یا خط\n"
@@ -2019,6 +2701,9 @@ def admin_flow_input(m):
         elif choice in ("رویداد", "event"):
             state["operation"] = "event"; state["step"] = "event"
             return reply(m, "مدت رویداد درآمد ۲ برابر را به ثانیه بفرست (مثلاً 3600، حداکثر ۷ روز):")
+        elif choice in ("مصونیت", "immune"):
+            state["operation"] = "immune"; state["step"] = "immune"
+            return reply(m, immune_prompt_text(), admin_prompt_markup())
         else:
             return reply(m, "عملیات را از دکمه‌های زیر انتخاب کن یا نام آن را بفرست:", admin_actions_markup())
         state["expires"] = time.time() + ADMIN_SESSION_SECONDS
@@ -2053,6 +2738,13 @@ def admin_flow_input(m):
                          f"🏅 سطح نهایی پس از دریافت، براساس مجموع XP تا سقف ۱۰۰ محاسبه می‌شود.\n\n"
                          f"برای دریافت: <code>/redeem {esc(code)}</code>\n"
                          f"برای دیدن کدهای فعال: /giftcodes")
+        gift_sent_to = broadcast_gift_code(
+            f"🎁 <b>کد هدیه جدید!</b>\n\n"
+            f"🔑 کد: <code>{esc(code)}</code>\n"
+            f"🪙 پاداش: <b>{coins:,} سکه</b>\n"
+            f"⭐ پاداش: <b>{xp_value:,} XP</b>\n"
+            f"👥 ظرفیت: <b>{limit:,} نفر اول</b>\n\n"
+            f"برای دریافت: <code>/redeem {esc(code)}</code>")
         pinned_status = ""
         if ANNOUNCEMENT_CHAT_ID:
             try:
@@ -2073,7 +2765,7 @@ def admin_flow_input(m):
         else:
             pinned_status = "\n📌 برای سنجاق عمومی، در گروه اطلاع‌رسانی /setgiftchannel را اجرا کن."
         return reply(m, f"✅ کد <code>{esc(code)}</code> ساخته شد.\n🪙 {coins:,} سکه | ⭐ {xp_value:,} XP | 👥 استفاده: {used}/{limit}\n"
-                    f"این کد در /giftcodes برای همه بازیکنان نمایش داده می‌شود.{pinned_status}"
+                    f"این کد در /giftcodes برای همه بازیکنان نمایش داده می‌شود.{pinned_status}\n📢 پیام کد برای {gift_sent_to} بازیکن در حال ارسال و سنجاق در چت خصوصی‌شان است."
                     f"\nعملیات بعدی را انتخاب کن:", admin_actions_markup())
 
     if state["step"] == "gift_delete":
@@ -2129,9 +2821,33 @@ def admin_flow_input(m):
         with lock:
             db.execute("INSERT OR REPLACE INTO settings(key,value) VALUES('double_income_started',?)", (str(time.time()),))
             db.execute("INSERT OR REPLACE INTO settings(key,value) VALUES('double_income_until',?)", (str(end_at),))
+            db.execute("INSERT OR REPLACE INTO settings(key,value) VALUES('double_income_end_notified','0')")
             db.commit()
         state["step"] = "action"; state["expires"] = time.time() + ADMIN_SESSION_SECONDS
-        return reply(m, f"✅ رویداد درآمد ۲ برابر تا {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(end_at))} فعال شد.\nعملیات بعدی را انتخاب کن:", admin_actions_markup())
+        sent_to = broadcast_to_players(
+            "⚡ <b>رویداد درآمد ۲ برابر فعال شد!</b>\n"
+            "⛏ معدن، 🌿 مزرعه، 🎮 سود بازی‌ها، 🥷 دزدی، 🎁 جایزه روزانه، 🎡 چرخ شانس و 🧭 ماموریت‌ها دو برابر است.\n"
+            "💸 انتقال سکه بین بازیکن‌ها (کارت‌به‌کارت) دو برابر نمی‌شود.\n"
+            f"⏰ پایان: <b>{fmt_iran_time(end_at)}</b> (به وقت ایران)\n"
+            "برو سکه جمع کن! 🪙")
+        return reply(m, f"✅ رویداد درآمد ۲ برابر تا {fmt_iran_time(end_at)} (به وقت ایران) فعال شد.\n📢 اعلان برای {sent_to} بازیکن در حال ارسال است و پایان رویداد هم خودکار اعلام می‌شود.\nعملیات بعدی را انتخاب کن:", admin_actions_markup())
+
+    if state["step"] == "immune":
+        normalized_immune = raw.translate(str.maketrans("۰۱۲۳۴۵۶۷۸۹", "0123456789"))
+        target = resolve_player_identifier(normalized_immune) if normalized_immune.isdigit() else None
+        if not target:
+            return reply(m, "❌ بازیکنی با این آیدی یا شماره حساب پیدا نشد. دوباره بفرست:", admin_prompt_markup())
+        target_id = int(target["id"])
+        now_on = not cyber_immune(target_id)
+        set_cyber_immune(target_id, now_on)
+        state["step"] = "action"; state["operation"] = None
+        state["expires"] = time.time() + ADMIN_SESSION_SECONDS
+        if now_on:
+            status = (f"🧿 مصونیت سایبری برای <b>{nm(target)}</b> فعال شد.\n"
+                      "حمله‌کننده‌ها هزینه را می‌دهند و پیام موفقیت می‌بینند، ولی روی این بازیکن هیچ اثری نمی‌گذارد.")
+        else:
+            status = f"🔓 مصونیت سایبری <b>{nm(target)}</b> برداشته شد؛ حمله‌ها دوباره روی او اثر می‌کنند."
+        return reply(m, status + "\n\nعملیات بعدی را انتخاب کن:", admin_actions_markup())
 
     if state["step"] == "account":
         if raw.strip().lower() in ("نوع", "تغییر", "change"):
@@ -2413,6 +3129,20 @@ def bank_action_input(m):
         result = do_cyber(m.from_user, target)
         return reply(m, result, back_markup())
 
+    if step == "spy":
+        if not normalized.isdigit() or len(normalized) > 19:
+            return reply(m, "❌ آیدی تلگرام یا شماره حساب معتبر نیست. دوباره بفرست:", bank_action_cancel_markup())
+        target = resolve_player_identifier(normalized)
+        if not target:
+            return reply(m, "❌ بازیکنی با این آیدی یا شماره حساب پیدا نشد. دوباره وارد کن:", bank_action_cancel_markup())
+        if int(target["id"]) == uid:
+            return reply(m, "❌ نمی‌توانی از خودت جاسوسی کنی. هدف دیگری بفرست:", bank_action_cancel_markup())
+        bank_action_state.pop(uid, None)
+        error = do_spy(m.from_user, target, m.chat.id)
+        if error:
+            return reply(m, error, back_markup())
+        return
+
     if step == "badluck":
         if not normalized.isdigit() or len(normalized) > 19:
             return reply(m, "❌ آیدی تلگرام یا شماره حساب معتبر نیست. دوباره بفرست:", bank_action_cancel_markup())
@@ -2456,6 +3186,7 @@ PVP_GAME_DATA = {
     "coin": ("🪙", "شیر یا خط"),
     "rps": (None, "سنگ کاغذ قیچی"),
 }
+PVP_GAME_DATA.update(NEW_GAMES)   # بازی‌های جدید در آرنا هم هستند
 PVP_CHALLENGES = {}
 PVP_TARGET_INPUT = {}  # user_id -> {created}
 PVP_COUNTER = 0
@@ -2467,7 +3198,8 @@ def pvp_game_markup(target_id):
     kb.add(btn("⚽ فوتبال", f"pvpstart:{target_id}:football"), btn("🏀 بسکتبال", f"pvpstart:{target_id}:basketball"))
     kb.add(btn("🎯 دارت", f"pvpstart:{target_id}:darts"), btn("🎳 بولینگ", f"pvpstart:{target_id}:bowling"))
     kb.add(btn("🎲 تاس", f"pvpstart:{target_id}:dice"), btn("🪙 شیر یا خط", f"pvpstart:{target_id}:coin"))
-    kb.add(btn("✊ سنگ‌کاغذقیچی", f"pvpstart:{target_id}:rps"))
+    kb.add(btn("✊ سنگ‌کاغذقیچی", f"pvpstart:{target_id}:rps"), btn("🃏 کارت بالاتر", f"pvpstart:{target_id}:highcard"))
+    kb.add(btn("🎲🎲 دو تاس", f"pvpstart:{target_id}:twodice"), btn("🔢 عدد شانسی", f"pvpstart:{target_id}:luck100"))
     kb.add(btn("✖ لغو", "m:menu"))
     return kb
 
@@ -2491,7 +3223,10 @@ def _pvp_roll_match(challenge_id):
         return
     emoji, title = PVP_GAME_DATA[c["game"]]
     try:
-        if c["game"] == "coin":
+        if c["game"] in NEW_GAMES:
+            a_roll, a_txt = new_game_draw(c["game"])
+            b_roll, b_txt = new_game_draw(c["game"])
+        elif c["game"] == "coin":
             a_roll = random.randint(1, 2)
             b_roll = random.randint(1, 2)
         else:
@@ -2511,7 +3246,9 @@ def _pvp_roll_match(challenge_id):
         winner_id = None
     awards = _pvp_finish_awards(c, winner_id)
     a = get_by_id(c["challenger"]); b = get_by_id(c["target"])
-    if c["game"] == "coin":
+    if c["game"] in NEW_GAMES:
+        result_a, result_b = a_txt, b_txt
+    elif c["game"] == "coin":
         result_a = "🦅 شیر" if a_roll == 1 else "🪙 خط"
         result_b = "🦅 شیر" if b_roll == 1 else "🪙 خط"
     else:
@@ -2603,7 +3340,7 @@ def cmd_arena(m):
         return reply(m, cyber_restriction_text(m.from_user.id))
     if is_cyber_restricted(target["id"]):
         return reply(m, "🔒 این بازیکن فعلاً در محدودیت رقابتی است و نمی‌تواند مسابقه بپذیرد.")
-    reply(m, card("ARENA | دعوت به مسابقه", f"🎯 حریف: <b>{nm(target)}</b>\n🎮 رشته مسابقه را انتخاب کن.\n⚽ فوتبال · 🏀 بسکتبال · 🎯 دارت · 🎳 بولینگ · 🎲 تاس · 🪙 شیر یا خط · ✊ سنگ‌کاغذقیچی\n\n🎁 بعد از انتخاب بازی، مبلغ شرط را خودت تایپ می‌کنی. حریف فقط در صورت داشتن همان مقدار سکه می‌تواند دعوت را قبول کند."),
+    reply(m, card("ARENA | دعوت به مسابقه", f"🎯 حریف: <b>{nm(target)}</b>\n🎮 رشته مسابقه را انتخاب کن.\n⚽ فوتبال · 🏀 بسکتبال · 🎯 دارت · 🎳 بولینگ · 🎲 تاس · 🪙 شیر یا خط · ✊ سنگ‌کاغذقیچی · 🃏 کارت بالاتر · 🎲🎲 دو تاس · 🔢 عدد شانسی\n\n🎁 بعد از انتخاب بازی، مبلغ شرط را خودت تایپ می‌کنی. حریف فقط در صورت داشتن همان مقدار سکه می‌تواند دعوت را قبول کند."),
           pvp_game_markup(target["id"]))
 
 
@@ -2854,7 +3591,7 @@ def bank_action_callback(c):
         bank_action_state.pop(uid, None)
         bot.answer_callback_query(c.id, "عملیات لغو شد.")
         return edit(c, do_bank(c.from_user), bank_markup())
-    if action not in ("deposit", "withdraw", "steal", "cyber", "badluck"):
+    if action not in ("deposit", "withdraw", "steal", "cyber", "badluck", "spy"):
         return bot.answer_callback_query(c.id, "درخواست نامعتبر است.", show_alert=True)
     bank_transfer_state.pop(uid, None)
     bank_action_state[uid] = {"step": action}
@@ -2867,6 +3604,8 @@ def bank_action_callback(c):
         prompt = "🥷 شماره حساب ۸ رقمی بازیکنی را که می‌خواهی هدف قرار بدهی بفرست:"
     elif action == "cyber":
         prompt = f"💻 آیدی عددی تلگرام یا شماره حساب ۸ رقمی هدف را بفرست. هزینه حمله {CYBER_COST:,} سکه است:"
+    elif action == "spy":
+        prompt = f"🔎 آیدی عددی تلگرام یا شماره حساب ۸ رقمی هدف را بفرست. هزینه جاسوسی {SPY_COST:,} سکه است؛ اطلاعات {SPY_SECONDS} ثانیه نمایش داده می‌شود و بعد پاک می‌شود:"
     else:
         prompt = f"🍀 آیدی عددی تلگرام یا شماره حساب ۸ رقمی هدف را بفرست. هزینه فعال‌سازی بدشانسی {BADLUCK_COST:,} سکه است؛ پنج معدن بعدی او راهزن با جریمه {BADLUCK_LOSS:,} سکه خواهند داشت."
     return say(c.message.chat.id, prompt, bank_action_cancel_markup())
@@ -2892,6 +3631,18 @@ def admin_action_callback(c):
         bot.answer_callback_query(c.id, "عملیات لغو شد.")
         return edit(c, "❌ عملیات لغو شد. عملیات بعدی را انتخاب کن:", admin_actions_markup())
 
+    if action == "dashboard":
+        state["expires"] = time.time() + ADMIN_SESSION_SECONDS
+        bot.answer_callback_query(c.id)
+        dash_kb = types.InlineKeyboardMarkup()
+        dash_kb.add(btn("♻️ به‌روزرسانی", "adminop:dashboard"))
+        dash_kb.add(btn("🔙 بازگشت به پنل", "adminop:panel"))
+        return edit(c, dashboard_text(), dash_kb)
+    if action == "panel":
+        state.update(step="action", operation=None, expires=time.time() + ADMIN_SESSION_SECONDS)
+        bot.answer_callback_query(c.id)
+        return edit(c, "عملیات موردنظر را انتخاب کن:", admin_actions_markup())
+
     mapping = {
         "coins": ("coins", "account", "شماره حساب ۸ رقمی یا آیدی عددی بازیکن را بفرست تا سکه اضافه کنم:"),
         "xp": ("xp", "account", "شماره حساب ۸ رقمی یا آیدی عددی بازیکن را بفرست تا XP اضافه کنم:"),
@@ -2899,7 +3650,8 @@ def admin_action_callback(c):
         "unban": ("unban", "account", "شماره حساب ۸ رقمی یا آیدی عددی بازیکنی را که باید آزاد شود بفرست:"),
         "gift": ("gift", "gift", "کد هدیه را به این شکل بفرست:\n<code>CODE COINS XP MAX_USES</code>\nمثال: <code>WELCOME 500 20 100</code>"),
         "gift_delete": ("gift_delete", "gift_delete", "کد هدیه‌ای را که می‌خواهی حذف کنی بفرست:"),
-        "event": ("event", "event", "مدت رویداد درآمد ۲ برابر را به ثانیه بفرست (۶۰ تا ۶۰۴۸۰۰):")
+        "event": ("event", "event", "مدت رویداد درآمد ۲ برابر را به ثانیه بفرست (۶۰ تا ۶۰۴۸۰۰):"),
+        "immune": ("immune", "immune", immune_prompt_text()),
     }
     if action not in mapping:
         return bot.answer_callback_query(c.id, "عملیات نامعتبر است.", show_alert=True)
@@ -2987,6 +3739,8 @@ def menu_router(c):
             edit(c, shop_text(p), shop_markup(p))
         elif arg == "slots":
             launch_free_bot_game(chat, user, "slots")
+        elif arg in NEW_GAMES:
+            launch_free_bot_game(chat, user, arg)
         elif arg == "dice":
             launch_free_bot_game(chat, user, "dice")
         elif arg == "arena":
@@ -3000,7 +3754,14 @@ def menu_router(c):
                          "🎯 با دکمه زیر، آیدی عددی تلگرام یا شماره حساب ۸ رقمی هدف را وارد کن.\n"
                          "🔒 بعد از ثبت حمله، هدف دقیقاً ۶ ساعت به هیچ پیام، فرمان یا دکمه‌ای از ربات دسترسی ندارد.\n"
                          "✅ موجودی و اطلاعات حساب هدف تغییر نمی‌کند.\n"
-                         "⏳ هر بازیکن هر ۶ ساعت فقط یک حمله می‌تواند انجام دهد."), cyber_markup())
+                         "⏳ هر بازیکن هر ۶ ساعت فقط یک حمله می‌تواند انجام دهد.\n"
+                         "🕵️ اگر هدف «ضد حمله سایبری» کارآگاه را داشته باشد، هزینه کم می‌شود ولی حمله اثری ندارد."), cyber_markup())
+        elif arg == "pet":
+            pet_text, pet_kb = pet_page(user)
+            edit(c, pet_text, pet_kb)
+        elif arg == "detective":
+            det_text, det_kb = detective_page(user)
+            edit(c, det_text, det_kb)
         elif arg == "giftcodes":
             edit(c, giftcodes_page(user), back_markup())
         elif arg == "blackjack":
@@ -3049,7 +3810,9 @@ def games_markup():
     kb.add(btn("🏀 مسابقه بسکتبال", "m:hoops"), btn("⚽ ضربه پنالتی", "m:goal"))
     kb.add(btn("🎳 سالن بولینگ", "m:bowl"), btn("✊ نبرد سنگ‌کاغذقیچی", "m:rps"))
     kb.add(btn("🃏 میز بلک‌جک", "m:blackjack"), btn("🎡 میز رولت", "m:roulette"))
-    kb.add(btn("🔮 معمای حدس عدد", "m:guess"))
+    kb.add(btn("🔮 معمای حدس عدد", "m:guess"), btn("🎲 تاس با ربات", "m:dice"))
+    kb.add(btn("🃏 کارت بالاتر", "m:highcard"), btn("🎲🎲 دو تاس", "m:twodice"))
+    kb.add(btn("🔢 عدد شانسی", "m:luck100"), btn("⚔️ آرنا (با بازیکن)", "m:arena"))
     kb.add(btn("🔙 منو", "m:menu"))
     return kb
 
@@ -3236,11 +3999,15 @@ def do_wheel(user):
             db.rollback()
             return f"⏳ چرخ شانس {int(wait // 3600)} ساعت و {int(wait % 3600 // 60)} دقیقه دیگه آماده می‌شه."
         label, coins, xp, _w = random.choices(WHEEL_PRIZES, weights=[w[3] for w in WHEEL_PRIZES])[0]
+        wheel_mult = active_income_multiplier()
+        coins = coins * wheel_mult
         db.execute("UPDATE players SET last_wheel=?, coins=coins+?, xp=xp+? WHERE id=?",
                    (now, coins, xp, p["id"]))
         db.commit()
     return (f"🎡 چرخ شانس چرخید...\n{LINE}\n🎁 جایزه: <b>{label}</b>\n"
-            f"⭐ +{xp} امتیاز\n⏳ نوبت بعدی: {WHEEL_COOLDOWN // 3600} ساعت دیگه")
+            f"⭐ +{xp} امتیاز\n"
+            + (f"⚡ رویداد ۲ برابر: {coins:,} سکه به حسابت اضافه شد\n" if wheel_mult == 2 and coins else "")
+            + f"⏳ نوبت بعدی: {WHEEL_COOLDOWN // 3600} ساعت دیگه")
 
 
 @bot.message_handler(commands=["wheel"])
@@ -3623,10 +4390,11 @@ def claim_daily_mission(user):
         if row["claimed"]:
             db.rollback(); return "✅ پاداش امروز را قبلاً گرفتی."
         db.execute("UPDATE daily_progress SET claimed=1 WHERE user_id=? AND day_key=?", (p["id"], key))
-        db.execute("UPDATE players SET coins=coins+250,xp=xp+25 WHERE id=?", (p["id"],))
+        mission_reward = 250 * active_income_multiplier()
+        db.execute("UPDATE players SET coins=coins+?,xp=xp+25 WHERE id=?", (mission_reward, p["id"]))
         db.commit()
     record_weekly_points(p["id"], 10)
-    return "🎉 ماموریت کامل شد: +۲۵۰ سکه و +۲۵ XP"
+    return f"🎉 ماموریت کامل شد: +{mission_reward:,} سکه و +۲۵ XP"
 
 
 ACHIEVEMENTS = [
@@ -4204,6 +4972,12 @@ if __name__ == "__main__":
             types.BotCommand("slots", "🎰 اسلات با شرط دلخواه هر ۶ ساعت"),
             types.BotCommand("arena", "🎯 آرنا با شرط دلخواه"),
             types.BotCommand("cyber", "💻 حمله سایبری درون‌بازی (۵۰۰۰۰ سکه)"),
+            types.BotCommand("detective", "🕵️ کارآگاه: محافظ ضد سایبری و بدشانسی"),
+            types.BotCommand("spy", "🔎 جاسوسی (۵۰۰۰ سکه، ۱۰ ثانیه نمایش)"),
+            types.BotCommand("pet", "🐾 پت: خرید، غذا و بونوس"),
+            types.BotCommand("highcard", "🃏 کارت بالاتر با شرط دلخواه"),
+            types.BotCommand("twodice", "🎲🎲 دو تاس با شرط دلخواه"),
+            types.BotCommand("luck", "🔢 عدد شانسی با شرط دلخواه"),
             types.BotCommand("giftcodes", "🎁 کدهای هدیه و شمارنده استفاده"),
             types.BotCommand("setgiftchannel", "📌 تنظیم گروه عمومی کد هدیه (ادمین)"),
             types.BotCommand("flip", "🪙 شیر یا خط (مثلاً /flip 50)"),
@@ -4240,6 +5014,7 @@ if __name__ == "__main__":
     except Exception:
         pass
     threading.Thread(target=backup_loop, daemon=True).start()
+    threading.Thread(target=event_end_watcher, daemon=True).start()
     threading.Thread(target=backup_to_telegram, daemon=True).start()
     with lock:
         _n_players = db.execute("SELECT COUNT(*) AS n FROM players").fetchone()["n"]
