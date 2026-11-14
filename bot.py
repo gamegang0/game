@@ -1,4 +1,4 @@
-import os, html, sqlite3, random, time, threading, shutil, hashlib, signal, hmac, datetime
+import os, html, sqlite3, random, time, threading, shutil, hashlib, signal, hmac, datetime, math
 import telebot
 from telebot import types
 
@@ -397,8 +397,8 @@ STEAL_COOLDOWN = 15 * 60  # هر ۱۵ دقیقه یک‌بار
 TRANSFER_FEE_PERCENT = 0
 DAILY_REWARD = 200
 ARENA_MAX = 200
-EQUIPMENT_MAX_LEVEL = 100  # دزد، نگهبان و کلنگ تا سطح ۱۰۰
-VAULT_MAX_LEVEL = 20       # صندوق امن جداگانه تا سطح ۲۰
+EQUIPMENT_MAX_LEVEL = 500  # دزد، نگهبان و کلنگ تا سطح ۵۰۰
+VAULT_MAX_LEVEL = 100       # صندوق امن جداگانه تا سطح ۱۰۰
 MAX_UPGRADE = EQUIPMENT_MAX_LEVEL  # سازگاری با نسخه‌های قدیمی
 ARCADE_MAX = MAX_SQLITE_INT  # محدودیت فقط موجودی بازیکن و ظرفیت SQLite است
 SLOT_COST = 0  # متغیر قدیمی؛ مبلغ شرط اسلات را بازیکن خودش وارد می‌کند
@@ -409,6 +409,8 @@ CYBER_LOCK_SECONDS = 6 * 3600
 BADLUCK_COST = 10_000
 BADLUCK_HITS = 5
 BADLUCK_LOSS = 1_000
+GAME_BADLUCK_COST = 25_000
+GAME_BADLUCK_HITS = 5
 GIVE_TAX_PERCENT = 5
 MAX_DIGITS = 9
 FARM_BASE_INCOME = 50          # هر سطح مزرعه، ۵۰ سکه در ساعت
@@ -923,6 +925,10 @@ def settle_bot_wager(uid, escrow_id, outcome, xp=0):
             db.rollback()
             return "⚠️ شرط قبلاً تسویه شده یا پیدا نشد."
         amount = int(row["amount"])
+        badluck_used, badluck_left = _consume_game_badluck_in_transaction(uid)
+        original_outcome = outcome
+        if badluck_used and outcome in ("win", "draw"):
+            outcome = "lose"
         mult = active_income_multiplier()          # رویداد ۲ برابر: سود برد دو برابر می‌شود
         profit = amount * mult
         payout = amount + profit if outcome == "win" else amount if outcome == "draw" else 0
@@ -940,11 +946,19 @@ def settle_bot_wager(uid, escrow_id, outcome, xp=0):
                          -profit if outcome == "win" else amount if outcome == "lose" else 0)
         db.commit()
     if outcome == "win":
-        return (f"💰 شرط {amount:,} برگشت و {profit:,} سکه سود گرفتی؛ سود خالص: +{profit:,} سکه."
-                + ("\n⚡ سود با رویداد ۲ برابر دوبرابر شد" if mult == 2 else ""))
-    if outcome == "draw":
-        return f"🤝 شرط {amount:,} سکه به کیف پولت برگشت؛ نه سود کردی نه ضرر."
-    return f"💸 این دور باختی؛ {amount:,} سکه شرط از دست رفت."
+        result_text = (f"💰 شرط {amount:,} برگشت و {profit:,} سکه سود گرفتی؛ سود خالص: +{profit:,} سکه."
+                       + ("\n⚡ سود با رویداد ۲ برابر دوبرابر شد" if mult == 2 else ""))
+    elif outcome == "draw":
+        result_text = f"🤝 شرط {amount:,} سکه به کیف پولت برگشت؛ نه سود کردی نه ضرر."
+    else:
+        result_text = f"💸 این دور باختی؛ {amount:,} سکه شرط از دست رفت."
+    if badluck_used:
+        left_text = f"{badluck_left} بازی دیگر باقی مانده است." if badluck_left else "این آخرین اثر بود و بدشانسی تمام شد."
+        if original_outcome in ("win", "draw"):
+            result_text += f"\n🍀 اثر بدشانسی نتیجه را تغییر داد؛ {left_text}"
+        else:
+            result_text += f"\n🍀 یک نوبت از بدشانسی مصرف شد؛ {left_text}"
+    return result_text
 
 
 def reserve_pvp_wagers(challenge_id, challenger_id, target_id, amount):
@@ -993,6 +1007,14 @@ def settle_pvp_wagers(challenge, winner_id):
         if len(escrows) != 2:
             db.rollback()
             return "⚠️ شرط‌ها پیدا نشدند؛ برای جلوگیری از پرداخت تکراری، تسویه انجام نشد."
+        badluck_a, left_a = _consume_game_badluck_in_transaction(a_id)
+        badluck_b, left_b = _consume_game_badluck_in_transaction(b_id)
+        if badluck_a and badluck_b:
+            winner_id = None
+        elif badluck_a and (winner_id is None or int(winner_id) == a_id):
+            winner_id = b_id
+        elif badluck_b and (winner_id is None or int(winner_id) == b_id):
+            winner_id = a_id
         if winner_id is None:
             db.execute("UPDATE players SET coins=MIN(?,coins+?) WHERE id=?",
                        (MAX_SQLITE_INT, bet, a_id))
@@ -1012,6 +1034,13 @@ def settle_pvp_wagers(challenge, winner_id):
             return "❌ برنده مسابقه معتبر نیست."
         db.execute("DELETE FROM wager_escrows WHERE escrow_id IN (?,?)", tuple(escrow_ids))
         record_game_stat("pvp-" + str(challenge.get("game", "")), "draw" if winner_id is None else "win", bet * 2, 0)
+        if badluck_a or badluck_b:
+            remaining_notes = []
+            if badluck_a:
+                remaining_notes.append(f"بازیکن اول: {left_a} اثر باقی‌مانده")
+            if badluck_b:
+                remaining_notes.append(f"بازیکن دوم: {left_b} اثر باقی‌مانده")
+            outcome_text += "\n🍀 بدشانسی بازی مصرف شد؛ " + "، ".join(remaining_notes)
         db.commit()
     try:
         if winner_id is None:
@@ -1096,10 +1125,13 @@ def do_new_game(user, game, bet):
     head = (f"{emoji} <b>{title}</b>\n💰 شرط: <b>{int(bet):,} سکه</b>\n"
             f"👤 تو: <b>{mine_txt}</b>\n🤖 ربات: <b>{bot_txt}</b>\n")
     if mine > bots:
-        return head + "🏆 بردی! +۵ XP\n" + settle_bot_wager(p["id"], escrow_id, "win", xp=5)
+        money = settle_bot_wager(p["id"], escrow_id, "win", xp=5)
+        return head + game_result_line(money, "🏆 بردی! +۵ XP\n")
     if mine == bots:
-        return head + "🤝 مساوی شد.\n" + settle_bot_wager(p["id"], escrow_id, "draw", xp=3)
-    return head + "💪 این بار نشد؛ +۱ XP\n" + settle_bot_wager(p["id"], escrow_id, "lose", xp=1)
+        money = settle_bot_wager(p["id"], escrow_id, "draw", xp=3)
+        return head + game_result_line(money, "🤝 مساوی شد.\n")
+    money = settle_bot_wager(p["id"], escrow_id, "lose", xp=1)
+    return head + game_result_line(money, "💪 این بار نشد؛ +۱ XP\n")
 
 
 def _new_game_command(m, game, command):
@@ -1205,6 +1237,61 @@ def roll(chat_id, emoji="🎲"):
 
 
 
+def progression_multiplier(p):
+    """ضریب رشد اقتصاد بازی بر اساس مزرعه، تجهیزات، سطح بازیکن و موجودی کیف پول."""
+    farm = max(1, int(p["farm_level"] or 1))
+    gear_levels = sum(max(0, int(p[k] or 0)) for k in ("thief", "guard", "pickaxe", "vault_level"))
+    player_level = level(p) if "xp" in p.keys() else 1
+    coins = max(0, int(p["coins"] or 0))
+    farm_bonus = min(3.0, max(0, farm - 1) * 0.006)
+    gear_bonus = min(3.0, gear_levels * 0.002)
+    level_bonus = max(0, player_level - 1) * 0.005
+    wealth_bonus = min(2.0, max(0.0, (math.log10(coins + 1) - 2.0) * 0.25))
+    return min(9.5, 1.0 + farm_bonus + gear_bonus + level_bonus + wealth_bonus)
+
+
+def scaled_action_cost(base_cost, player):
+    """هزینه عملیات ویژه با پیشرفت مهاجم بالا می‌رود تا اسپم‌کردن محدود شود."""
+    return max(1, int(round(int(base_cost) * progression_multiplier(player))))
+
+
+def game_badluck_key(uid):
+    return f"game_badluck_remaining_{int(uid)}"
+
+
+def game_badluck_remaining(uid):
+    with lock:
+        row = db.execute("SELECT value FROM settings WHERE key=?", (game_badluck_key(uid),)).fetchone()
+    try:
+        return max(0, int(row["value"])) if row else 0
+    except (TypeError, ValueError):
+        return 0
+
+
+def _consume_game_badluck_in_transaction(uid):
+    """مصرف یک اثر بدشانسی؛ فقط از داخل تراکنش تسویه صدا زده شود."""
+    key = game_badluck_key(uid)
+    row = db.execute("SELECT value FROM settings WHERE key=?", (key,)).fetchone()
+    try:
+        remaining = max(0, int(row["value"])) if row else 0
+    except (TypeError, ValueError):
+        remaining = 0
+    if remaining <= 0:
+        return False, 0
+    left = remaining - 1
+    if left:
+        db.execute("INSERT OR REPLACE INTO settings(key,value) VALUES(?,?)", (key, str(left)))
+    else:
+        db.execute("DELETE FROM settings WHERE key=?", (key,))
+    return True, left
+
+
+def game_result_line(money_text, normal_text):
+    if "🍀 اثر بدشانسی نتیجه را تغییر داد" in money_text:
+        return "🍀 بدشانسی روی این دور اثر گذاشت و برد/مساوی را به باخت تبدیل کرد.\n" + money_text
+    return normal_text + money_text
+
+
 def price(kind, p):
     bases = {"thief": 250, "guard": 250, "pickaxe": 400, "vault": 500}
     current_level = int(p["vault_level"] or 0) if kind == "vault" else int(p[kind] or 0)
@@ -1224,6 +1311,15 @@ def do_mine(user):
         r = random.random()
         pickaxe_bonus = int(current["pickaxe"] or 0) * PICKAXE_BONUS
         pet_mine = pet_multiplier(p["id"], "mine")
+        growth_mult = progression_multiplier(current)
+        farm_level_now = max(1, int(current["farm_level"] or 1))
+        gear_total = sum(max(0, int(current[k] or 0)) for k in ("thief", "guard", "pickaxe", "vault_level"))
+        wealth_steps = max(0, int(math.log10(max(0, int(current["coins"] or 0)) + 1)) - 2)
+        robber_chance = min(0.25, 0.04 + min(0.10, (farm_level_now - 1) * 0.0002)
+                            + min(0.06, gear_total * 0.00004) + min(0.05, wealth_steps * 0.01))
+        bandits = min(10, 1 + min(5, (farm_level_now - 1) // 100)
+                      + min(3, gear_total // 400) + min(2, wealth_steps // 3))
+        event_mult = active_income_multiplier()
         badluck_key = f"badluck_remaining_{p['id']}"
         badluck_row = db.execute("SELECT value FROM settings WHERE key=?", (badluck_key,)).fetchone()
         badluck_remaining = max(0, int(badluck_row["value"])) if badluck_row else 0
@@ -1234,28 +1330,43 @@ def do_mine(user):
                 db.execute("INSERT OR REPLACE INTO settings(key,value) VALUES(?,?)", (badluck_key, str(left)))
             else:
                 db.execute("DELETE FROM settings WHERE key=?", (badluck_key,))
-            # بدشانسی عمداً می‌تواند موجودی را منفی کند؛ صندوق امن دست‌نخورده می‌ماند.
+            # بدشانسی معدن می‌تواند موجودی را منفی کند؛ صندوق امن دست‌نخورده می‌ماند.
             db.execute("UPDATE players SET last_mine=?, coins=coins-?, xp=xp+1 WHERE id=?",
                        (now, loss, p["id"]))
             result = f"🏴‍☠️ راهزن کمین کرده بود! <b>{loss:,}</b> سکه از دست دادی. ({left} حمله باقی‌مانده)"
-        elif r < 0.04:
-            max_loss = min(1000, int(current["coins"]) // 2)
-            loss = random.randint(1, max_loss) if max_loss > 0 else 0
+        elif r < robber_chance:
+            initial_coins = max(0, int(current["coins"] or 0))
+            theft_budget = initial_coins // 2
+            total_loss = 0
+            raiders_hit = 0
+            for _ in range(bandits):
+                remaining_budget = theft_budget - total_loss
+                if remaining_budget <= 0:
+                    break
+                per_raider_cap = min(remaining_budget, max(1000, int(1000 * growth_mult)))
+                stolen = random.randint(1, per_raider_cap) if per_raider_cap > 0 else 0
+                total_loss += stolen
+                if stolen:
+                    raiders_hit += 1
             db.execute("UPDATE players SET last_mine=?, coins=coins-?, xp=xp+1 WHERE id=?",
-                       (now, loss, p["id"]))
-            result = f"🏴‍☠️ راهزن کمین کرده بود! <b>{loss}</b> سکه از دست دادی (حداکثر ۱۰۰۰)."
-        elif r < 0.09:
-            gain = min(int(5000 * active_income_multiplier() * pet_mine), int((random.randint(500, 5000) + pickaxe_bonus) * active_income_multiplier() * pet_mine))
+                       (now, total_loss, p["id"]))
+            result = (f"🏴‍☠️ <b>{raiders_hit} راهزن</b> به معدن حمله کردند و مجموعاً "
+                      f"<b>{total_loss:,}</b> سکه دزدیدند!")
+        elif r < robber_chance + 0.05:
+            gain = int((random.randint(500, 5000) + pickaxe_bonus) * growth_mult * event_mult * pet_mine)
+            gain = min(gain, max(0, MAX_SQLITE_INT - int(current["coins"] or 0)))
             db.execute("UPDATE players SET last_mine=?, coins=coins+?, xp=xp+25 WHERE id=?",
                        (now, gain, p["id"]))
             result = f"💎 صندوق افسانه‌ای پیدا کردی! <b>+{gain:,}</b> سکه! 🎉"
-        elif r < 0.25:
-            gain = min(int(5000 * active_income_multiplier() * pet_mine), int((random.randint(100, 700) + pickaxe_bonus) * active_income_multiplier() * pet_mine))
+        elif r < robber_chance + 0.21:
+            gain = int((random.randint(100, 700) + pickaxe_bonus) * growth_mult * event_mult * pet_mine)
+            gain = min(gain, max(0, MAX_SQLITE_INT - int(current["coins"] or 0)))
             db.execute("UPDATE players SET last_mine=?, coins=coins+?, xp=xp+8 WHERE id=?",
                        (now, gain, p["id"]))
             result = f"⛏ رگه طلای ارزشمند پیدا کردی: <b>+{gain:,}</b> سکه!"
         else:
-            gain = min(int(5000 * active_income_multiplier() * pet_mine), int((random.randint(20, 150) + pickaxe_bonus) * active_income_multiplier() * pet_mine))
+            gain = int((random.randint(20, 150) + pickaxe_bonus) * growth_mult * event_mult * pet_mine)
+            gain = min(gain, max(0, MAX_SQLITE_INT - int(current["coins"] or 0)))
             db.execute("UPDATE players SET last_mine=?, coins=coins+?, xp=xp+3 WHERE id=?",
                        (now, gain, p["id"]))
             flavor = random.choice(["⛏ معدن امروز پربار بود", "🪙 کیسه سکه پیدا کردی",
@@ -1277,7 +1388,7 @@ def do_daily(user):
     now = time.time()
     with lock:
         db.execute("BEGIN IMMEDIATE")
-        current = db.execute("SELECT last_daily, daily_streak FROM players WHERE id=?", (p["id"],)).fetchone()
+        current = db.execute("SELECT * FROM players WHERE id=?", (p["id"],)).fetchone()
         prev = current["last_daily"] or 0
         wait = DAILY_COOLDOWN - (now - prev)
         if wait > 0:
@@ -1288,13 +1399,17 @@ def do_daily(user):
         else:
             streak = 1
         day_mult = active_income_multiplier()
-        bonus = min(streak - 1, DAILY_STREAK_MAX_DAYS) * DAILY_STREAK_STEP * day_mult
-        reward = DAILY_REWARD * day_mult + bonus
+        growth_mult = progression_multiplier(current)
+        bonus = int(min(streak - 1, DAILY_STREAK_MAX_DAYS) * DAILY_STREAK_STEP * growth_mult * day_mult)
+        reward = int(DAILY_REWARD * growth_mult * day_mult) + bonus
+        reward = min(reward, max(0, MAX_SQLITE_INT - int(current["coins"] or 0)))
         db.execute("UPDATE players SET last_daily=?, daily_streak=?, coins=coins+?, xp=xp+10 WHERE id=?",
                    (now, streak, reward, p["id"]))
         db.commit()
     record_weekly_points(p["id"], 10)
     text = f"🎁 جایزه روزانه: <b>+{reward}</b> سکه!"
+    if growth_mult > 1.01:
+        text += f"\n📈 پاداش متناسب با قدرت حسابت: ×{growth_mult:.2f}"
     if day_mult == 2:
         text += "\n⚡ رویداد ۲ برابر فعال بود"
     if bonus:
@@ -1414,7 +1529,7 @@ def do_profile(user):
             f"🏦 شماره حساب: <code>{p['account_no']}</code>\n"
             f"⭐ سطح {level(p)}/100  {xp_bar(p)}  "
             f"{level_progress(p['xp'])[1]}/{level_progress(p['xp'])[2] if level(p) < 100 else 'MAX'} XP تا سطح بعد\n"
-            f"🥷 دزد: سطح {p['thief']}  |  🛡 نگهبان: سطح {p['guard']}  |  ⛏ کلنگ: سطح {p['pickaxe'] or 0}\n"
+            f"🥷 دزد: سطح {p['thief']}/{EQUIPMENT_MAX_LEVEL}  |  🛡 نگهبان: سطح {p['guard']}/{EQUIPMENT_MAX_LEVEL}  |  ⛏ کلنگ: سطح {p['pickaxe'] or 0}/{EQUIPMENT_MAX_LEVEL}\n"
             f"🔐 صندوق امن: سطح {p['vault_level'] or 0}/{VAULT_MAX_LEVEL} — {p['vault'] or 0} سکه  |  🔥 رکورد روزانه: {p['daily_streak'] or 0} روز\n"
             f"{pet_profile_line(p['id'])}\n"
             f"🏅 برد: {p['wins']} | 💀 باخت: {p['losses']}\n"
@@ -1439,7 +1554,8 @@ def bank_markup():
     kb = types.InlineKeyboardMarkup()
     kb.add(btn("💸 انتقال بین‌حسابی", "bankstart"))
     kb.add(btn("📥 سرمایه‌گذاری سپرده", "bankop:deposit"), btn("📤 برداشت سپرده", "bankop:withdraw"))
-    kb.add(btn("🕵️ عملیات سرقت", "bankop:steal"), btn("🍀 بدشانسی", "bankop:badluck"))
+    kb.add(btn("🕵️ عملیات سرقت", "bankop:steal"), btn("⛏ بدشانسی معدن", "bankop:badluck"))
+    kb.add(btn("🎮 بدشانسی بازی‌ها", "bankop:gamebadluck"))
     kb.add(btn("🔎 جاسوسی", "bankop:spy"))
     kb.add(btn("📑 گزارش تراکنش‌ها", "m:history"), btn("♻️ به‌روزرسانی", "m:bank"))
     kb.add(btn("🔙 منو", "m:menu"))
@@ -2297,9 +2413,10 @@ def do_cyber(user, target):
         if float(current_target["cyber_lock_until"] or 0) > now:
             db.rollback()
             return "🔒 آرنای این بازیکن از قبل محدود است؛ حمله دوباره روی او ثبت نشد."
-        if int(current_actor["coins"]) < CYBER_COST:
+        cyber_cost = scaled_action_cost(CYBER_COST, current_actor)
+        if int(current_actor["coins"]) < cyber_cost:
             db.rollback()
-            return f"❌ برای حمله سایبری درون‌بازی {CYBER_COST:,} سکه لازم داری."
+            return f"❌ برای حمله سایبری درون‌بازی {cyber_cost:,} سکه لازم داری."
         attacker_name = str(current_actor["name"] or f"user_{actor['id']}")
         lock_until = now + CYBER_LOCK_SECONDS
         if cyber_immune(target["id"]):
@@ -2307,7 +2424,7 @@ def do_cyber(user, target):
         elif shield_until("cyber", target["id"]) > now:
             blocked = "shield"    # محافظ کارآگاه
         db.execute("UPDATE players SET coins=coins-?, last_cyber=? WHERE id=?",
-                   (CYBER_COST, now, actor["id"]))
+                   (cyber_cost, now, actor["id"]))
         if blocked is None:
             db.execute("""UPDATE players
                           SET cyber_lock_until=?, cyber_attacker_id=?, cyber_attacker_name=?
@@ -2328,7 +2445,7 @@ def do_cyber(user, target):
             pass
         return (f"🛡 <b>حمله ثبت شد، اما بی‌اثر بود!</b>\n"
                 f"🎯 هدف: <b>{nm(fresh_target)}</b> «ضد حمله سایبری» داشت.\n"
-                f"💸 هزینه حمله ({CYBER_COST:,} سکه) از حسابت کم شد.\n"
+                f"💸 هزینه حمله ({cyber_cost:,} سکه) از حسابت کم شد.\n"
                 "🚫 حمله بعدی تو پس از ۶ ساعت آزاد می‌شود.")
     if blocked is None:
         try:
@@ -2343,7 +2460,7 @@ def do_cyber(user, target):
             pass
     return (f"💻 <b>رویداد سایبری درون‌بازی ثبت شد!</b>\n"
             f"🎯 هدف: <b>{nm(fresh_target)}</b>\n"
-            f"💸 هزینه ثابت: <b>{CYBER_COST:,} سکه</b>\n"
+            f"💸 هزینه: <b>{cyber_cost:,} سکه</b>\n"
             "🔒 تمام بخش‌های ربات هدف برای ۶ ساعت مسدود شد.\n"
             f"👤 حمله‌کننده ثبت‌شده: <b>{esc(attacker_name)}</b>\n"
             f"🏦 شماره حساب حمله‌کننده: <code>{esc(fresh_actor['account_no'])}</code>\n"
@@ -2370,10 +2487,11 @@ def do_badluck(user, target):
         active = db.execute("SELECT value FROM settings WHERE key=?", (key,)).fetchone()
         if active and int(active["value"] or 0) > 0:
             db.rollback(); return "🍀 بدشانسی این بازیکن هنوز فعال است؛ پنج حمله قبلی تمام نشده‌اند."
-        if int(fresh_actor["coins"] or 0) < BADLUCK_COST:
-            db.rollback(); return f"❌ برای فعال‌سازی بدشانسی {BADLUCK_COST:,} سکه لازم داری."
+        badluck_cost = scaled_action_cost(BADLUCK_COST, fresh_actor)
+        if int(fresh_actor["coins"] or 0) < badluck_cost:
+            db.rollback(); return f"❌ برای فعال‌سازی بدشانسی معدن {badluck_cost:,} سکه لازم داری."
         shielded = shield_until("badluck", target["id"]) > now
-        db.execute("UPDATE players SET coins=coins-? WHERE id=?", (BADLUCK_COST, actor["id"]))
+        db.execute("UPDATE players SET coins=coins-? WHERE id=?", (badluck_cost, actor["id"]))
         if not shielded:
             db.execute("INSERT OR REPLACE INTO settings(key,value) VALUES(?,?)", (key, str(BADLUCK_HITS)))
         db.commit()
@@ -2388,7 +2506,7 @@ def do_badluck(user, target):
             pass
         return (f"🛡 <b>بدشانسی ثبت شد، اما بی‌اثر بود!</b>\n"
                 f"🎯 هدف: <b>{nm(fresh_target)}</b> «ضد بدشانسی» داشت.\n"
-                f"💸 هزینه ({BADLUCK_COST:,} سکه) از حسابت کم شد.")
+                f"💸 هزینه ({badluck_cost:,} سکه) از حسابت کم شد.")
     try:
         bot.send_message(target["id"],
             "🍀 یک اثر بدشانسی روی معدن تو فعال شده است!\n"
@@ -2397,16 +2515,77 @@ def do_badluck(user, target):
     except Exception:
         pass
     return (f"🍀 بدشانسی با موفقیت روی <b>{nm(fresh_target)}</b> فعال شد.\n"
-            f"💸 هزینه: <b>{BADLUCK_COST:,} سکه</b>\n"
+            f"💸 هزینه: <b>{badluck_cost:,} سکه</b>\n"
             f"⛏ تعداد حمله: <b>{BADLUCK_HITS}</b> بار، هر بار <b>{BADLUCK_LOSS:,} سکه</b>.\n"
             "🙈 نام و شماره حساب فعال‌کننده برای هدف نمایش داده نمی‌شود.")
+
+
+def do_game_badluck(user, target):
+    """روی پنج بازی بعدی هدف اثر می‌گذارد؛ برد یا مساوی می‌تواند به باخت تبدیل شود."""
+    actor = get_player(user)
+    if not target:
+        return "❌ بازیکن مقصد پیدا نشد."
+    if int(target["id"]) == int(actor["id"]):
+        return "❌ نمی‌توانی روی حساب خودت بدشانسی بازی فعال کنی."
+    key = game_badluck_key(target["id"])
+    now = time.time()
+    shielded = False
+    with lock:
+        db.execute("BEGIN IMMEDIATE")
+        fresh_actor = db.execute("SELECT * FROM players WHERE id=?", (actor["id"],)).fetchone()
+        fresh_target = db.execute("SELECT * FROM players WHERE id=?", (target["id"],)).fetchone()
+        if not fresh_target:
+            db.rollback()
+            return "❌ بازیکن مقصد پیدا نشد."
+        active = db.execute("SELECT value FROM settings WHERE key=?", (key,)).fetchone()
+        if active and int(active["value"] or 0) > 0:
+            db.rollback()
+            return "🍀 بدشانسی بازی این بازیکن هنوز فعال است؛ پنج بازی قبلی تمام نشده‌اند."
+        game_cost = scaled_action_cost(GAME_BADLUCK_COST, fresh_actor)
+        if int(fresh_actor["coins"] or 0) < game_cost:
+            db.rollback()
+            return f"❌ برای فعال‌سازی بدشانسی بازی {game_cost:,} سکه لازم داری."
+        shielded = shield_until("badluck", target["id"]) > now
+        db.execute("UPDATE players SET coins=coins-? WHERE id=?", (game_cost, actor["id"]))
+        if not shielded:
+            db.execute("INSERT OR REPLACE INTO settings(key,value) VALUES(?,?)", (key, str(GAME_BADLUCK_HITS)))
+        db.commit()
+    if shielded:
+        try:
+            bot.send_message(target["id"], "🕵️ <b>کارآگاه بدشانسی بازی را خنثی کرد!</b>\nمحافظ ضد بدشانسی تو فعال بود؛ نتیجه بازی‌ها تغییر نمی‌کند.", parse_mode="HTML")
+        except Exception:
+            pass
+        return (f"🛡 <b>بدشانسی بازی خنثی شد!</b>\n🎯 هدف: <b>{nm(fresh_target)}</b> محافظ داشت.\n"
+                f"💸 هزینه پرداخت‌شده: <b>{game_cost:,} سکه</b>")
+    try:
+        bot.send_message(target["id"],
+            "🍀 <b>بدشانسی روی بازی‌های تو فعال شد!</b>\n"
+            f"🎮 در {GAME_BADLUCK_HITS} بازی بعدی، همه بازی‌های شرطی تک‌نفره و آرنا تحت تأثیرند؛ برد/مساوی می‌تواند به باخت تبدیل شود و چرخ شانس هم پوچ می‌شود.\n"
+            "👤 هویت فعال‌کننده نمایش داده نمی‌شود.", parse_mode="HTML")
+    except Exception:
+        pass
+    return (f"🍀 <b>بدشانسی بازی فعال شد</b> روی <b>{nm(fresh_target)}</b>.\n"
+            f"💸 هزینه: <b>{game_cost:,} سکه</b>\n"
+            f"🎮 تعداد اثر: <b>{GAME_BADLUCK_HITS} بازی</b>؛ شامل تمام بازی‌های شرطی، آرنا و چرخ شانس.\n"
+            "🙈 نام و شماره حساب فعال‌کننده برای هدف نمایش داده نمی‌شود.")
+
+
+@bot.message_handler(commands=["gamebadluck"])
+def cmd_game_badluck(m):
+    parts = (m.text or "").split()
+    if len(parts) != 2:
+        cost = scaled_action_cost(GAME_BADLUCK_COST, get_player(m.from_user))
+        return reply(m, f"فرمت: <code>/gamebadluck آیدی_تلگرام_یا_شماره_حساب</code>\nهزینه فعلی: {cost:,} سکه | اثر روی ۵ بازی بعدی.", bank_markup())
+    target = resolve_player_identifier(parts[1])
+    return reply(m, do_game_badluck(m.from_user, target), back_markup())
 
 
 @bot.message_handler(commands=["badluck"])
 def cmd_badluck(m):
     parts = (m.text or "").split()
     if len(parts) != 2:
-        return reply(m, f"فرمت: <code>/badluck آیدی_تلگرام_یا_شماره_حساب</code>\nهزینه: {BADLUCK_COST:,} سکه | پنج بار معدن، هر بار ۱٬۰۰۰ سکه کسر می‌شود.", bank_markup())
+        cost = scaled_action_cost(BADLUCK_COST, get_player(m.from_user))
+        return reply(m, f"فرمت: <code>/badluck آیدی_تلگرام_یا_شماره_حساب</code>\nهزینه فعلی: {cost:,} سکه | پنج بار معدن، هر بار ۱٬۰۰۰ سکه کسر می‌شود.", bank_markup())
     target = resolve_player_identifier(parts[1])
     reply(m, do_badluck(m.from_user, target), back_markup())
 
@@ -2415,7 +2594,8 @@ def cmd_badluck(m):
 def cmd_cyber(m):
     parts = (m.text or "").split()
     if len(parts) != 2:
-        return reply(m, f"فرمت: <code>/cyber آیدی_تلگرام_یا_شماره_حساب</code>\nهزینه ثابت: {CYBER_COST:,} سکه؛ تمام ربات را ۶ ساعت محدود می‌کند.")
+        cost = scaled_action_cost(CYBER_COST, get_player(m.from_user))
+        return reply(m, f"فرمت: <code>/cyber آیدی_تلگرام_یا_شماره_حساب</code>\nهزینه فعلی: {cost:,} سکه؛ تمام ربات را ۶ ساعت محدود می‌کند.")
     target = resolve_player_identifier(parts[1])
     reply(m, do_cyber(m.from_user, target), back_markup())
 
@@ -2440,12 +2620,12 @@ def do_dice(user, chat_id, bet):
             f"💰 شرط: <b>{int(bet):,}</b> سکه\n{LINE}\n")
     if mv > bv:
         money = settle_bot_wager(p["id"], escrow_id, "win", xp=5)
-        return head + "🏆 بردی! +۵ XP\n" + money
+        return head + game_result_line(money, "🏆 بردی! +۵ XP\n")
     if mv == bv:
         money = settle_bot_wager(p["id"], escrow_id, "draw", xp=3)
-        return head + "🤝 مساوی! +۳ XP\n" + money
+        return head + game_result_line(money, "🤝 مساوی! +۳ XP\n")
     money = settle_bot_wager(p["id"], escrow_id, "lose", xp=1)
-    return head + "💪 این دور ربات برد؛ +۱ XP برای شرکت گرفتی.\n" + money
+    return head + game_result_line(money, "💪 این دور ربات برد؛ +۱ XP برای شرکت گرفتی.\n")
 
 
 def do_slots(user, chat_id, bet):
@@ -2481,10 +2661,10 @@ def do_slots(user, chat_id, bet):
         return "❌ اجرای اسلات از طرف تلگرام ناموفق بود؛ شرطت برگشت داده شد و زمان استفاده هم برگردانده شد."
     if v in (1, 22, 43, 64):
         money = settle_bot_wager(p["id"], escrow_id, "win", xp=50)
-        return (f"🎰 <b>جکپات! سه نماد یکسان!</b>\n💰 شرط: <b>{int(bet):,} سکه</b>\n"
-                f"💎 +۵۰ XP\n{money}\n⏱ نوبت بعدی: ۶ ساعت دیگر")
+        result = game_result_line(money, "🏆 جکپات! +۵۰ XP\n")
+        return f"🎰 نتیجه اسلات\n💰 شرط: <b>{int(bet):,} سکه</b>\n{result}\n⏱ نوبت بعدی: ۶ ساعت دیگر"
     money = settle_bot_wager(p["id"], escrow_id, "lose", xp=1)
-    return f"🎰 این بار نمادها یکی نشدند.\n💰 شرط: <b>{int(bet):,} سکه</b>\n{money}\n⏱ نوبت بعدی: ۶ ساعت دیگر"
+    return f"🎰 این بار نمادها یکی نشدند.\n💰 شرط: <b>{int(bet):,} سکه</b>\n{game_result_line(money, '')}\n⏱ نوبت بعدی: ۶ ساعت دیگر"
 
 
 def do_arena(user, chat_id):
@@ -2511,15 +2691,17 @@ def menu_text(user):
 
 
 HELP_TEXT = card("راهنمای بازی | GAME GUIDE", (
-    "⛏ /mine — معدن هر ۶۰ ثانیه؛ جایزه تا ۵٬۰۰۰ سکه و رویداد راهزن تا ۱٬۰۰۰ سکه\n"
+    "⛏ /mine — معدن هر ۶۰ ثانیه؛ درآمد با قدرت حساب رشد می‌کند و تعداد راهزن‌ها هم بیشتر می‌شود\n"
     "🎁 /daily — جایزه روزانه و رکورد پیوسته\n"
     "👤 /profile — سطح، XP، موجودی، شماره حساب و آمار برد/باخت\n"
     "🏆 /top — لیدربورد فقط بر اساس XP، همراه شماره حساب\n"
-    "🛒 /shop — ارتقای دزد، نگهبان و کلنگ؛ شمشیر و زره حذف شده‌اند\n"
+    "🛒 /shop — دزد، نگهبان و کلنگ تا سطح ۵۰۰؛ صندوق امن تا سطح ۱۰۰\n"
     "🏦 /bank — شماره حساب | /transfer 12345678 100 — انتقال سکه\n"
     "🧾 /history — گردش حساب | /invite — لینک دعوت\n"
     "🎯 /arena 12345678 — دعوت به آرنا؛ مبلغ شرط را وارد می‌کنی و حریف با موجودی کافی قبول می‌کند\n"
-    f"💻 /cyber 12345678 — هزینه {CYBER_COST:,} سکه؛ تمام پیام‌ها، فرمان‌ها و دکمه‌های ربات هدف را ۶ ساعت مسدود می‌کند\n"
+    "💻 /cyber 12345678 — هزینه حمله سایبری با پیشرفت حساب افزایش می‌یابد؛ محدودیت ۶ ساعته\n"
+    "🍀 /badluck 12345678 — پنج نوبت معدن هدف را با حمله راهزن روبه‌رو می‌کند؛ هزینه پویا\n"
+    "🎮 /gamebadluck 12345678 — پنج نوبت بعدی همه بازی‌های شرطی، آرنا و چرخ شانس هدف را تحت تأثیر می‌گذارد؛ هزینه پایه ۲۵٬۰۰۰ و پویاست\n"
     f"🕵️ /detective — محافظ ضد حمله سایبری ({DETECTIVE_ANTI_CYBER_COST:,}) و ضد بدشانسی ({DETECTIVE_ANTI_BADLUCK_COST:,}) برای ۱ روز\n"
     "🔎 /spy 12345678 — جاسوسی با ۵٬۰۰۰ سکه؛ اطلاعات هدف ۱۰ ثانیه نمایش داده و پاک می‌شود\n"
     "🆕 /highcard مبلغ | /twodice مبلغ | /luck مبلغ — بازی تکی با ربات؛ همه‌شان در آرنا هم هستند\n"
@@ -2535,7 +2717,7 @@ HELP_TEXT = card("راهنمای بازی | GAME GUIDE", (
     "🏛 /deposit 500 — سپرده | /withdraw 500 — برداشت\n"
 
     "🎁 /giftcodes — کدهای عمومی | /redeem CODE — استفاده از کد هدیه\n\n"
-    "🏅 سطح‌ها از ۱ تا ۱۰۰ هستند؛ برای هر سطح، XP بیشتری از سطح قبلی لازم است.\n"
+    "🏅 سطح بازیکن از ۱ تا ۱۰۰ است؛ درآمد معدن و جایزه روزانه با مزرعه، تجهیزات، XP و موجودی رشد می‌کند.\n"
     "💡 نام از یوزرنیم تلگرام (@username) گرفته می‌شود؛ اگر وجود نداشته باشد user_ID نمایش داده می‌شود.\n"
     "🏦 شماره حساب ۸ رقمی و موجودی با تغییر یوزرنیم حفظ می‌شوند.\n"
     "🤝 در بازی‌های شرطی فقط سکه درون‌بازی جابه‌جا می‌شود؛ پول واقعی نیست و تبدیل نقدی ندارد. در مساوی شرط هر دو نفر برمی‌گردد.\n"
@@ -3191,6 +3373,17 @@ def bank_action_input(m):
             return reply(m, error, back_markup())
         return
 
+    if step == "gamebadluck":
+        if not normalized.isdigit() or len(normalized) > 19:
+            return reply(m, "❌ آیدی تلگرام یا شماره حساب معتبر نیست. دوباره بفرست:", bank_action_cancel_markup())
+        target = resolve_player_identifier(normalized)
+        if not target:
+            return reply(m, "❌ بازیکنی با این آیدی یا شماره حساب پیدا نشد. دوباره وارد کن:", bank_action_cancel_markup())
+        if int(target["id"]) == uid:
+            return reply(m, "❌ نمی‌توانی روی حساب خودت بدشانسی بازی فعال کنی. هدف دیگری بفرست:", bank_action_cancel_markup())
+        bank_action_state.pop(uid, None)
+        return reply(m, do_game_badluck(m.from_user, target), back_markup())
+
     if step == "badluck":
         if not normalized.isdigit() or len(normalized) > 19:
             return reply(m, "❌ آیدی تلگرام یا شماره حساب معتبر نیست. دوباره بفرست:", bank_action_cancel_markup())
@@ -3652,7 +3845,7 @@ def bank_action_callback(c):
         bank_action_state.pop(uid, None)
         bot.answer_callback_query(c.id, "عملیات لغو شد.")
         return edit(c, do_bank(c.from_user), bank_markup())
-    if action not in ("deposit", "withdraw", "steal", "cyber", "badluck", "spy"):
+    if action not in ("deposit", "withdraw", "steal", "cyber", "badluck", "gamebadluck", "spy"):
         return bot.answer_callback_query(c.id, "درخواست نامعتبر است.", show_alert=True)
     bank_transfer_state.pop(uid, None)
     bank_action_state[uid] = {"step": action}
@@ -3664,11 +3857,16 @@ def bank_action_callback(c):
     elif action == "steal":
         prompt = "🥷 شماره حساب ۸ رقمی بازیکنی را که می‌خواهی هدف قرار بدهی بفرست:"
     elif action == "cyber":
-        prompt = f"💻 آیدی عددی تلگرام یا شماره حساب ۸ رقمی هدف را بفرست. هزینه حمله {CYBER_COST:,} سکه است:"
+        cost = scaled_action_cost(CYBER_COST, get_player(c.from_user))
+        prompt = f"💻 آیدی عددی تلگرام یا شماره حساب ۸ رقمی هدف را بفرست. هزینه فعلی حمله {cost:,} سکه است:"
+    elif action == "gamebadluck":
+        cost = scaled_action_cost(GAME_BADLUCK_COST, get_player(c.from_user))
+        prompt = f"🎮 آیدی عددی تلگرام یا شماره حساب ۸ رقمی هدف را بفرست. هزینه فعلی بدشانسی بازی {cost:,} سکه است؛ روی ۵ بازی بعدی اثر می‌گذارد:"
     elif action == "spy":
         prompt = f"🔎 آیدی عددی تلگرام یا شماره حساب ۸ رقمی هدف را بفرست. هزینه جاسوسی {SPY_COST:,} سکه است؛ اطلاعات {SPY_SECONDS} ثانیه نمایش داده می‌شود و بعد پاک می‌شود:"
-    else:
-        prompt = f"🍀 آیدی عددی تلگرام یا شماره حساب ۸ رقمی هدف را بفرست. هزینه فعال‌سازی بدشانسی {BADLUCK_COST:,} سکه است؛ پنج معدن بعدی او راهزن با جریمه {BADLUCK_LOSS:,} سکه خواهند داشت."
+    elif action == "badluck":
+        cost = scaled_action_cost(BADLUCK_COST, get_player(c.from_user))
+        prompt = f"⛏ آیدی عددی تلگرام یا شماره حساب ۸ رقمی هدف را بفرست. هزینه فعلی بدشانسی معدن {cost:,} سکه است؛ پنج معدن بعدی او راهزن خواهند داشت."
     return say(c.message.chat.id, prompt, bank_action_cancel_markup())
 
 
@@ -3854,7 +4052,7 @@ def menu_router(c):
             edit(c, card("مرکز مینی‌گیم", "🎮 یک بازی انتخاب کن و مبلغ شرط دلخواهت را تایپ کن؛ شرط از کیف پول کم می‌شود و بعد از نتیجه تسویه می‌شود."), games_markup())
         elif arg == "cyber":
             edit(c, card("💻 حمله سایبری درون‌بازی",
-                         f"هزینه هر حمله: <b>{CYBER_COST:,} سکه</b>\n"
+                         f"هزینه فعلی هر حمله: <b>{scaled_action_cost(CYBER_COST, get_player(user)):,} سکه</b>\n"
                          "🎯 با دکمه زیر، آیدی عددی تلگرام یا شماره حساب ۸ رقمی هدف را وارد کن.\n"
                          "🔒 بعد از ثبت حمله، هدف دقیقاً ۶ ساعت به هیچ پیام، فرمان یا دکمه‌ای از ربات دسترسی ندارد.\n"
                          "✅ موجودی و اطلاعات حساب هدف تغییر نمی‌کند.\n"
@@ -3931,17 +4129,24 @@ def do_arcade(user, chat_id, game, bet):
     if not ok:
         return error
     try:
-        value = roll(chat_id, emoji)
-        time.sleep(4)
+        forced_badluck = game_badluck_remaining(p["id"]) > 0
+        value = None if forced_badluck else roll(chat_id, emoji)
+        if not forced_badluck:
+            time.sleep(4)
     except Exception:
         refund_wager(escrow_id)
         return "❌ اجرای بازی ناموفق بود؛ شرطت کامل برگشت داده شد."
     head = f"{emoji} {title}\n💰 شرط: <b>{int(bet):,} سکه</b>\n"
+    if forced_badluck:
+        money = settle_bot_wager(p["id"], escrow_id, "lose", xp=1)
+        if game == "goal":
+            return head + "🍀 بدشانسی فعال شد؛ پنالتی از کنار دروازه بیرون رفت!\n" + money
+        return head + "🍀 بدشانسی نتیجه این دور را خراب کرد.\n" + money
     if value in table:
         money = settle_bot_wager(p["id"], escrow_id, "win", xp=5)
-        return head + "🏆 عالی بود! +۵ XP گرفتی.\n" + money
+        return head + game_result_line(money, "🏆 عالی بود! +۵ XP گرفتی.\n")
     money = settle_bot_wager(p["id"], escrow_id, "lose", xp=1)
-    return head + "💪 این بار نشد؛ +۱ XP برای شرکت گرفتی.\n" + money
+    return head + game_result_line(money, "💪 این بار نشد؛ +۱ XP برای شرکت گرفتی.\n")
 
 
 def do_flip(user, side, bet):
@@ -3959,9 +4164,9 @@ def do_flip(user, side, bet):
     head = f"🪙 سکه چرخید... <b>{names[result]}</b> اومد!\n💰 شرط: <b>{int(bet):,} سکه</b>\n{LINE}\n"
     if result == side:
         money = settle_bot_wager(p["id"], escrow_id, "win", xp=5)
-        return head + "🏆 درست حدس زدی! +۵ XP\n" + money
+        return head + game_result_line(money, "🏆 درست حدس زدی! +۵ XP\n")
     money = settle_bot_wager(p["id"], escrow_id, "lose", xp=1)
-    return head + "💪 این بار حدست درست نبود؛ +۱ XP گرفتی.\n" + money
+    return head + game_result_line(money, "💪 این بار حدست درست نبود؛ +۱ XP گرفتی.\n")
 
 
 @bot.message_handler(commands=["flip"])
@@ -4041,7 +4246,9 @@ def shop_text(p):
                 f"🧱 نگهبان: سطح {p['guard']}/{EQUIPMENT_MAX_LEVEL} — محافظت در برابر سرقت عادی\n"
                 f"⛏ کلنگ: سطح {p['pickaxe'] or 0}/{EQUIPMENT_MAX_LEVEL} — +{PICKAXE_BONUS} سکه پایه در معدن به‌ازای هر سطح\n"
                 f"🔐 صندوق امن: سطح {p['vault_level'] or 0}/{VAULT_MAX_LEVEL} — هر سطح ۱۰۰۰ ظرفیت بیشتر\n\n"
-                "💻 حمله سایبری ارتقا ندارد و همیشه ۵۰٬۰۰۰ سکه هزینه دارد.\n"
+                f"💻 هزینه فعلی حمله سایبری: {scaled_action_cost(CYBER_COST, p):,} سکه\n"
+                f"⛏ بدشانسی معدن: {scaled_action_cost(BADLUCK_COST, p):,} سکه | 🎮 بدشانسی بازی: {scaled_action_cost(GAME_BADLUCK_COST, p):,} سکه\n"
+                "هزینه این عملیات با رشد مزرعه، سطح تجهیزات، XP و موجودی بیشتر می‌شود.\n"
                 "⚔️ شمشیر و زره از قدرت دوئل حذف شده‌اند.")
 
 
@@ -4093,8 +4300,11 @@ def buy(c):
 
 # ---------- چرخ شانس ----------
 def do_wheel(user):
+    """چرخ شانس هم یکی از بازی‌هاست؛ بدشانسی فعال، نتیجه‌اش را به پوچ تبدیل می‌کند."""
     p = get_player(user)
     now = time.time()
+    badluck_used = False
+    badluck_left = 0
     with lock:
         db.execute("BEGIN IMMEDIATE")
         cur = db.execute("SELECT last_wheel FROM players WHERE id=?", (p["id"],)).fetchone()
@@ -4102,16 +4312,26 @@ def do_wheel(user):
         if wait > 0:
             db.rollback()
             return f"⏳ چرخ شانس {int(wait // 3600)} ساعت و {int(wait % 3600 // 60)} دقیقه دیگه آماده می‌شه."
-        label, coins, xp, _w = random.choices(WHEEL_PRIZES, weights=[w[3] for w in WHEEL_PRIZES])[0]
+        # مصرف اثر در همان تراکنش جایزه؛ چرخِ آماده‌نشده یا عملیات لغوشده اثری را نمی‌سوزاند.
+        badluck_used, badluck_left = _consume_game_badluck_in_transaction(p["id"])
+        if badluck_used:
+            label, coins, xp, _w = WHEEL_PRIZES[0]  # جایزه پوچ
+        else:
+            label, coins, xp, _w = random.choices(WHEEL_PRIZES, weights=[w[3] for w in WHEEL_PRIZES])[0]
         wheel_mult = active_income_multiplier()
         coins = coins * wheel_mult
         db.execute("UPDATE players SET last_wheel=?, coins=coins+?, xp=xp+? WHERE id=?",
                    (now, coins, xp, p["id"]))
         db.commit()
+    badluck_note = ""
+    if badluck_used:
+        left_text = f"{badluck_left} بازی دیگر باقی مانده است." if badluck_left else "این آخرین اثر بود و بدشانسی تمام شد."
+        badluck_note = f"\n🍀 بدشانسی فعال بود؛ چرخ به پوچ تبدیل شد. {left_text}"
     return (f"🎡 چرخ شانس چرخید...\n{LINE}\n🎁 جایزه: <b>{label}</b>\n"
             f"⭐ +{xp} امتیاز\n"
             + (f"⚡ رویداد ۲ برابر: {coins:,} سکه به حسابت اضافه شد\n" if wheel_mult == 2 and coins else "")
-            + f"⏳ نوبت بعدی: {WHEEL_COOLDOWN // 3600} ساعت دیگه")
+            + badluck_note
+            + f"\n⏳ نوبت بعدی: {WHEEL_COOLDOWN // 3600} ساعت دیگه")
 
 
 @bot.message_handler(commands=["wheel"])
@@ -4232,12 +4452,12 @@ def do_rps(user, choice, bet):
     head = f"{me_e} تو: <b>{me_n}</b>   🆚   {bt_e} ربات: <b>{bt_n}</b>\n💰 شرط: <b>{int(bet):,} سکه</b>\n{LINE}\n"
     if choice == bot_choice:
         money = settle_bot_wager(p["id"], escrow_id, "draw", xp=3)
-        return head + "🤝 مساوی! +۳ XP گرفتی.\n" + money
+        return head + game_result_line(money, "🤝 مساوی! +۳ XP گرفتی.\n")
     if RPS_BEATS[choice] == bot_choice:
         money = settle_bot_wager(p["id"], escrow_id, "win", xp=5)
-        return head + "🏆 بردی! +۵ XP گرفتی.\n" + money
+        return head + game_result_line(money, "🏆 بردی! +۵ XP گرفتی.\n")
     money = settle_bot_wager(p["id"], escrow_id, "lose", xp=1)
-    return head + "💪 این دور ربات برد؛ +۱ XP گرفتی.\n" + money
+    return head + game_result_line(money, "💪 این دور ربات برد؛ +۱ XP گرفتی.\n")
 
 
 @bot.message_handler(commands=["rps"])
@@ -4730,7 +4950,7 @@ def start_blackjack(user, bet):
     if bj_total(state["player"]) == 21:
         state["done"] = True
         money = settle_bot_wager(uid, escrow_id, "win", xp=10)
-        return blackjack_text(state, True) + f"\n🎉 بلک‌جک! +۱۰ XP\n{money}", result_markup()
+        return blackjack_text(state, True) + "\n" + game_result_line(money, "🎉 بلک‌جک! +۱۰ XP\n"), result_markup()
     return blackjack_text(state), blackjack_markup(uid)
 
 
@@ -4767,13 +4987,13 @@ def play_blackjack(user, action):
     state["done"] = True
     if mine <= 21 and (dealer > 21 or mine > dealer):
         money = settle_bot_wager(uid, state["escrow_id"], "win", xp=10)
-        result = "🏆 بردی! +۱۰ XP\n" + money
+        result = game_result_line(money, "🏆 بردی! +۱۰ XP\n")
     elif mine == dealer:
         money = settle_bot_wager(uid, state["escrow_id"], "draw", xp=3)
-        result = "🤝 مساوی! +۳ XP\n" + money
+        result = game_result_line(money, "🤝 مساوی! +۳ XP\n")
     else:
         money = settle_bot_wager(uid, state["escrow_id"], "lose", xp=1)
-        result = "این دست را باختی؛ +۱ XP\n" + money
+        result = game_result_line(money, "این دست را باختی؛ +۱ XP\n")
     return blackjack_text(state, True) + "\n" + result, result_markup()
 
 
@@ -4807,9 +5027,9 @@ def do_roulette(user, chosen_color, bet):
     labels = {"red": "قرمز 🔴", "black": "سیاه ⚫", "green": "سبز 🟢"}
     if chosen_color == color:
         money = settle_bot_wager(p["id"], escrow_id, "win", xp=10)
-        return f"🎡 خانه <b>{labels[color]}</b> آمد؛ درست حدس زدی!\n💰 شرط: <b>{int(bet):,} سکه</b>\n+۱۰ XP\n{money}"
+        return f"🎡 خانه <b>{labels[color]}</b> آمد.\n💰 شرط: <b>{int(bet):,} سکه</b>\n{game_result_line(money, '🏆 درست حدس زدی! +۱۰ XP\n')}"
     money = settle_bot_wager(p["id"], escrow_id, "lose", xp=1)
-    return f"🎡 خانه <b>{labels[color]}</b> آمد؛ انتخاب تو {labels.get(chosen_color, chosen_color)} بود.\n💰 شرط: <b>{int(bet):,} سکه</b>\n+۱ XP\n{money}"
+    return f"🎡 خانه <b>{labels[color]}</b> آمد؛ انتخاب تو {labels.get(chosen_color, chosen_color)} بود.\n💰 شرط: <b>{int(bet):,} سکه</b>\n{game_result_line(money, '+۱ XP\n')}"
 
 
 @bot.message_handler(commands=["roulette"])
@@ -5029,7 +5249,10 @@ def extended_callbacks(c):
         if guess == target:
             money = settle_bot_wager(uid, state["escrow_id"], "win", xp=10)
             GUESS_STATES.pop(uid, None)
-            return edit(c, card("حدس عدد", f"🎉 درست حدس زدی! عدد {target} بود. +۱۰ XP\\n{money}"), result_markup())
+            result_text = game_result_line(
+                money, f"🎉 درست حدس زدی! عدد {target} بود. +۱۰ XP\n"
+            )
+            return edit(c, card("حدس عدد", result_text), result_markup())
         if state["tries"] >= 5:
             money = settle_bot_wager(uid, state["escrow_id"], "lose", xp=1)
             GUESS_STATES.pop(uid, None)
