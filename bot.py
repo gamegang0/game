@@ -689,7 +689,8 @@ def admin_actions_markup():
     kb = types.InlineKeyboardMarkup()
     kb.add(btn("🪙 مدیریت موجودی", "adminop:coins"), btn("⭐ مدیریت تجربه", "adminop:xp"))
     kb.add(btn("🚫 محدودسازی حساب", "adminop:ban"), btn("🟢 آزادسازی حساب", "adminop:unban"))
-    kb.add(btn("🎁 صدور کد هدیه", "adminop:gift"), btn("🗑 ابطال کد هدیه", "adminop:gift_delete"))
+    kb.add(btn("📨 ارسال پیام به بازیکن", "adminop:message"))
+    kb.add(btn("🎁 صدور کد هدیه", "adminop:gift"), btn("🗑 ابطال همه کدها", "adminop:gift_delete"))
     kb.add(btn("⚡ فعال‌سازی رویداد دوبرابر", "adminop:event"))
     kb.add(btn("🧿 مصونیت سایبری (حمله بی‌اثر)", "adminop:immune"))
     kb.add(btn("📊 داشبورد آمار", "adminop:dashboard"))
@@ -700,6 +701,13 @@ def admin_actions_markup():
 def admin_prompt_markup():
     kb = types.InlineKeyboardMarkup()
     kb.add(btn("❌ لغو این عملیات", "adminop:cancel_operation"))
+    return kb
+
+
+def gift_delete_all_markup():
+    kb = types.InlineKeyboardMarkup()
+    kb.add(btn("✅ بله، همه کدها باطل شوند", "adminop:gift_delete_all_yes"))
+    kb.add(btn("❌ انصراف", "adminop:cancel_operation"))
     return kb
 
 
@@ -2695,9 +2703,13 @@ def admin_flow_input(m):
         elif choice in ("کد", "کد هدیه", "gift", "ساخت کد"):
             state["operation"] = "gift"; state["step"] = "gift"
             return reply(m, "کد هدیه را به این شکل بفرست:\n<code>CODE COINS XP MAX_USES</code>\nمثال: <code>WELCOME 500 20 100</code>", admin_prompt_markup())
-        elif choice in ("حذف کد", "پاک کردن کد", "حذف کد هدیه", "deletegift", "removegift", "gift_delete"):
-            state["operation"] = "gift_delete"; state["step"] = "gift_delete"
-            return reply(m, "کد هدیه‌ای را که می‌خواهی از بازی حذف کنی بفرست:", admin_prompt_markup())
+        elif choice in ("حذف کد", "پاک کردن کد", "حذف کد هدیه", "ابطال همه کدها", "deletegift", "removegift", "gift_delete"):
+            state["operation"] = "gift_delete_all"; state["step"] = "action"
+            state["expires"] = time.time() + ADMIN_SESSION_SECONDS
+            return reply(m, "⚠️ با تأیید، همه کدهای هدیه از بازی حذف می‌شوند و دیگر قابل استفاده نخواهند بود. این کار برگشت‌پذیر نیست.", gift_delete_all_markup())
+        elif choice in ("پیام", "پیام به بازیکن", "ارسال پیام", "message", "send_message"):
+            state["operation"] = "message"; state["step"] = "message_target"
+            return reply(m, "📨 شماره حساب ۸ رقمی بازیکنی را که می‌خواهی پیام برایش ارسال شود بفرست:", admin_prompt_markup())
         elif choice in ("رویداد", "event"):
             state["operation"] = "event"; state["step"] = "event"
             return reply(m, "مدت رویداد درآمد ۲ برابر را به ثانیه بفرست (مثلاً 3600، حداکثر ۷ روز):")
@@ -2708,6 +2720,42 @@ def admin_flow_input(m):
             return reply(m, "عملیات را از دکمه‌های زیر انتخاب کن یا نام آن را بفرست:", admin_actions_markup())
         state["expires"] = time.time() + ADMIN_SESSION_SECONDS
         return reply(m, f"✅ عملیات انتخاب شد: <b>{action_label}</b>\nحالا شماره حساب ۸ رقمی یا آیدی عددی تلگرام بازیکن را بفرست:")
+
+    if state["step"] == "message_target":
+        account_no = raw.translate(str.maketrans("۰۱۲۳۴۵۶۷۸۹", "0123456789"))
+        if not account_no.isdigit() or len(account_no) != 8:
+            return reply(m, "❌ شماره حساب باید دقیقاً ۸ رقم باشد. دوباره بفرست:", admin_prompt_markup())
+        target = get_by_account(account_no)
+        if not target:
+            return reply(m, "❌ بازیکنی با این شماره حساب پیدا نشد. شماره حساب ۸ رقمی را دوباره بفرست:", admin_prompt_markup())
+        state["target_id"] = int(target["id"])
+        state["target_account"] = str(target["account_no"])
+        state["target_name"] = str(target["name"] or "بازیکن")
+        state["step"] = "message_text"
+        state["expires"] = time.time() + ADMIN_SESSION_SECONDS
+        return reply(m, f"✅ گیرنده انتخاب شد: <b>{esc(state['target_name'])}</b>\n🏦 شماره حساب: <code>{esc(state['target_account'])}</code>\n\nحالا متن پیامت را بفرست. پیام مستقیماً از طرف ربات برای بازیکن ارسال می‌شود:", admin_prompt_markup())
+
+    if state["step"] == "message_text":
+        message_text = raw
+        if not message_text:
+            return reply(m, "❌ متن پیام خالی است. متن موردنظر را بفرست:", admin_prompt_markup())
+        if len(message_text) > 3900:
+            return reply(m, "❌ متن خیلی طولانی است. پیام را کوتاه‌تر کن (حداکثر ۳۹۰۰ نویسه):", admin_prompt_markup())
+        target_id = int(state.get("target_id") or 0)
+        target_name = state.get("target_name", "بازیکن")
+        target_account = state.get("target_account", "—")
+        try:
+            # send_message ارسال مستقل از طرف خود ربات است و پیام ادمین فوروارد نمی‌شود.
+            bot.send_message(target_id, "📩 پیام از مدیریت بازی:\n\n" + message_text)
+            sent_status = "✅ پیام با موفقیت از طرف ربات ارسال شد."
+        except Exception as send_error:
+            print("admin direct message failed:", target_id, send_error)
+            sent_status = ("❌ ارسال پیام ممکن نشد. احتمالاً بازیکن ربات را مسدود کرده یا هنوز گفت‌وگوی خصوصی با ربات را شروع نکرده است. ")
+        state.update(step="action", operation=None, expires=time.time() + ADMIN_SESSION_SECONDS)
+        state.pop("target_id", None)
+        state.pop("target_name", None)
+        state.pop("target_account", None)
+        return reply(m, f"{sent_status}\n👤 بازیکن: <b>{esc(target_name)}</b>\n🏦 شماره حساب: <code>{esc(target_account)}</code>\n\nعملیات بعدی را انتخاب کن:", admin_actions_markup())
 
     if state["step"] == "gift":
         parts = raw.split()
@@ -3353,6 +3401,19 @@ def cmd_arena_entry(m):
 def pvp_target_input(m):
     uid = m.from_user.id
     raw = (m.text or "").strip()
+
+    # درخواست انتخاب حریف آرنا فقط ۳ دقیقه معتبر است؛
+    # وضعیت قدیمی نباید پیام‌های بعدی مثل کد هدیه را ببلعد.
+    pending = PVP_TARGET_INPUT.get(uid) or {}
+    if time.time() - float(pending.get("created", 0)) > 180:
+        PVP_TARGET_INPUT.pop(uid, None)
+        return
+
+    # دستورهای مستقل ربات (مثل /redeem) ورودی حریف نیستند.
+    if raw.startswith("/") and raw.lower() not in ("/cancel",):
+        PVP_TARGET_INPUT.pop(uid, None)
+        return
+
     if raw.lower() in ("/cancel", "لغو", "انصراف"):
         PVP_TARGET_INPUT.pop(uid, None)
         return reply(m, "❌ دعوت آرنا لغو شد.", back_markup())
@@ -3631,6 +3692,48 @@ def admin_action_callback(c):
         bot.answer_callback_query(c.id, "عملیات لغو شد.")
         return edit(c, "❌ عملیات لغو شد. عملیات بعدی را انتخاب کن:", admin_actions_markup())
 
+    if action == "gift_delete":
+        state.update(step="action", operation="gift_delete_all", expires=time.time() + ADMIN_SESSION_SECONDS)
+        bot.answer_callback_query(c.id)
+        return edit(c, "⚠️ با تأیید، همه کدهای هدیه حذف و غیرفعال می‌شوند؛ هیچ‌کدام دیگر قابل استفاده نخواهد بود. این کار برگشت‌پذیر نیست.", gift_delete_all_markup())
+
+    if action == "gift_delete_all_yes":
+        with lock:
+            code_count = int(db.execute("SELECT COUNT(*) AS n FROM gift_codes").fetchone()["n"])
+            announcement_refs = db.execute(
+                "SELECT chat_id,message_id FROM gift_announcement_refs"
+            ).fetchall()
+            db.execute("DELETE FROM gift_codes")
+            db.execute("DELETE FROM gift_announcement_refs")
+            # سابقه استفاده در gift_redemptions حفظ می‌شود تا کدهای قبلاً مصرف‌شده دوباره قابل ثبت نباشند.
+            db.commit()
+        deleted_announcements = 0
+        revoked_announcements = 0
+        for ref in announcement_refs:
+            try:
+                bot.delete_message(ref["chat_id"], int(ref["message_id"]))
+                deleted_announcements += 1
+            except Exception:
+                try:
+                    bot.edit_message_text(
+                        "⛔ همه کدهای هدیه توسط مدیریت باطل شدند و دیگر قابل استفاده نیستند.",
+                        ref["chat_id"], int(ref["message_id"])
+                    )
+                    revoked_announcements += 1
+                except Exception as announcement_error:
+                    print("gift bulk revoke announcement failed:", announcement_error)
+        state.update(step="action", operation=None, expires=time.time() + ADMIN_SESSION_SECONDS)
+        state.pop("delete_code", None)
+        bot.answer_callback_query(c.id, "همه کدهای هدیه باطل شدند.")
+        return edit(
+            c,
+            f"✅ عملیات انجام شد.\n🎁 تعداد کدهای حذف‌شده: <b>{code_count:,}</b>\n"
+            f"🗑 پیام‌های عمومی حذف‌شده: <b>{deleted_announcements:,}</b>\n"
+            f"⛔ پیام‌های عمومی باطل‌شده: <b>{revoked_announcements:,}</b>\n\n"
+            "همه کدها دیگر قابل استفاده نیستند. عملیات بعدی را انتخاب کن:",
+            admin_actions_markup()
+        )
+
     if action == "dashboard":
         state["expires"] = time.time() + ADMIN_SESSION_SECONDS
         bot.answer_callback_query(c.id)
@@ -3652,6 +3755,7 @@ def admin_action_callback(c):
         "gift_delete": ("gift_delete", "gift_delete", "کد هدیه‌ای را که می‌خواهی حذف کنی بفرست:"),
         "event": ("event", "event", "مدت رویداد درآمد ۲ برابر را به ثانیه بفرست (۶۰ تا ۶۰۴۸۰۰):"),
         "immune": ("immune", "immune", immune_prompt_text()),
+        "message": ("message", "message_target", "📨 شماره حساب ۸ رقمی بازیکنی را که می‌خواهی پیام برایش ارسال شود بفرست:"),
     }
     if action not in mapping:
         return bot.answer_callback_query(c.id, "عملیات نامعتبر است.", show_alert=True)
@@ -4774,6 +4878,8 @@ def cmd_guess(m):
 # ---- کد هدیه ----
 @bot.message_handler(commands=["redeem"])
 def cmd_redeem(m):
+    # پاک‌کردن ورودی قدیمی آرنا تا با دستور کد هدیه تداخل نکند.
+    PVP_TARGET_INPUT.pop(m.from_user.id, None)
     parts=(m.text or "").split()
     if len(parts)!=2: return reply(m, "فرمت: <code>/redeem CODE</code>")
     uid=m.from_user.id; p=get_player(m.from_user); code=parts[1].upper()
