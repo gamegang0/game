@@ -11,45 +11,91 @@ button:disabled{opacity:.45}.g{background:var(--bg);color:var(--t)}
 .bar{height:8px;background:var(--bg);border-radius:6px;overflow:hidden;margin-top:8px}.bar i{display:block;height:100%;background:var(--a)}
 .m{color:var(--m);font-size:13px}.li{display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--bg)}.li.me{color:var(--a);font-weight:700}
 input{width:100%;padding:11px;border-radius:10px;border:1px solid var(--m);background:var(--bg);color:var(--t);margin:8px 0}
-#lock{text-align:center;padding:60px 10px}#toast{min-height:22px;text-align:center;margin:8px 0}
+#lock{text-align:center;padding:60px 10px}
+#toast{position:fixed;left:12px;right:12px;top:calc(10px + env(safe-area-inset-top,0px));z-index:50;background:var(--c);border:1px solid var(--a);border-radius:14px;padding:12px;text-align:center;font-weight:700;box-shadow:0 6px 20px #0006;transform:translateY(-140%);transition:transform .35s cubic-bezier(.2,1.2,.4,1)}
+#toast.on{transform:none}
+body{background:linear-gradient(180deg,var(--bg),#0b0d13);min-height:100vh}
+.c{border:1px solid #ffffff10;animation:up .5s both}.c:nth-child(2){animation-delay:.05s}.c:nth-child(3){animation-delay:.1s}.c:nth-child(4){animation-delay:.15s}
+@keyframes up{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+button{transition:transform .12s,filter .2s;cursor:pointer}button:active:not(:disabled){transform:scale(.94)}
+button.busy{position:relative;color:transparent}button.busy::after{content:"";position:absolute;inset:0;margin:auto;width:18px;height:18px;border:3px solid #1114;border-top-color:#111;border-radius:50%;animation:sp .7s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+.bar i{transition:width .8s cubic-bezier(.2,.9,.3,1);background:linear-gradient(90deg,var(--a),#ffd982)}
+#co{display:inline-block;font-size:26px;font-weight:800;color:var(--a)}#co.pop{animation:pop .5s}
+@keyframes pop{40%{transform:scale(1.35)}}
+.coin{position:fixed;font-size:22px;z-index:60;pointer-events:none;animation:fly 1.1s ease-out forwards}
+@keyframes fly{to{transform:translate(var(--x),-160px) rotate(360deg);opacity:0}}
+.acc{display:flex;gap:6px;align-items:center;margin-top:8px}.acc code{flex:1;background:var(--bg);border-radius:10px;padding:9px;direction:ltr;text-align:center;user-select:all;-webkit-user-select:all;font-size:15px;letter-spacing:1px}
+.acc button{flex:none;padding:9px 12px}
+#dice{display:none;text-align:center;padding:18px}#dice .e{font-size:64px;display:inline-block}#dice.roll .e{animation:roll .25s linear infinite}
+@keyframes roll{to{transform:rotate(360deg) scale(1.15)}}#dice.done .e{animation:pop .6s}
+#adminp{border:1px solid var(--a)}
+
+.hero{position:relative;background:linear-gradient(135deg,var(--c),#262c42);overflow:hidden}
+.hero::after{content:"🪙";position:absolute;left:-10px;bottom:-22px;font-size:90px;opacity:.07;animation:fl 6s ease-in-out infinite}
+.av{position:absolute;left:14px;top:14px;width:46px;height:46px;border-radius:50%;background:var(--a);color:#111;font-weight:800;font-size:20px;display:flex;align-items:center;justify-content:center;animation:pop .8s .3s both}
+#bgc{position:fixed;inset:0;pointer-events:none;z-index:-1;overflow:hidden}
+#bgc span{position:absolute;bottom:-40px;font-size:26px;opacity:.07;animation:rise linear infinite}
+@keyframes rise{to{transform:translateY(-115vh) rotate(300deg)}}
+@keyframes fl{50%{transform:translateY(-12px) rotate(12deg)}}
+.tiles{display:flex;gap:8px}
+.tile{display:flex;flex-direction:column;align-items:center;gap:4px;padding:14px 4px;border-radius:16px;background:linear-gradient(160deg,var(--a),#e29a1c);box-shadow:0 4px 0 #0004;animation:up .5s both}
+.tile:nth-child(2){animation-delay:.08s}.tile:nth-child(3){animation-delay:.16s}
+.tile:disabled{filter:grayscale(.8)}.ic{font-size:28px;display:inline-block}
+.tile.busy .ic{opacity:0}
+#bm.do .ic{animation:shake .6s}#bw.do .ic{animation:spin 1s}#bd.do .ic{animation:bnc .7s}
+@keyframes shake{20%{transform:rotate(-30deg)}40%{transform:rotate(25deg)}60%{transform:rotate(-20deg)}80%{transform:rotate(10deg)}}
+@keyframes spin{to{transform:rotate(720deg) scale(1.3)}}@keyframes bnc{30%{transform:translateY(-14px)}60%{transform:translateY(0)}80%{transform:translateY(-5px)}}
+.li{animation:up .4s both}.li button{transition:transform .15s}.li button:hover{transform:scale(1.06)}
+#scr .g{animation:up .4s both}
+.me{background:#f5b94218;border-radius:10px;padding-inline:8px}
+@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style></head><body>
 <div id="lock" style="display:none"><h2>🔒</h2><p>این بازی فقط از داخل بات تلگرام اجرا می‌شود.</p></div>
 <div id="app" style="display:none">
-<div class="c"><b id="nm"></b> <span class="m" id="adm"></span>
+<div class="c hero"><div class="av" id="av"></div><b id="nm"></b> <span class="m" id="adm"></span>
 <div>🪙 <span id="co"></span> · سطح <span id="lv"></span> · 🔥 <span id="st"></span></div>
 <div class="bar"><i id="xb"></i></div><div class="m" id="xt"></div></div>
-<div class="row"><button id="bm">⛏ معدن</button><button id="bd">🎁 روزانه</button><button id="bw">✨ گردونه</button></div>
-<div id="toast" class="m"></div>
+<div class="tiles"><button id="bm" class="tile"><span class="ic">⛏</span>معدن</button><button id="bd" class="tile"><span class="ic">🎁</span>روزانه</button><button id="bw" class="tile"><span class="ic">✨</span>گردونه</button></div>
+<div id="toast"></div><div class="c" id="dice"><div class="e" id="de">🎲</div><div id="dt" class="m"></div></div>
 <div class="c"><b>📩 پیام‌ها</b> <span id="ub" class="m"></span><div id="ib" class="m">برای دیدن پیام‌ها بزن</div><button class="g" id="bi" style="margin-top:8px">باز کردن صندوق پیام</button></div>
-<div class="c"><b>🥷 دزدی</b> <span class="m" id="sw"></span><input id="acc" placeholder="شماره حساب هدف (یا از لیدربرد بزن)"><button id="bs">🥷 دزدی کن</button><div class="m">حساب تو: <span id="ma"></span></div></div>
+<div class="c"><b>🥷 دزدی</b> <span class="m" id="sw"></span><input id="acc" placeholder="شماره حساب هدف (یا از لیدربرد بزن)"><button id="bs">🥷 دزدی کن</button><div class="m">حساب تو:</div><div class="acc"><code id="ma"></code><button id="cp">📋 کپی</button></div></div>
 <div class="c"><b>⚒ کارگاه</b><div id="shop"></div></div>
 <div class="c"><b>📋 همه‌ی بخش‌های بازی</b><div id="scr" style="margin-top:8px"></div>
 <div class="row" style="margin-top:8px"><input id="ti" placeholder="ورودی متنی (مبلغ، شماره حساب، ...)" style="margin:0"><button id="tb" style="flex:none">ارسال</button></div>
 <button class="g" id="home" style="margin-top:8px">🏠 منوی اصلی</button></div>
 <div class="c"><b>🏆 لیدربرد</b><div id="top"></div></div>
-<div class="c" id="ac"><b>🔴 ادمین</b><input id="code" type="password" placeholder="کد ادمین"><button id="bc">ثبت</button></div>
+<div class="c" id="ac"><b>🔴 ادمین</b><input id="code" type="password" placeholder="کد ادمین" autocomplete="off"><button id="bc">ثبت</button></div>
+<div class="c" id="adminp" style="display:none"><b>👑 پنل ادمین</b><div class="m">ریست پول بازیکن (سکه می‌شود ۰)</div><input id="ra" placeholder="شماره حساب یا آیدی بازیکن"><button id="br" style="background:#e5484d;color:#fff">♻️ ریست حساب بازیکن</button></div>
 <button class="g" id="dl">📥 دریافت فایل بازی</button>
 </div>
 <script>
 const API="__API__"||location.origin,tg=window.Telegram&&Telegram.WebApp,init=tg&&tg.initData;
 const $=i=>document.getElementById(i),f=n=>Number(n).toLocaleString("fa");
-let M,tm;
+let M,tm,tt,last=null,lastLv=null;
+function toast(t){if(!t)return;const e=$("toast");e.textContent=t;e.classList.add("on");clearTimeout(tt);tt=setTimeout(()=>e.classList.remove("on"),3200)}
+function coins(em){for(let i=0;i<10;i++){const c=document.createElement("div");c.className="coin";c.textContent=em||"🪙";c.style.left=(30+Math.random()*40)+"vw";c.style.top="30vh";c.style.setProperty("--x",(Math.random()*120-60)+"px");document.body.append(c);setTimeout(()=>c.remove(),1200)}}
+async function busy(b,fn){if(b)b.classList.add("busy");try{return await fn()}finally{if(b)b.classList.remove("busy")}}
+function dice(e,v,t){const d=$("dice");d.style.display="block";d.className="c roll";$("de").textContent=e;$("dt").textContent="...";setTimeout(()=>{d.className="c done";$("dt").textContent=e+" "+v;if(v>=4)coins()},1400)}
 async function call(a,b={}){const r=await fetch(API+"/api/"+a,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({...b,init})});return r.json()}
-function show(m){M=m;$("nm").textContent=m.name;$("adm").textContent=m.is_admin?"👑 ادمین":"";$("co").textContent=f(m.coins);$("lv").textContent=f(m.level);$("st").textContent=f(m.streak);
+function show(m){M=m;$("nm").textContent=m.name;$("adm").textContent=m.is_admin?"👑 ادمین":"";$("av").textContent=[...(m.name||"?")][0];if(lastLv!==null&&m.level>lastLv){coins("🎉");coins("⭐");toast("🎉 سطح جدید: "+f(m.level))}lastLv=m.level;const old=last;last=m.coins;$("co").textContent=f(m.coins);if(old!==null&&m.coins>old){$("co").classList.remove("pop");void $("co").offsetWidth;$("co").classList.add("pop");coins()}$("adminp").style.display=m.is_admin?"block":"none";$("lv").textContent=f(m.level);$("st").textContent=f(m.streak);
 $("xb").style.width=(m.need?100*m.cur/m.need:100)+"%";$("xt").textContent=f(m.xp)+" XP";$("ac").style.display=m.admin_taken?"none":"block";$("ub").textContent=m.unread?"🔴 "+f(m.unread)+" جدید":"";$("ma").textContent=m.account||"";
 $("shop").innerHTML=m.shop.map(x=>`<div class="li"><span>${x.n} ${f(x.lv)}/${f(x.mx)}</span><button style="flex:none;padding:6px 12px" onclick="act('buy',{kind:'${x.k}'})">${f(x.cost)} 🪙</button></div>`).join("");tick()}
 function tick(){clearInterval(tm);const u=()=>{for(const[k,b]of[["mine_wait","bm"],["daily_wait","bd"],["wheel_wait","bw"],["steal_wait","bs"]]){const w=M[k];$(b).disabled=w>0;if(w>0)M[k]--}$("sw").textContent=M.steal_wait>0?"⏳ "+Math.ceil(M.steal_wait/60)+" دقیقه":"";};u();tm=setInterval(u,1e3)}
-async function loadTop(){const r=await call("top");$("top").innerHTML=(r.top||[]).map((p,i)=>`<div class="li ${p.me?"me":""}"><span>${i+1}. ${p.name.replace(/</g,"&lt;")}</span><span>سطح ${f(p.level)} · ${f(p.xp)} ${p.me?"":`<a href="#" onclick="act('steal',{target:${p.id}});return false">🥷</a>`}</span></div>`).join("")}
-async function act(a,b){const r=await call(a,b);$("toast").textContent=r.text||r.error||"";if(r.me)show(r.me);loadTop()}
+async function loadTop(){const r=await call("top");$("top").innerHTML=(r.top||[]).map((p,i)=>`<div class="li ${p.me?"me":""}" style="animation-delay:${i*40}ms"><span>${["🥇","🥈","🥉"][i]||(i+1)+"."} ${p.name.replace(/</g,"&lt;")}</span><span>سطح ${f(p.level)} · ${f(p.xp)} ${p.me?"":`<a href="#" onclick="act('steal',{target:${p.id}});return false">🥷</a>`}</span></div>`).join("")}
+async function act(a,b,btn){await busy(btn,async()=>{const r=await call(a,b);toast(r.text||r.error);if(r.me)show(r.me);loadTop()});if(btn&&btn.classList.contains("tile")){btn.classList.remove("do");void btn.offsetWidth;btn.classList.add("do")}}
 let B=[];
-function render(evs){const T=[];let st=false;for(const e of evs){if(e.k=="toast"||e.k=="dice")T.push(e.t);else if(e.k=="send"){if(!st){B=[];st=true}B.push(e)}else if(e.k=="edit"){if(B.length)B[B.length-1]=e;else B=[e]}else if(e.k=="markup"&&B.length)B[B.length-1].b=e.b}
+function render(evs){const T=[];let st=false;for(const e of evs){if(e.k=="dice"){dice(e.e||"🎲",e.v,e.t)}else if(e.k=="toast")T.push(e.t);else if(e.k=="send"){if(!st){B=[];st=true}B.push(e)}else if(e.k=="edit"){if(B.length)B[B.length-1]=e;else B=[e]}else if(e.k=="markup"&&B.length)B[B.length-1].b=e.b}
 $("scr").innerHTML=B.map((b,i)=>`<div class="c" style="background:var(--bg);line-height:1.8"><div>${b.t.replace(/\n/g,"<br>")}</div>`+(b.b||[]).map((r,j)=>`<div class="row" style="margin-top:6px">`+r.map((x,k)=>`<button class="g" data-i="${i}-${j}-${k}" style="padding:10px;border:1px solid var(--m)">${x.t}</button>`).join("")+"</div>").join("")+"</div>").join("");
-if(T.length)$("toast").textContent=T.join(" · ")}
-async function ui(b){const r=await call("ui",b);if(r.error){$("toast").textContent=r.error;return}render(r.events||[]);if(r.me)show(r.me)}
-$("scr").onclick=e=>{const b=e.target.closest("button");if(!b)return;const[i,j,k]=b.dataset.i.split("-").map(Number),x=B[i].b[j][k];x.u?tg.openLink(x.u):ui({d:x.d})};
+if(T.length)toast(T.join(" · "))}
+async function ui(b){const r=await call("ui",b);if(r.error){toast(r.error);return}render(r.events||[]);if(r.me)show(r.me)}
+$("scr").onclick=e=>{const b=e.target.closest("button");if(!b)return;const[i,j,k]=b.dataset.i.split("-").map(Number),x=B[i].b[j][k];x.u?tg.openLink(x.u):busy(b,()=>ui({d:x.d}))};
 $("tb").onclick=()=>{const v=$("ti").value;$("ti").value="";if(v)ui({text:v})};$("home").onclick=()=>ui({text:"/start"});
-$("bm").onclick=()=>act("mine");$("bw").onclick=()=>act("wheel");$("bs").onclick=()=>act("steal",{account:$("acc").value});
-$("bi").onclick=async()=>{const r=await call("inbox");$("ib").innerHTML=(r.inbox||[]).map(i=>`<div class="li" style="display:block"><div>${i.text.replace(/</g,"&lt;").replace(/\n/g,"<br>")}</div><div class="m">${new Date(i.t*1000).toLocaleString("fa")}</div></div>`).join("")||"پیامی نداری";if(r.me)show(r.me)};$("bd").onclick=()=>act("daily");$("bc").onclick=()=>act("admin_claim",{code:$("code").value});
+$("bm").onclick=e=>act("mine",{},e.currentTarget);$("bw").onclick=e=>act("wheel",{},e.currentTarget);$("bs").onclick=e=>act("steal",{account:$("acc").value},e.currentTarget);
+$("bi").onclick=async()=>{const r=await call("inbox");$("ib").innerHTML=(r.inbox||[]).map(i=>`<div class="li" style="display:block"><div>${i.text.replace(/</g,"&lt;").replace(/\n/g,"<br>")}</div><div class="m">${new Date(i.t*1000).toLocaleString("fa")}</div></div>`).join("")||"پیامی نداری";if(r.me)show(r.me)};$("bd").onclick=e=>act("daily",{},e.currentTarget);$("bc").onclick=e=>act("admin_claim",{code:$("code").value.trim()},e.currentTarget);
+$("br").onclick=e=>{const v=$("ra").value.trim();if(!v)return toast("شماره حساب را بنویس");if(confirm("پول این بازیکن ریست شود؟"))act("admin_reset",{account:v},e.currentTarget)};
+$("cp").onclick=()=>{const t=$("ma").textContent;if(!t)return;const ok=()=>toast("📋 کپی شد");try{navigator.clipboard.writeText(t).then(ok,fb)}catch(_){fb()}function fb(){const a=document.createElement("textarea");a.value=t;document.body.append(a);a.select();try{document.execCommand("copy");ok()}catch(_){toast("نگه دار و کپی کن")}a.remove()}};
 $("dl").onclick=()=>{const u=API+"/game.html";tg.downloadFile?tg.downloadFile({url:u,file_name:"game.html"}):tg.openLink(u)};
+(()=>{const b=document.createElement("div");b.id="bgc";for(let i=0;i<9;i++){const e=document.createElement("span");e.textContent=["🪙","⛏","💎","✨"][i%4];e.style.left=(i*11+3)+"vw";e.style.animationDuration=(14+i*2)+"s";e.style.animationDelay=(-i*3)+"s";b.append(e)}document.body.prepend(b)})();
 (async()=>{if(!init){$("lock").style.display="block";return}tg.ready();tg.expand();$("app").style.display="block";const r=await call("me");if(r.error){$("app").style.display="none";$("lock").style.display="block";return}show(r.me);loadTop();ui({text:"/start"})})();
 </script></body></html>

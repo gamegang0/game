@@ -7,8 +7,9 @@ from types import SimpleNamespace
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 PUBLIC_URL = (os.environ.get("PUBLIC_URL") or "").rstrip("/")   # آدرس HTTPS عمومی سرور
-ADMIN_CODE = os.environ.get("ADMIN_CODE") or ""                  # کد ادمین (فقط روی سرور)
+ADMIN_CODE = (os.environ.get("ADMIN_CODE") or "").strip()                  # کد ادمین (فقط روی سرور)
 fails = {}
+ENV_ADMIN = (os.environ.get("ADMIN_TG_ID") or "").strip()   # اختیاری: آیدی عددی تلگرام خودت؛ بدون نیاز به ثبت کد، ادمین می‌شوی
 
 def verify(init, token):
     d = dict(parse_qsl(init or "", keep_blank_values=True))
@@ -80,7 +81,7 @@ def start(g, port=None):
             return True
         if method_name == "sendDice":
             e = p.get("emoji", "🎲"); v = random.randint(1, DICE.get(e, 6))
-            out.append({"k": "dice", "t": f"{e} {v}"})
+            out.append({"k": "dice", "t": f"{e} {v}", "e": e, "v": v})
             m = msg(); m.pop("text"); m["dice"] = {"emoji": e, "value": v}; return m
         return msg() if method_name.startswith("send") else True
     apihelper._make_request = fake_req
@@ -104,10 +105,15 @@ def start(g, port=None):
                 chat = upd.message.chat if upd.message else (cq.message.chat if cq and cq.message else None)
                 if chat is not None and chat.type == "private":
                     try:
-                        if cq: bot.answer_callback_query(cq.id)
+                        if cq:
+                            bot.answer_callback_query(cq.id); continue
                         if time.time() - last_launch.get(chat.id, 0) > 5:
-                            last_launch[chat.id] = time.time()
-                            bot.send_message(chat.id, "🎮 همه‌ی بخش‌های بازی داخل برنامه است. دکمه‌ی زیر را بزن.", reply_markup=webkb())
+                            old = last_launch.get(("m", chat.id))
+                            if old:
+                                try: bot.delete_message(chat.id, old)
+                                except Exception: pass
+                            m = bot.send_message(chat.id, "🎮 همه‌ی بخش‌های بازی داخل برنامه است. دکمه‌ی زیر را بزن.", reply_markup=webkb())
+                            last_launch[chat.id] = time.time(); last_launch[("m", chat.id)] = m.message_id
                     except Exception:
                         pass
                 else:
@@ -121,6 +127,8 @@ def start(g, port=None):
             print("menu button:", e)
 
     def admin_id():
+        if ENV_ADMIN.isdigit():
+            return int(ENV_ADMIN)
         r = db.execute("SELECT value FROM settings WHERE key='web_admin_id'").fetchone()
         return int(r["value"]) if r else 0
 
@@ -204,18 +212,31 @@ def start(g, port=None):
         if action == "admin_claim":
             if fails.get(uid, (0, 0))[0] >= 5 and time.time() < fails[uid][1]:
                 return {"error": "کمی بعد دوباره تلاش کن"}
-            code = str(body.get("code", ""))
+            code = str(body.get("code", "")).strip()
             with lock:
                 if admin_id():
                     return {"error": "ادمین قبلاً ثبت شده"}
-                if not ADMIN_CODE or not hmac.compare_digest(code.encode(), ADMIN_CODE.encode()):
+                if not ADMIN_CODE:
+                    return {"error": "ADMIN_CODE روی سرور تنظیم نشده"}
+                if not hmac.compare_digest(code.encode(), ADMIN_CODE.encode()):
                     n = fails.get(uid, (0, 0))[0] + 1
                     fails[uid] = (n, time.time() + 600)
                     return {"error": "کد اشتباه است"}
                 db.execute("INSERT OR IGNORE INTO settings(key,value) VALUES('web_admin_id',?)", (str(uid),))
                 db.commit()
                 g["ADMIN_ID"] = uid
-            return {"text": "شما ادمین شدید", "me": me(p, uid)}
+            return {"text": "👑 شما ادمین شدید", "me": me(p, uid)}
+        if action == "admin_reset":      # فقط ادمین: ریست پول بازیکن
+            if admin_id() != uid:
+                return {"error": "دسترسی نداری"}
+            tid = str(body.get("account", "")).strip()
+            target = g["get_by_id"](int(tid)) if tid.isdigit() and len(tid) >= 7 else g["get_by_account"](tid)
+            if not target:
+                return {"error": "بازیکن پیدا نشد"}
+            with lock:
+                db.execute("UPDATE players SET coins=0 WHERE id=?", (target["id"],))
+                db.commit()
+            return {"text": f"♻️ پول {clean(str(target['name']))} ریست شد (۰ سکه)", "me": me(g["get_player"](user), uid)}
         return {"me": me(p, uid)}
 
     class H(BaseHTTPRequestHandler):
