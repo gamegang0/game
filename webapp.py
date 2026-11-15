@@ -12,27 +12,14 @@ fails = {}
 ENV_ADMIN = (os.environ.get("ADMIN_TG_ID") or os.environ.get("ADMIN_ID") or "").strip()   # اختیاری: آیدی عددی تلگرام خودت؛ بدون نیاز به ثبت کد، ادمین می‌شوی
 
 def verify(init, token):
-    """اعتبارسنجی امضای Telegram WebApp؛ درخواست مرورگر عادی پذیرفته نمی‌شود."""
-    if not isinstance(init, str) or not init or len(init) > 8192:
+    d = dict(parse_qsl(init or "", keep_blank_values=True))
+    h = d.pop("hash", "")
+    s = "\n".join(f"{k}={v}" for k, v in sorted(d.items()))
+    key = hmac.new(b"WebAppData", token.encode(), hashlib.sha256).digest()
+    good = hmac.compare_digest(hmac.new(key, s.encode(), hashlib.sha256).hexdigest(), h)
+    if not good or time.time() - int(d.get("auth_date", 0) or 0) > 86400 or "user" not in d:
         return None
-    try:
-        d = dict(parse_qsl(init, keep_blank_values=True, strict_parsing=True))
-        supplied_hash = d.pop("hash", "")
-        auth_date = int(d.get("auth_date", "0") or 0)
-        now = int(time.time())
-        if not supplied_hash or not auth_date or auth_date > now + 60 or now - auth_date > 86400 or "user" not in d:
-            return None
-        check_string = "\n".join(f"{k}={v}" for k, v in sorted(d.items()))
-        secret_key = hmac.new(b"WebAppData", token.encode(), hashlib.sha256).digest()
-        expected_hash = hmac.new(secret_key, check_string.encode(), hashlib.sha256).hexdigest()
-        if not hmac.compare_digest(expected_hash, supplied_hash):
-            return None
-        user = json.loads(d["user"])
-        if not isinstance(user, dict) or not str(user.get("id", "")).isdigit():
-            return None
-        return user
-    except (TypeError, ValueError, json.JSONDecodeError):
-        return None
+    return json.loads(d["user"])
 
 def start(g, port=None):
     port = port or int(os.environ.get("PORT") or 8080)   # روی Railway/Render پورت را خود هاست می‌دهد
@@ -300,9 +287,6 @@ def start(g, port=None):
             self.send_header("Content-Type", ctype)
             self.send_header("Access-Control-Allow-Origin", "*")
             self.send_header("Access-Control-Allow-Headers", "Content-Type")
-            self.send_header("X-Content-Type-Options", "nosniff")
-            self.send_header("Referrer-Policy", "strict-origin-when-cross-origin")
-            self.send_header("Cache-Control", "no-store")
             self.send_header("Content-Length", str(len(b)))
             self.end_headers()
             self.wfile.write(b)
