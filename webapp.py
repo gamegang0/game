@@ -188,10 +188,28 @@ def start(g, port=None):
         if action in ("mine", "daily"):
             text = g["do_mine"](user) if action == "mine" else g["do_daily"](user)
             return {"text": clean(text), "me": me(g["get_player"](user), uid)}
+        if action == "admin_panel":      # مرکز فرماندهی ادمین (همان پنل بات) بدون رمز؛ فقط برای ادمین ثبت‌شده
+            if admin_id() != uid:
+                return {"error": "دسترسی نداری"}
+            g["ADMIN_ID"] = uid
+            g["admin_flow_state"][uid] = {"step": "action", "attempts": 0, "chat_id": uid, "authenticated": True,
+                                          "expires": time.time() + g["ADMIN_SESSION_SECONDS"]}
+            ev = [{"k": "send", "t": "👑 مرکز فرماندهی ادمین\nعملیات را انتخاب کن.", "b": rows_fn(g["admin_actions_markup"]().to_json())}]
+            return {"events": ev, "me": me(p, uid)}
         if action == "ui":
             _t = str(body.get("text", "")).strip().lower()
-            if str(body.get("d", "")).startswith("adminop:") or _t.startswith(("/admin", "/backup", "/restore", "/stats")):
-                return {"error": "این بخش حذف شده"}       # اجرای همه‌ی بخش‌های بات (مزرعه، بانک، پت، اسلات، آرنا، ...) داخل برنامه
+            _d = str(body.get("d", ""))
+            _adm = admin_id() == uid
+            _is_admin_req = _d.startswith("adminop:") or _d.partition(":")[2] == "admin" or _t.startswith(("/admin", "/backup", "/restore", "/stats"))
+            if _is_admin_req and not _adm:
+                return {"error": "دسترسی نداری"}
+            if _adm:
+                stt = g["admin_flow_state"].get(uid)
+                if stt is not None:      # نشست ادمین هیچ‌وقت منقضی نشود و رمز نخواهد
+                    stt["authenticated"] = True
+                    stt["expires"] = time.time() + g["ADMIN_SESSION_SECONDS"]
+                if _d.partition(":")[2] == "admin" or _t.startswith("/admin") or (_d.startswith("adminop:") and stt is None):
+                    return handle("admin_panel", u, body)
             base = {"id": uid, "is_bot": False, "first_name": u.get("first_name") or "-", "username": u.get("username")}
             chat, now = {"id": uid, "type": "private"}, int(time.time())
             mid = now % 2**31
