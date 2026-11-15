@@ -1,5 +1,6 @@
 # webapp.py - API + لانچر HTML برای بات (بدون نیاز به کتابخانه‌ی اضافه)
-import os, json, hmac, hashlib, time, re, threading
+import os, json, hmac, hashlib, time, re, threading, html, random
+from telebot import apihelper, types as tt
 from urllib.parse import parse_qsl
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from types import SimpleNamespace
@@ -26,23 +27,104 @@ def start(g, port=8080):
         db.execute("CREATE TABLE IF NOT EXISTS web_inbox(id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, text TEXT, created_at REAL, is_read INTEGER DEFAULT 0)")
         db.commit()
     tl = threading.local()
-    bot = g["bot"]; orig_send = bot.send_message
+    bot = g["bot"]
+    DICE = {"🎲": 6, "🎯": 6, "🎳": 6, "🏀": 5, "⚽": 5, "🎰": 64}
+    TAG = re.compile(r"(</?(?:b|i|u|s|em|strong|code|pre)>)")
 
-    def send_hook(chat_id, text, *a, **k):   # پیام‌هایی که بات به قربانی می‌فرستد، داخل صندوق پیام بازی هم ذخیره می‌شود
+    def safe(t):   # متن تلگرام (HTML ساده) -> HTML امن برای نمایش
+        out = []
+        for part in TAG.split(str(t or "")):
+            out.append(part if TAG.fullmatch(part) else html.escape(html.unescape(re.sub(r"<[^>]*>", "", part))))
+        return "".join(out)
+
+    def rows(markup):
         try:
-            actor = getattr(tl, "uid", None)
-            if actor and isinstance(chat_id, int) and chat_id > 0 and chat_id != actor:
-                with lock:
-                    db.execute("INSERT INTO web_inbox(user_id,text,created_at) VALUES(?,?,?)", (chat_id, clean(str(text)), time.time()))
-                    db.commit()
+            kb = json.loads(markup)["inline_keyboard"] if isinstance(markup, str) else []
         except Exception:
-            pass
-        return orig_send(chat_id, text, *a, **k)
-    bot.send_message = send_hook
+            return []
+        res = [[dict(t=html.escape(str(x.get("text", ""))), d=x.get("callback_data"), u=x.get("url"))
+                for x in r if x.get("callback_data") or x.get("url")] for r in kb]
+        return [r for r in res if r]
+
+    orig_req = apihelper._make_request
+
+    def fake_req(token, method_name, method="get", params=None, files=None, **kw):
+        uid = getattr(tl, "uid", None)
+        if not uid:
+            return orig_req(token, method_name, method=method, params=params, files=files, **kw)
+        p = params or {}
+        cid = str(p.get("chat_id", ""))
+        now = int(time.time())
+        msg = lambda text="": {"message_id": now % 2**31, "date": now, "chat": {"id": uid, "type": "private"}, "text": text or "."}
+        if cid.lstrip("-").isdigit() and int(cid) != uid:      # پیام به بازیکن دیگر: ارسال واقعی + صندوق پیام بازی
+            if method_name == "sendMessage" and int(cid) > 0:
+                try:
+                    with lock:
+                        db.execute("INSERT INTO web_inbox(user_id,text,created_at) VALUES(?,?,?)",
+                                   (int(cid), html.unescape(clean(str(p.get("text", "")))), time.time()))
+                        db.commit()
+                except Exception:
+                    pass
+            return orig_req(token, method_name, method=method, params=params, files=files, **kw)
+        out, mk = tl.out, rows(p.get("reply_markup"))
+        text = safe(p.get("text") or p.get("caption") or "")
+        if method_name == "sendMessage":
+            out.append({"k": "send", "t": text, "b": mk}); return msg(text)
+        if method_name in ("editMessageText", "editMessageCaption"):
+            out.append({"k": "edit", "t": text, "b": mk}); return msg(text)
+        if method_name == "editMessageReplyMarkup":
+            out.append({"k": "markup", "b": mk}); return True
+        if method_name == "answerCallbackQuery":
+            if p.get("text"): out.append({"k": "toast", "t": safe(p["text"])})
+            return True
+        if method_name == "sendDice":
+            e = p.get("emoji", "🎲"); v = random.randint(1, DICE.get(e, 6))
+            out.append({"k": "dice", "t": f"{e} {v}"})
+            m = msg(); m.pop("text"); m["dice"] = {"emoji": e, "value": v}; return m
+        return msg() if method_name.startswith("send") else True
+    apihelper._make_request = fake_req
+
+    orig_exec = bot._exec_task
+    def exec_task(task, *a, **k):        # اجرای هم‌زمان هندلرها فقط برای درخواست‌های برنامه
+        if getattr(tl, "uid", None):
+            k.pop("task_type", None); k.pop("pass_bot", None)
+            return task(*a, **k)
+        return orig_exec(task, *a, **k)
+    bot._exec_task = exec_task
+
+    # بات داخل تلگرام فقط یک گزینه دارد: ورود به بازی
+    if PUBLIC_URL.startswith("https://"):
+        webkb = lambda: tt.InlineKeyboardMarkup().add(tt.InlineKeyboardButton("🎮 ورود به بازی", web_app=tt.WebAppInfo(url=PUBLIC_URL)))
+        last_launch, orig_pnu = {}, bot.process_new_updates
+        def pnu(updates):
+            keep = []
+            for upd in updates:
+                cq = upd.callback_query
+                chat = upd.message.chat if upd.message else (cq.message.chat if cq and cq.message else None)
+                if chat is not None and chat.type == "private":
+                    try:
+                        if cq: bot.answer_callback_query(cq.id)
+                        if time.time() - last_launch.get(chat.id, 0) > 5:
+                            last_launch[chat.id] = time.time()
+                            bot.send_message(chat.id, "🎮 همه‌ی بخش‌های بازی داخل برنامه است. دکمه‌ی زیر را بزن.", reply_markup=webkb())
+                    except Exception:
+                        pass
+                else:
+                    keep.append(upd)
+            if keep:
+                orig_pnu(keep)
+        bot.process_new_updates = pnu
+        try:
+            bot.set_chat_menu_button(menu_button=tt.MenuButtonWebApp(text="🎮 ورود به بازی", web_app=tt.WebAppInfo(url=PUBLIC_URL)))
+        except Exception as e:
+            print("menu button:", e)
 
     def admin_id():
         r = db.execute("SELECT value FROM settings WHERE key='web_admin_id'").fetchone()
         return int(r["value"]) if r else 0
+
+    if admin_id():
+        g["ADMIN_ID"] = admin_id()      # ادمین ثبت‌شده، تنها ادمین بات است
 
     def me(p, uid):
         lv, cur, need = g["level_progress"](p["xp"])
@@ -73,6 +155,21 @@ def start(g, port=8080):
         if action in ("mine", "daily"):
             text = g["do_mine"](user) if action == "mine" else g["do_daily"](user)
             return {"text": clean(text), "me": me(g["get_player"](user), uid)}
+        if action == "ui":       # اجرای همه‌ی بخش‌های بات (مزرعه، بانک، پت، اسلات، آرنا، ...) داخل برنامه
+            base = {"id": uid, "is_bot": False, "first_name": u.get("first_name") or "-", "username": u.get("username")}
+            chat, now = {"id": uid, "type": "private"}, int(time.time())
+            mid = now % 2**31
+            if body.get("d"):
+                bot.process_new_callback_query([tt.CallbackQuery.de_json(json.dumps({
+                    "id": str(now), "from": base, "chat_instance": "1", "data": str(body["d"])[:64],
+                    "message": {"message_id": mid, "date": now, "chat": chat, "text": "."}}))])
+            else:
+                text = str(body.get("text", ""))[:500]
+                m = {"message_id": mid, "date": now, "chat": chat, "from": base, "text": text}
+                if text.startswith("/"):
+                    m["entities"] = [{"type": "bot_command", "offset": 0, "length": len(text.split()[0])}]
+                bot.process_new_messages([tt.Message.de_json(json.dumps(m))])
+            return {"events": tl.out, "me": me(g["get_player"](user), uid)}
         if action == "wheel":
             return {"text": clean(g["do_wheel"](user)), "me": me(g["get_player"](user), uid)}
         if action == "steal":
@@ -116,6 +213,7 @@ def start(g, port=8080):
                     return {"error": "کد اشتباه است"}
                 db.execute("INSERT OR IGNORE INTO settings(key,value) VALUES('web_admin_id',?)", (str(uid),))
                 db.commit()
+                g["ADMIN_ID"] = uid
             return {"text": "شما ادمین شدید", "me": me(p, uid)}
         return {"me": me(p, uid)}
 
@@ -140,7 +238,7 @@ def start(g, port=8080):
                 u = verify(body.get("init"), token)
                 if not u:
                     return self.send(401, {"error": "فقط از داخل بات قابل اجراست"})
-                tl.uid = int(u["id"])
+                tl.uid, tl.out = int(u["id"]), []
                 try:
                     self.send(200, handle(self.path.rsplit("/", 1)[-1], u, body))
                 finally:
