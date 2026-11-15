@@ -94,7 +94,7 @@ def start(g, port=None):
     bot._exec_task = exec_task
 
     # بات داخل تلگرام فقط یک گزینه دارد: ورود به بازی
-    if PUBLIC_URL.startswith("https://"):
+    def _activate():
         webkb = lambda: tt.InlineKeyboardMarkup().add(tt.InlineKeyboardButton("🎮 ورود به بازی", web_app=tt.WebAppInfo(url=PUBLIC_URL)))
         last_launch, orig_pnu = {}, bot.process_new_updates
         def pnu(updates):
@@ -247,11 +247,23 @@ def start(g, port=None):
             except Exception as e:
                 self.send(500, {"error": "خطای سرور"})
 
+    def _wait_then_activate():   # فقط وقتی آدرس واقعاً جواب بدهد، بات تک‌گزینه‌ای می‌شود؛ وگرنه مثل قبل کار می‌کند
+        import urllib.request
+        for _ in range(36):
+            try:
+                if urllib.request.urlopen(PUBLIC_URL, timeout=8).status == 200:
+                    _activate(); print("✅ حالت تک‌گزینه‌ای فعال شد"); return
+            except Exception:
+                pass
+            time.sleep(10)
+        print("❌ PUBLIC_URL جواب نداد؛ بات مثل قبل کار می‌کند")
+    if PUBLIC_URL.startswith("https://"):
+        threading.Thread(target=_wait_then_activate, daemon=True).start()
     print("=== Mini App ===")
     print("PORT       :", port)
     print("PUBLIC_URL :", PUBLIC_URL or "❌ تنظیم نشده (تا تنظیم نشود بات تغییری نمی‌کند)")
     print("ADMIN_CODE :", "✅" if ADMIN_CODE else "❌ تنظیم نشده")
-    print("حالت تک‌گزینه‌ای:", "✅ فعال" if PUBLIC_URL.startswith("https://") else "❌ غیرفعال (PUBLIC_URL باید با https:// شروع شود)")
+    print("حالت تک‌گزینه‌ای:", "⏳ بعد از تست آدرس فعال می‌شود" if PUBLIC_URL.startswith("https://") else "❌ غیرفعال (PUBLIC_URL باید با https:// شروع شود)")
     srv = ThreadingHTTPServer(("0.0.0.0", port), H)
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     print("Mini App server on port", port)
