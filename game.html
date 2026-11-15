@@ -1,0 +1,40 @@
+<!DOCTYPE html><html lang="fa" dir="rtl"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<script src="https://telegram.org/js/telegram-web-app.js"></script><title>بازی سکه</title>
+<style>
+:root{--bg:#10131a;--c:#1b2030;--t:#eef1f7;--m:#8b93a7;--a:#f5b942}
+@media(prefers-color-scheme:light){:root{--bg:#f3f4f8;--c:#fff;--t:#161a24;--m:#667;--a:#c98a0a}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--t);font-family:Tahoma,system-ui,sans-serif;padding:14px}
+.c{background:var(--c);border-radius:16px;padding:14px;margin-bottom:12px}
+.row{display:flex;gap:8px}button{flex:1;border:0;border-radius:12px;padding:13px;font:inherit;background:var(--a);color:#111;font-weight:700}
+button:disabled{opacity:.45}.g{background:var(--bg);color:var(--t)}
+.bar{height:8px;background:var(--bg);border-radius:6px;overflow:hidden;margin-top:8px}.bar i{display:block;height:100%;background:var(--a)}
+.m{color:var(--m);font-size:13px}.li{display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--bg)}.li.me{color:var(--a);font-weight:700}
+input{width:100%;padding:11px;border-radius:10px;border:1px solid var(--m);background:var(--bg);color:var(--t);margin:8px 0}
+#lock{text-align:center;padding:60px 10px}#toast{min-height:22px;text-align:center;margin:8px 0}
+</style></head><body>
+<div id="lock" style="display:none"><h2>🔒</h2><p>این بازی فقط از داخل بات تلگرام اجرا می‌شود.</p></div>
+<div id="app" style="display:none">
+<div class="c"><b id="nm"></b> <span class="m" id="adm"></span>
+<div>🪙 <span id="co"></span> · سطح <span id="lv"></span> · 🔥 <span id="st"></span></div>
+<div class="bar"><i id="xb"></i></div><div class="m" id="xt"></div></div>
+<div class="row"><button id="bm">⛏ معدن</button><button id="bd">🎁 جایزه روزانه</button></div>
+<div id="toast" class="m"></div>
+<div class="c"><b>🏆 لیدربرد</b><div id="top"></div></div>
+<div class="c" id="ac"><b>🔴 ادمین</b><input id="code" type="password" placeholder="کد ادمین"><button id="bc">ثبت</button></div>
+<button class="g" id="dl">📥 دریافت فایل بازی</button>
+</div>
+<script>
+const API="__API__"||location.origin,tg=window.Telegram&&Telegram.WebApp,init=tg&&tg.initData;
+const $=i=>document.getElementById(i),f=n=>Number(n).toLocaleString("fa");
+let M,tm;
+async function call(a,b={}){const r=await fetch(API+"/api/"+a,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({...b,init})});return r.json()}
+function show(m){M=m;$("nm").textContent=m.name;$("adm").textContent=m.is_admin?"👑 ادمین":"";$("co").textContent=f(m.coins);$("lv").textContent=f(m.level);$("st").textContent=f(m.streak);
+$("xb").style.width=(m.need?100*m.cur/m.need:100)+"%";$("xt").textContent=f(m.xp)+" XP";$("ac").style.display=m.admin_taken?"none":"block";tick()}
+function tick(){clearInterval(tm);const u=()=>{for(const[k,b]of[["mine_wait","bm"],["daily_wait","bd"]]){const w=M[k];$(b).disabled=w>0;if(w>0)M[k]--}};u();tm=setInterval(u,1e3)}
+async function top(){const r=await call("top");$("top").innerHTML=(r.top||[]).map((p,i)=>`<div class="li ${p.me?"me":""}"><span>${i+1}. ${p.name.replace(/</g,"&lt;")}</span><span>سطح ${f(p.level)} · ${f(p.xp)}</span></div>`).join("")}
+async function act(a,b){const r=await call(a,b);$("toast").textContent=r.text||r.error||"";if(r.me)show(r.me);top()}
+$("bm").onclick=()=>act("mine");$("bd").onclick=()=>act("daily");$("bc").onclick=()=>act("admin_claim",{code:$("code").value});
+$("dl").onclick=()=>{const u=API+"/game.html";tg.downloadFile?tg.downloadFile({url:u,file_name:"game.html"}):tg.openLink(u)};
+(async()=>{if(!init){$("lock").style.display="block";return}tg.ready();tg.expand();$("app").style.display="block";const r=await call("me");if(r.error){$("app").style.display="none";$("lock").style.display="block";return}show(r.me);top()})();
+</script></body></html>

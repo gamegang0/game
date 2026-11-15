@@ -5348,4 +5348,5 @@ if __name__ == "__main__":
     with lock:
         _n_players = db.execute("SELECT COUNT(*) AS n FROM players").fetchone()["n"]
     print(f"Bot is running... DB: {DB_PATH} | players: {_n_players} | admin: {ADMIN_ID or 'تنظیم نشده'}")
+    import webapp; webapp.start(globals())
     bot.infinity_polling()
