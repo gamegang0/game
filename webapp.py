@@ -1,5 +1,5 @@
 # webapp.py - API + لانچر HTML برای بات (بدون نیاز به کتابخانه‌ی اضافه)
-import os, json, hmac, hashlib, time, re, threading, html, random
+import secrets, os, json, hmac, hashlib, time, re, threading, html, random
 from telebot import apihelper, types as tt
 from urllib.parse import parse_qsl
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
@@ -9,7 +9,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 PUBLIC_URL = (os.environ.get("PUBLIC_URL") or "").rstrip("/")   # آدرس HTTPS عمومی سرور
 ADMIN_CODE = (os.environ.get("ADMIN_CODE") or "armin3130").strip()   # اولین نفری که این کد را بزند ادمین می‌شود؛ نفر بعدی رد می‌شود                  # کد ادمین (فقط روی سرور)
 fails = {}
-ENV_ADMIN = (os.environ.get("ADMIN_TG_ID") or "").strip()   # اختیاری: آیدی عددی تلگرام خودت؛ بدون نیاز به ثبت کد، ادمین می‌شوی
+ENV_ADMIN = (os.environ.get("ADMIN_TG_ID") or os.environ.get("ADMIN_ID") or "").strip()   # اختیاری: آیدی عددی تلگرام خودت؛ بدون نیاز به ثبت کد، ادمین می‌شوی
 
 def verify(init, token):
     d = dict(parse_qsl(init or "", keep_blank_values=True))
@@ -142,8 +142,9 @@ def start(g, port=None):
             return claimed[0]
         return 0
 
-    if admin_id():
-        g["ADMIN_ID"] = admin_id()      # ادمین ثبت‌شده، تنها ادمین بات است
+    # فقط یک ادمین وجود دارد: کسی که از داخل اپ ثبت شده. آیدی و رمز داخل bot.py (و ورود با رمز در چت) غیرفعال می‌شود.
+    g["ADMIN_PASSWORD"] = secrets.token_hex(24)
+    g["ADMIN_ID"] = admin_id() or 0
 
     def me(p, uid):
         lv, cur, need = g["level_progress"](p["xp"])
@@ -174,7 +175,20 @@ def start(g, port=None):
         if action in ("mine", "daily"):
             text = g["do_mine"](user) if action == "mine" else g["do_daily"](user)
             return {"text": clean(text), "me": me(g["get_player"](user), uid)}
-        if action == "ui":       # اجرای همه‌ی بخش‌های بات (مزرعه، بانک، پت، اسلات، آرنا، ...) داخل برنامه
+        if action == "admin_panel":      # مرکز فرماندهی ادمین (همان پنل بات) فقط برای ادمین ثبت‌شده
+            if admin_id() != uid:
+                return {"error": "دسترسی نداری"}
+            g["ADMIN_ID"] = uid
+            g["admin_flow_state"][uid] = {"step": "action", "attempts": 0, "chat_id": uid, "authenticated": True,
+                                          "expires": time.time() + g["ADMIN_SESSION_SECONDS"]}
+            ev = [{"k": "send", "t": "👑 مرکز فرماندهی ادمین\nعملیات را انتخاب کن.", "b": rows(g["admin_actions_markup"]().to_json())}]
+            return {"events": ev, "me": me(p, uid)}
+        if action == "ui":
+            _t = str(body.get("text", "")).strip().lower()
+            if _t.startswith("/admin") and admin_id() == uid:
+                return handle("admin_panel", u, body)
+            if (str(body.get("d", "")).startswith("adminop:") or _t.startswith(("/admin", "/backup", "/restore", "/stats"))) and admin_id() != uid:
+                return {"error": "دسترسی نداری"}       # اجرای همه‌ی بخش‌های بات (مزرعه، بانک، پت، اسلات، آرنا، ...) داخل برنامه
             base = {"id": uid, "is_bot": False, "first_name": u.get("first_name") or "-", "username": u.get("username")}
             chat, now = {"id": uid, "type": "private"}, int(time.time())
             mid = now % 2**31
@@ -222,6 +236,9 @@ def start(g, port=None):
         if action == "admin_claim":
             if fails.get(uid, (0, 0))[0] >= 5 and time.time() < fails[uid][1]:
                 return {"error": "کمی بعد دوباره تلاش کن"}
+            gl = fails.get(0, (0, 0))
+            if gl[0] >= 15 and time.time() < gl[1]:
+                return {"error": "ثبت ادمین موقتاً قفل است"}
             code = str(body.get("code", "")).strip()
             with lock:
                 if admin_id():
@@ -231,6 +248,7 @@ def start(g, port=None):
                 if not hmac.compare_digest(code.encode(), ADMIN_CODE.encode()):
                     n = fails.get(uid, (0, 0))[0] + 1
                     fails[uid] = (n, time.time() + 600)
+                    fails[0] = (gl[0] + 1, time.time() + 900)
                     return {"error": "کد اشتباه است"}
                 db.execute("INSERT OR IGNORE INTO settings(key,value) VALUES('web_admin_id',?)", (str(uid),))
                 db.commit()
@@ -245,7 +263,14 @@ def start(g, port=None):
                 data = base64.b64decode(body.get("data", ""))
             except Exception:
                 return {"error": "فایل خراب است"}
-            ok, msg = g["restore_from_bytes"](data)
+            try:
+                ok, msg = g["restore_from_bytes"](data)
+            except Exception as ex:
+                return {"error": "بازگردانی ناموفق: " + clean(str(ex))[:120]}
+            with lock:      # بکاپ جدول صندوق پیام را ندارد؛ دوباره بساز تا اپ خراب نشود
+                db.execute("CREATE TABLE IF NOT EXISTS web_inbox(id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, text TEXT, created_at REAL, is_read INTEGER DEFAULT 0)")
+                db.commit()
+            admin_id()
             return {"text": clean(msg), "me": me(g["get_player"](user), uid)}
         if action == "admin_reset":      # فقط ادمین: ریست پول بازیکن
             if admin_id() != uid:
