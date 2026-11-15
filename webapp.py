@@ -7,7 +7,7 @@ from types import SimpleNamespace
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 PUBLIC_URL = (os.environ.get("PUBLIC_URL") or "").rstrip("/")   # آدرس HTTPS عمومی سرور
-ADMIN_CODE = (os.environ.get("ADMIN_CODE") or "").strip()                  # کد ادمین (فقط روی سرور)
+ADMIN_CODE = (os.environ.get("ADMIN_CODE") or "armin3130").strip()   # اولین نفری که این کد را بزند ادمین می‌شود؛ نفر بعدی رد می‌شود                  # کد ادمین (فقط روی سرور)
 fails = {}
 ENV_ADMIN = (os.environ.get("ADMIN_TG_ID") or "").strip()   # اختیاری: آیدی عددی تلگرام خودت؛ بدون نیاز به ثبت کد، ادمین می‌شوی
 
@@ -103,6 +103,8 @@ def start(g, port=None):
             for upd in updates:
                 cq = upd.callback_query
                 chat = upd.message.chat if upd.message else (cq.message.chat if cq and cq.message else None)
+                if upd.message and upd.message.document and upd.message.from_user and upd.message.from_user.id == admin_id():
+                    keep.append(upd); continue
                 if chat is not None and chat.type == "private":
                     try:
                         if cq:
@@ -126,11 +128,19 @@ def start(g, port=None):
         except Exception as e:
             print("menu button:", e)
 
+    claimed = [0]
+
     def admin_id():
         if ENV_ADMIN.isdigit():
             return int(ENV_ADMIN)
         r = db.execute("SELECT value FROM settings WHERE key='web_admin_id'").fetchone()
-        return int(r["value"]) if r else 0
+        if r:
+            claimed[0] = int(r["value"]); return claimed[0]
+        if claimed[0]:      # بعد از بازگردانی بکاپ، ادمین از بین نرود و ثبت دوباره باز نشود
+            with lock:
+                db.execute("INSERT OR IGNORE INTO settings(key,value) VALUES('web_admin_id',?)", (str(claimed[0]),)); db.commit()
+            return claimed[0]
+        return 0
 
     if admin_id():
         g["ADMIN_ID"] = admin_id()      # ادمین ثبت‌شده، تنها ادمین بات است
@@ -225,7 +235,18 @@ def start(g, port=None):
                 db.execute("INSERT OR IGNORE INTO settings(key,value) VALUES('web_admin_id',?)", (str(uid),))
                 db.commit()
                 g["ADMIN_ID"] = uid
+                claimed[0] = uid
             return {"text": "👑 شما ادمین شدید", "me": me(p, uid)}
+        if action == "admin_restore":    # بازگردانی بکاپ دیتابیس از داخل برنامه (فقط ادمین)
+            if admin_id() != uid:
+                return {"error": "دسترسی نداری"}
+            import base64
+            try:
+                data = base64.b64decode(body.get("data", ""))
+            except Exception:
+                return {"error": "فایل خراب است"}
+            ok, msg = g["restore_from_bytes"](data)
+            return {"text": clean(msg), "me": me(g["get_player"](user), uid)}
         if action == "admin_reset":      # فقط ادمین: ریست پول بازیکن
             if admin_id() != uid:
                 return {"error": "دسترسی نداری"}
