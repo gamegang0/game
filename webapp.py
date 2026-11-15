@@ -20,7 +20,8 @@ def verify(init, token):
         return None
     return json.loads(d["user"])
 
-def start(g, port=8080):
+def start(g, port=None):
+    port = port or int(os.environ.get("PORT") or 8080)   # روی Railway/Render پورت را خود هاست می‌دهد
     db, lock, token = g["db"], g["lock"], g["TOKEN"]
     clean = lambda t: re.sub(r"<[^>]+>", "", t)
     with lock:
@@ -246,6 +247,11 @@ def start(g, port=8080):
             except Exception as e:
                 self.send(500, {"error": "خطای سرور"})
 
+    print("=== Mini App ===")
+    print("PORT       :", port)
+    print("PUBLIC_URL :", PUBLIC_URL or "❌ تنظیم نشده (تا تنظیم نشود بات تغییری نمی‌کند)")
+    print("ADMIN_CODE :", "✅" if ADMIN_CODE else "❌ تنظیم نشده")
+    print("حالت تک‌گزینه‌ای:", "✅ فعال" if PUBLIC_URL.startswith("https://") else "❌ غیرفعال (PUBLIC_URL باید با https:// شروع شود)")
     srv = ThreadingHTTPServer(("0.0.0.0", port), H)
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     print("Mini App server on port", port)
