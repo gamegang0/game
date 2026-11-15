@@ -33,9 +33,11 @@ def start(g, port=None):
     DICE = {"🎲": 6, "🎯": 6, "🎳": 6, "🏀": 5, "⚽": 5, "🎰": 64}
     TAG = re.compile(r"(</?(?:b|i|u|s|em|strong|code|pre)>)")
 
+    INF = lambda t: re.sub(r"/\s*1000000000(?!\d)", "/∞", str(t or ""))
+
     def safe(t):   # متن تلگرام (HTML ساده) -> HTML امن برای نمایش
         out = []
-        for part in TAG.split(str(t or "")):
+        for part in TAG.split(INF(t)):
             out.append(part if TAG.fullmatch(part) else html.escape(html.unescape(re.sub(r"<[^>]*>", "", part))))
         return "".join(out)
 
@@ -44,9 +46,11 @@ def start(g, port=None):
             kb = json.loads(markup)["inline_keyboard"] if isinstance(markup, str) else []
         except Exception:
             return []
-        res = [[dict(t=html.escape(str(x.get("text", ""))), d=x.get("callback_data"), u=x.get("url"))
+        res = [[dict(t=html.escape(INF(x.get("text", ""))), d=x.get("callback_data"), u=x.get("url"))
                 for x in r if x.get("callback_data") or x.get("url")] for r in kb]
         return [r for r in res if r]
+
+    rows_fn = rows      # داخل handle متغیری هم‌نام rows هست؛ این نام جدا برای ساخت دکمه‌هاست
 
     orig_req = apihelper._make_request
 
@@ -145,6 +149,8 @@ def start(g, port=None):
     # فقط یک ادمین وجود دارد: کسی که از داخل اپ ثبت شده. آیدی و رمز داخل bot.py (و ورود با رمز در چت) غیرفعال می‌شود.
     g["ADMIN_PASSWORD"] = secrets.token_hex(24)
     g["ADMIN_ID"] = admin_id() or 0
+    for _k in ("EQUIPMENT_MAX_LEVEL", "VAULT_MAX_LEVEL", "MAX_UPGRADE"):   # ارتقا بدون سقف
+        g[_k] = 10**9
 
     def me(p, uid):
         lv, cur, need = g["level_progress"](p["xp"])
@@ -175,20 +181,10 @@ def start(g, port=None):
         if action in ("mine", "daily"):
             text = g["do_mine"](user) if action == "mine" else g["do_daily"](user)
             return {"text": clean(text), "me": me(g["get_player"](user), uid)}
-        if action == "admin_panel":      # مرکز فرماندهی ادمین (همان پنل بات) فقط برای ادمین ثبت‌شده
-            if admin_id() != uid:
-                return {"error": "دسترسی نداری"}
-            g["ADMIN_ID"] = uid
-            g["admin_flow_state"][uid] = {"step": "action", "attempts": 0, "chat_id": uid, "authenticated": True,
-                                          "expires": time.time() + g["ADMIN_SESSION_SECONDS"]}
-            ev = [{"k": "send", "t": "👑 مرکز فرماندهی ادمین\nعملیات را انتخاب کن.", "b": rows(g["admin_actions_markup"]().to_json())}]
-            return {"events": ev, "me": me(p, uid)}
         if action == "ui":
             _t = str(body.get("text", "")).strip().lower()
-            if _t.startswith("/admin") and admin_id() == uid:
-                return handle("admin_panel", u, body)
-            if (str(body.get("d", "")).startswith("adminop:") or _t.startswith(("/admin", "/backup", "/restore", "/stats"))) and admin_id() != uid:
-                return {"error": "دسترسی نداری"}       # اجرای همه‌ی بخش‌های بات (مزرعه، بانک، پت، اسلات، آرنا، ...) داخل برنامه
+            if str(body.get("d", "")).startswith("adminop:") or _t.startswith(("/admin", "/backup", "/restore", "/stats")):
+                return {"error": "این بخش حذف شده"}       # اجرای همه‌ی بخش‌های بات (مزرعه، بانک، پت، اسلات، آرنا، ...) داخل برنامه
             base = {"id": uid, "is_bot": False, "first_name": u.get("first_name") or "-", "username": u.get("username")}
             chat, now = {"id": uid, "type": "private"}, int(time.time())
             mid = now % 2**31
@@ -220,8 +216,6 @@ def start(g, port=None):
                 col = "vault_level" if kind == "vault" else kind
                 lim = g["VAULT_MAX_LEVEL"] if kind == "vault" else g["EQUIPMENT_MAX_LEVEL"]
                 cost = g["price"](kind, p)
-                if int(p[col] or 0) >= lim:
-                    return {"error": "به حداکثر سطح رسیدی"}
                 if p["coins"] < cost:
                     return {"error": "سکه کافی نداری"}
                 db.execute(f"UPDATE players SET coins=coins-?, {col}={col}+1 WHERE id=?", (cost, uid))
