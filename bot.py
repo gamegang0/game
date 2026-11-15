@@ -20,7 +20,7 @@ bot = telebot.TeleBot(TOKEN)
 ADMIN_ID_IN_FILE = 7476734523  # آیدی عددی ادمین؛ باعث می‌شود بعد از هر آپدیت/پاک‌شدن دیتابیس، بکاپ پین‌شده خودکار برگردد
 ADMIN_ID = int(os.environ.get("ADMIN_ID", "0") or 0) or ADMIN_ID_IN_FILE
 # رمز پنل ادمین داخل خود فایل است؛ برای تغییر، همین مقدار را ویرایش کن.
-ADMIN_PASSWORD = "armin3130"  # همین متن را در چت خصوصی با بات بفرست تا مستقیم وارد پنل ادمین شوی
+ADMIN_PASSWORD = (os.environ.get("ADMIN_PASSWORD") or "").strip()  # رمز قوی را فقط در متغیر محیطی هاست تنظیم کن
 
 
 def _db_has_players(path):
@@ -384,8 +384,75 @@ last_action = {}
 bank_transfer_state = {}  # user_id -> {step, account_no, amount}
 bank_action_state = {}  # user_id -> {step: deposit | withdraw | steal}
 name_setup_state = set()  # برای سازگاری با نشست‌های قدیمی؛ دیگر نام دستی گرفته نمی‌شود
-admin_flow_state = {}  # فقط ادمین: ورود رمز -> شماره حساب/آیدی -> مقدار XP
-admin_login_lockout = {}  # جلوگیری از حدس‌زدن رمز
+admin_flow_state = {}  # فقط ادمین: نشست موقت پنل اصلی
+
+
+def _admin_session_valid(uid, chat_id=None):
+    """اعتبارسنجی نشست پنل اصلی؛ فقط ادمین مجاز و فقط چت خصوصیِ همان اکانت."""
+    try:
+        uid = int(uid)
+    except (TypeError, ValueError):
+        return False
+    if not ADMIN_ID or uid != int(ADMIN_ID):
+        return False
+    state = admin_flow_state.get(uid)
+    if not state or not state.get("authenticated") or state.get("expires", 0) < time.time():
+        admin_flow_state.pop(uid, None)
+        return False
+    if chat_id is not None:
+        try:
+            chat_id = int(chat_id)
+        except (TypeError, ValueError):
+            return False
+        if chat_id != uid or chat_id != int(state.get("chat_id", 0) or 0):
+            return False
+    return True
+
+
+def _admin_login_status(uid):
+    """تعداد تلاش ناموفق و زمان قفل را از دیتابیس می‌خواند تا با ری‌استارت پاک نشود."""
+    with lock:
+        rows = db.execute(
+            "SELECT key,value FROM settings WHERE key IN (?,?)",
+            (f"admin_login_failures:{int(uid)}", f"admin_login_lockout:{int(uid)}")
+        ).fetchall()
+    values = {str(r["key"]): str(r["value"]) for r in rows}
+    try:
+        attempts = max(0, int(values.get(f"admin_login_failures:{int(uid)}", "0")))
+    except ValueError:
+        attempts = 0
+    try:
+        until = max(0.0, float(values.get(f"admin_login_lockout:{int(uid)}", "0")))
+    except ValueError:
+        until = 0.0
+    return attempts, until
+
+
+def _admin_login_failed(uid):
+    attempts, until = _admin_login_status(uid)
+    now = time.time()
+    if until > now:
+        return attempts, until
+    attempts += 1
+    if attempts >= ADMIN_MAX_ATTEMPTS:
+        until = now + ADMIN_LOCKOUT_SECONDS
+        attempts = 0
+    else:
+        until = 0.0
+    with lock:
+        db.execute("INSERT OR REPLACE INTO settings(key,value) VALUES(?,?)",
+                   (f"admin_login_failures:{int(uid)}", str(attempts)))
+        db.execute("INSERT OR REPLACE INTO settings(key,value) VALUES(?,?)",
+                   (f"admin_login_lockout:{int(uid)}", str(until)))
+        db.commit()
+    return attempts, until
+
+
+def _admin_login_success(uid):
+    with lock:
+        db.execute("DELETE FROM settings WHERE key IN (?,?)",
+                   (f"admin_login_failures:{int(uid)}", f"admin_login_lockout:{int(uid)}"))
+        db.commit()
 BOT_BET_INPUT = {}       # user_id -> {game, created}
 BOT_CHOICE_PENDING = {}  # user_id -> {game, bet, created}
 PVP_BET_INPUT = {}       # user_id -> {target_id, game, created}
@@ -542,6 +609,9 @@ def button_style(data):
     # قرمز: لغو، حذف، محدودسازی و عملیات پرریسک مدیریتی/بازی
     danger_actions = {
         "adminop:ban",
+        "adminop:reset",
+        "adminop:reset_yes",
+        "adminop:restore",
         "adminop:gift_delete",
         "adminop:cancel",
         "adminop:cancel_operation",
@@ -691,10 +761,12 @@ def admin_actions_markup():
     kb = types.InlineKeyboardMarkup()
     kb.add(btn("🪙 مدیریت موجودی", "adminop:coins"), btn("⭐ مدیریت تجربه", "adminop:xp"))
     kb.add(btn("🚫 محدودسازی حساب", "adminop:ban"), btn("🟢 آزادسازی حساب", "adminop:unban"))
-    kb.add(btn("📨 ارسال پیام به بازیکن", "adminop:message"))
+    kb.add(btn("♻️ صفرکردن سکه بازیکن", "adminop:reset"))
+    kb.add(btn("📨 پیام به بازیکن", "adminop:message"), btn("📢 پیام همگانی", "adminop:broadcast"))
     kb.add(btn("🎁 صدور کد هدیه", "adminop:gift"), btn("🗑 ابطال همه کدها", "adminop:gift_delete"))
     kb.add(btn("⚡ فعال‌سازی رویداد دوبرابر", "adminop:event"))
-    kb.add(btn("🧿 مصونیت سایبری (حمله بی‌اثر)", "adminop:immune"))
+    kb.add(btn("🧿 مصونیت سایبری", "adminop:immune"))
+    kb.add(btn("💾 تهیه بکاپ", "adminop:backup"), btn("📥 بازگردانی بکاپ", "adminop:restore"))
     kb.add(btn("📊 داشبورد آمار", "adminop:dashboard"))
     kb.add(btn("❌ بستن پنل", "adminop:cancel"))
     return kb
@@ -703,6 +775,13 @@ def admin_actions_markup():
 def admin_prompt_markup():
     kb = types.InlineKeyboardMarkup()
     kb.add(btn("❌ لغو این عملیات", "adminop:cancel_operation"))
+    return kb
+
+
+def admin_reset_confirm_markup():
+    kb = types.InlineKeyboardMarkup()
+    kb.add(btn("⚠️ بله، موجودی صفر شود", "adminop:reset_yes"))
+    kb.add(btn("❌ انصراف", "adminop:reset_no"))
     return kb
 
 
@@ -2756,33 +2835,6 @@ def cmd_start(m):
     reply(m, menu_text(m.from_user), main_markup(m.from_user.id))
 
 
-@bot.message_handler(
-    func=lambda m: bool(m.from_user and m.chat.type == "private"
-                        and (m.text or "").strip() == ADMIN_PASSWORD
-                        and (not ADMIN_ID or m.from_user.id == ADMIN_ID)),
-    content_types=["text"])
-def admin_quick_login(m):
-    """فرستادن رمز در چت خصوصی: اولین نفر ادمین ثبت می‌شود (در دیتابیس ذخیره می‌شود) و مستقیم وارد پنل می‌شود."""
-    global ADMIN_ID
-    uid = m.from_user.id
-    try:
-        bot.delete_message(m.chat.id, m.message_id)
-    except Exception:
-        pass
-    if not ADMIN_ID:
-        with lock:
-            db.execute("INSERT OR REPLACE INTO settings(key, value) VALUES('admin_id', ?)", (str(uid),))
-            db.commit()
-        ADMIN_ID = uid
-        threading.Thread(target=backup_to_telegram, kwargs={"force": True}, daemon=True).start()
-    get_player(m.from_user)
-    name_setup_state.discard(uid)
-    bank_transfer_state.pop(uid, None)
-    admin_flow_state[uid] = {"step": "action", "attempts": 0, "chat_id": m.chat.id,
-                             "authenticated": True, "expires": time.time() + ADMIN_SESSION_SECONDS}
-    say(m.chat.id, "✅ وارد پنل ادمین شدی.\nعملیات موردنظر را از دکمه‌های شیشه‌ای انتخاب کن.", admin_actions_markup())
-
-
 @bot.message_handler(func=lambda m: m.from_user and m.from_user.id in name_setup_state,
                      content_types=["text"])
 def first_name_setup(m):
@@ -2808,7 +2860,7 @@ def cmd_myid(m):
 
 @bot.message_handler(commands=["backup"])
 def cmd_backup(m):
-    if not ADMIN_ID or m.from_user.id != ADMIN_ID:
+    if not _admin_session_valid(m.from_user.id, m.chat.id) or m.chat.type != "private":
         return
     ok = backup_to_telegram(force=True)
     reply(m, "✅ بکاپ فرستاده و پین شد." if ok else "❌ بکاپ نشد؛ لاگ رو ببین.")
@@ -2820,11 +2872,13 @@ def cmd_admin(m):
         return reply(m, "⛔ این دستور در دسترس نیست.")
     if m.chat.type != "private":
         return reply(m, "🔒 برای امنیت، پنل ادمین را فقط در گفت‌وگوی خصوصی با ربات باز کن.")
-    if not ADMIN_PASSWORD:
-        return reply(m, "⚠️ رمز ادمین در ابتدای فایل bot.py تنظیم نشده است.")
-    until = admin_login_lockout.get(m.from_user.id, 0)
+    if len(ADMIN_PASSWORD) < 16:
+        return reply(m, "⚠️ متغیر محیطی ADMIN_PASSWORD روی هاست تنظیم نشده یا ضعیف است؛ حداقل ۱۶ کاراکتر یکتا تنظیم کن.")
+    _, until = _admin_login_status(m.from_user.id)
     if until > time.time():
         return reply(m, f"⏳ به‌دلیل تلاش ناموفق، ورود موقتاً قفل است. {int(until - time.time())} ثانیه دیگر امتحان کن.")
+    if until:
+        _admin_login_success(m.from_user.id)
     name_setup_state.discard(m.from_user.id)
     bank_transfer_state.pop(m.from_user.id, None)
     admin_flow_state[m.from_user.id] = {
@@ -2834,15 +2888,22 @@ def cmd_admin(m):
     reply(m, "🔐 رمز پنل ادمین را بفرست.\nبرای لغو بنویس /cancel")
 
 
-@bot.message_handler(func=lambda m: m.from_user and m.from_user.id in admin_flow_state,
+@bot.message_handler(func=lambda m: bool(m.from_user and m.chat and m.chat.type == "private"
+                                                   and m.chat.id == m.from_user.id
+                                                   and m.from_user.id in admin_flow_state),
                      content_types=["text"])
 def admin_flow_input(m):
     uid = m.from_user.id
     state = admin_flow_state.get(uid)
     if not state:
         return
-    if m.chat.type != "private" or m.chat.id != state.get("chat_id"):
+    if not ADMIN_ID or uid != int(ADMIN_ID):
+        admin_flow_state.pop(uid, None)
         return
+    if m.chat.type != "private" or m.chat.id != state.get("chat_id") or m.chat.id != uid:
+        return
+    if state.get("authenticated") and not _admin_session_valid(uid, m.chat.id):
+        return reply(m, "⌛ نشست ادمین معتبر نیست؛ دوباره /admin را بزن.")
     if state.get("expires", 0) < time.time():
         admin_flow_state.pop(uid, None)
         return reply(m, "⌛ نشست ادمین منقضی شد. دوباره /admin را بزن.")
@@ -2850,6 +2911,25 @@ def admin_flow_input(m):
     if raw.lower() in ("/cancel", "لغو", "انصراف"):
         admin_flow_state.pop(uid, None)
         return reply(m, "❌ پنل ادمین بسته شد.")
+    command = raw.split(maxsplit=1)[0].lower() if raw.startswith("/") else ""
+    if state.get("authenticated") and command == "/backup":
+        state.update(step="action", operation=None, expires=time.time() + ADMIN_SESSION_SECONDS)
+        ok = backup_to_telegram(force=True)
+        return reply(m, "✅ بکاپ فرستاده و سنجاق شد." if ok else "❌ تهیه بکاپ ناموفق بود.", admin_actions_markup())
+    if state.get("authenticated") and command == "/stats":
+        state["expires"] = time.time() + ADMIN_SESSION_SECONDS
+        return reply(m, dashboard_text(), admin_actions_markup())
+    if state.get("authenticated") and command == "/restore":
+        state.update(step="restore_file", operation="restore", expires=time.time() + ADMIN_SESSION_SECONDS)
+        return reply(m, "📥 فایل بکاپ SQLite را بفرست؛ حداکثر ۲۰ مگابایت.", admin_prompt_markup())
+    if state.get("authenticated") and command == "/broadcast":
+        parts = raw.split(maxsplit=1)
+        if len(parts) > 1 and parts[1].strip():
+            state.update(step="action", operation=None, expires=time.time() + ADMIN_SESSION_SECONDS)
+            count = start_admin_broadcast(parts[1].strip(), m.chat.id)
+            return reply(m, f"📢 پیام همگانی برای {count:,} حساب در صف ارسال قرار گرفت.", admin_actions_markup())
+        state.update(step="broadcast_text", operation="broadcast", expires=time.time() + ADMIN_SESSION_SECONDS)
+        return reply(m, "متن پیام همگانی را بفرست:", admin_prompt_markup())
     if raw.startswith("/"):
         admin_flow_state.pop(uid, None)
         return reply(m, "نشست ادمین لغو شد. برای شروع دوباره /admin را بزن.")
@@ -2861,16 +2941,17 @@ def admin_flow_input(m):
         except Exception:
             pass
         if hmac.compare_digest(raw.encode("utf-8"), ADMIN_PASSWORD.encode("utf-8")):
+            _admin_login_success(uid)
             state.update(step="action", operation=None, attempts=0, authenticated=True,
                          expires=time.time() + ADMIN_SESSION_SECONDS)
             return reply(m, "✅ رمز درست است. عملیات موردنظر را از دکمه‌های شیشه‌ای انتخاب کن.", admin_actions_markup())
-        state["attempts"] = state.get("attempts", 0) + 1
-        if state["attempts"] >= ADMIN_MAX_ATTEMPTS:
+        attempts, locked_until = _admin_login_failed(uid)
+        state["attempts"] = attempts
+        if locked_until > time.time():
             admin_flow_state.pop(uid, None)
-            admin_login_lockout[uid] = time.time() + ADMIN_LOCKOUT_SECONDS
             return reply(m, "⛔ رمز ۵ بار اشتباه بود؛ ورود به مدت ۱۵ دقیقه قفل شد.")
         state["expires"] = time.time() + ADMIN_SESSION_SECONDS
-        return reply(m, f"❌ رمز اشتباه است. {ADMIN_MAX_ATTEMPTS - state['attempts']} فرصت باقی مانده.")
+        return reply(m, f"❌ رمز اشتباه است. {ADMIN_MAX_ATTEMPTS - attempts} فرصت باقی مانده.")
 
     if state["step"] == "action":
         choice = raw.strip().lower()
@@ -3062,6 +3143,16 @@ def admin_flow_input(m):
             "برو سکه جمع کن! 🪙")
         return reply(m, f"✅ رویداد درآمد ۲ برابر تا {fmt_iran_time(end_at)} (به وقت ایران) فعال شد.\n📢 اعلان برای {sent_to} بازیکن در حال ارسال است و پایان رویداد هم خودکار اعلام می‌شود.\nعملیات بعدی را انتخاب کن:", admin_actions_markup())
 
+    if state["step"] == "broadcast_text":
+        message_text = raw.strip()
+        if not message_text:
+            return reply(m, "❌ متن پیام همگانی خالی است. متن را بفرست:", admin_prompt_markup())
+        if len(message_text) > 3900:
+            return reply(m, "❌ متن خیلی طولانی است؛ حداکثر ۳۹۰۰ نویسه بفرست:", admin_prompt_markup())
+        state.update(step="action", operation=None, expires=time.time() + ADMIN_SESSION_SECONDS)
+        sent_count = start_admin_broadcast(message_text, m.chat.id)
+        return reply(m, f"📢 پیام همگانی برای {sent_count:,} حساب در صف ارسال قرار گرفت.\nعملیات بعدی را انتخاب کن:", admin_actions_markup())
+
     if state["step"] == "immune":
         normalized_immune = raw.translate(str.maketrans("۰۱۲۳۴۵۶۷۸۹", "0123456789"))
         target = resolve_player_identifier(normalized_immune) if normalized_immune.isdigit() else None
@@ -3093,6 +3184,16 @@ def admin_flow_input(m):
         if not target:
             return reply(m, "❌ بازیکن پیدا نشد. شماره حساب ۸ رقمی یا آیدی عددی تلگرام را درست بفرست:")
         state["target_id"] = target["id"]
+        if state.get("operation") == "reset":
+            if int(target["id"]) == int(ADMIN_ID):
+                state.update(step="action", operation=None, expires=time.time() + ADMIN_SESSION_SECONDS)
+                state.pop("target_id", None)
+                return reply(m, "❌ برای جلوگیری از صفرشدن اشتباهی حساب اصلی، موجودی ادمین قابل ریست نیست.", admin_actions_markup())
+            state["target_name"] = str(target["name"] or "بازیکن")
+            state["target_account"] = str(target["account_no"] or "—")
+            state["step"] = "reset_confirm"
+            state["expires"] = time.time() + ADMIN_SESSION_SECONDS
+            return reply(m, f"⚠️ تأیید ریست موجودی\n👤 {nm(target)}\n🏦 حساب: <code>{esc(target['account_no'])}</code>\n💰 موجودی فعلی: <b>{int(target['coins']):,}</b> سکه\n\nبا تأیید، موجودی کیف پول این بازیکن صفر می‌شود.", admin_reset_confirm_markup())
         if state.get("operation") in ("ban", "unban"):
             target_id = target["id"]
             if state.get("operation") == "ban" and target_id == ADMIN_ID:
@@ -3873,12 +3974,11 @@ def bank_action_callback(c):
 @bot.callback_query_handler(func=lambda c: c.data.startswith("adminop:"))
 def admin_action_callback(c):
     uid = c.from_user.id
-    if uid != ADMIN_ID or c.message.chat.type != "private":
-        return bot.answer_callback_query(c.id, "این پنل فقط برای ادمین است.", show_alert=True)
-    state = admin_flow_state.get(uid)
-    if not state or not state.get("authenticated") or state.get("expires", 0) < time.time():
-        admin_flow_state.pop(uid, None)
+    if not c.message or not c.message.chat or c.message.chat.type != "private":
+        return bot.answer_callback_query(c.id, "پنل فقط در گفت‌وگوی خصوصی قابل استفاده است.", show_alert=True)
+    if not _admin_session_valid(uid, c.message.chat.id):
         return bot.answer_callback_query(c.id, "نشست ادمین معتبر نیست؛ دوباره /admin را بزن.", show_alert=True)
+    state = admin_flow_state[uid]
     action = (c.data or "").split(":", 1)[1]
     if action == "cancel":
         admin_flow_state.pop(uid, None)
@@ -3886,7 +3986,8 @@ def admin_action_callback(c):
         return edit(c, "❌ پنل ادمین بسته شد.", back_markup())
     if action == "cancel_operation":
         state.update(step="action", operation=None, expires=time.time() + ADMIN_SESSION_SECONDS)
-        state.pop("delete_code", None)
+        for key in ("delete_code", "target_id", "target_name", "target_account"):
+            state.pop(key, None)
         bot.answer_callback_query(c.id, "عملیات لغو شد.")
         return edit(c, "❌ عملیات لغو شد. عملیات بعدی را انتخاب کن:", admin_actions_markup())
 
@@ -3896,6 +3997,8 @@ def admin_action_callback(c):
         return edit(c, "⚠️ با تأیید، همه کدهای هدیه حذف و غیرفعال می‌شوند؛ هیچ‌کدام دیگر قابل استفاده نخواهد بود. این کار برگشت‌پذیر نیست.", gift_delete_all_markup())
 
     if action == "gift_delete_all_yes":
+        if state.get("operation") != "gift_delete_all" or state.get("step") != "action":
+            return bot.answer_callback_query(c.id, "تأیید حذف معتبر نیست؛ عملیات را از پنل دوباره شروع کن.", show_alert=True)
         with lock:
             code_count = int(db.execute("SELECT COUNT(*) AS n FROM gift_codes").fetchone()["n"])
             announcement_refs = db.execute(
@@ -3932,6 +4035,57 @@ def admin_action_callback(c):
             admin_actions_markup()
         )
 
+    if action == "backup":
+        state.update(step="action", operation=None, expires=time.time() + ADMIN_SESSION_SECONDS)
+        bot.answer_callback_query(c.id, "در حال تهیه بکاپ…")
+        ok = backup_to_telegram(force=True)
+        result = "✅ بکاپ دیتابیس در چت ادمین ارسال و سنجاق شد." if ok else "❌ تهیه بکاپ انجام نشد؛ گزارش سرور را بررسی کن."
+        return edit(c, result + "\n\nعملیات بعدی را انتخاب کن:", admin_actions_markup())
+
+    if action == "restore":
+        state.update(step="restore_file", operation="restore", expires=time.time() + ADMIN_SESSION_SECONDS)
+        bot.answer_callback_query(c.id)
+        return edit(c, "📥 فایل بکاپ SQLite با پسوند .db را همین‌جا در چت خصوصی بفرست.\nفایل حداکثر ۲۰ مگابایت باشد. قبل از جایگزینی، یک کپی ایمنی از دیتابیس فعلی ساخته می‌شود.", admin_prompt_markup())
+
+    if action == "broadcast":
+        state.update(step="broadcast_text", operation="broadcast", expires=time.time() + ADMIN_SESSION_SECONDS)
+        bot.answer_callback_query(c.id)
+        return edit(c, "📢 متن پیام همگانی را بفرست. پیام به همه بازیکنان ارسال می‌شود؛ حداکثر ۳۹۰۰ نویسه.", admin_prompt_markup())
+
+    if action == "reset_yes":
+        if state.get("step") != "reset_confirm" or not state.get("target_id"):
+            return bot.answer_callback_query(c.id, "عملیات ریست معتبر نیست؛ از پنل دوباره شروع کن.", show_alert=True)
+        target_id = int(state["target_id"])
+        if target_id == int(ADMIN_ID):
+            state.update(step="action", operation=None, expires=time.time() + ADMIN_SESSION_SECONDS)
+            return edit(c, "❌ ریست موجودی ادمین اصلی مجاز نیست.", admin_actions_markup())
+        with lock:
+            row = db.execute("SELECT id,name,coins,account_no FROM players WHERE id=?", (target_id,)).fetchone()
+            if not row:
+                state.update(step="action", operation=None, expires=time.time() + ADMIN_SESSION_SECONDS)
+                return edit(c, "❌ بازیکن دیگر پیدا نشد.", admin_actions_markup())
+            old_coins = int(row["coins"] or 0)
+            db.execute("UPDATE players SET coins=0 WHERE id=?", (target_id,))
+            if old_coins > 0:
+                db.execute("INSERT INTO coin_transactions(sender_id,receiver_id,amount,kind,created_at) VALUES(?,0,?,'admin_reset',?)",
+                           (target_id, old_coins, time.time()))
+            db.commit()
+        state.update(step="action", operation=None, expires=time.time() + ADMIN_SESSION_SECONDS)
+        state.pop("target_id", None)
+        name, account = str(row["name"] or "بازیکن"), str(row["account_no"] or "—")
+        bot.answer_callback_query(c.id, "موجودی صفر شد.")
+        return edit(c, f"♻️ موجودی کیف پول {esc(name)} صفر شد.\n🏦 حساب: <code>{esc(account)}</code>\n🪙 مقدار قبلی: {old_coins:,} سکه\n\nعملیات بعدی را انتخاب کن:", admin_actions_markup())
+
+    if action == "reset_no":
+        if state.get("step") != "reset_confirm" or state.get("operation") != "reset":
+            return bot.answer_callback_query(c.id, "این تأیید دیگر فعال نیست.", show_alert=True)
+        state.update(step="action", operation=None, expires=time.time() + ADMIN_SESSION_SECONDS)
+        state.pop("target_id", None)
+        state.pop("target_name", None)
+        state.pop("target_account", None)
+        bot.answer_callback_query(c.id, "ریست لغو شد.")
+        return edit(c, "❌ ریست موجودی لغو شد. عملیات بعدی را انتخاب کن:", admin_actions_markup())
+
     if action == "dashboard":
         state["expires"] = time.time() + ADMIN_SESSION_SECONDS
         bot.answer_callback_query(c.id)
@@ -3949,11 +4103,13 @@ def admin_action_callback(c):
         "xp": ("xp", "account", "شماره حساب ۸ رقمی یا آیدی عددی بازیکن را بفرست تا XP اضافه کنم:"),
         "ban": ("ban", "account", "شماره حساب ۸ رقمی یا آیدی عددی بازیکنی را که باید بن شود بفرست:"),
         "unban": ("unban", "account", "شماره حساب ۸ رقمی یا آیدی عددی بازیکنی را که باید آزاد شود بفرست:"),
+        "reset": ("reset", "account", "شماره حساب ۸ رقمی یا آیدی عددی بازیکنی را که موجودی کیف پولش باید صفر شود بفرست:"),
         "gift": ("gift", "gift", "کد هدیه را به این شکل بفرست:\n<code>CODE COINS XP MAX_USES</code>\nمثال: <code>WELCOME 500 20 100</code>"),
         "gift_delete": ("gift_delete", "gift_delete", "کد هدیه‌ای را که می‌خواهی حذف کنی بفرست:"),
         "event": ("event", "event", "مدت رویداد درآمد ۲ برابر را به ثانیه بفرست (۶۰ تا ۶۰۴۸۰۰):"),
         "immune": ("immune", "immune", immune_prompt_text()),
         "message": ("message", "message_target", "📨 شماره حساب ۸ رقمی بازیکنی را که می‌خواهی پیام برایش ارسال شود بفرست:"),
+        "reset": ("reset", "account", "شماره حساب ۸ رقمی یا آیدی عددی بازیکنی را که موجودی کیف پولش باید صفر شود بفرست:"),
     }
     if action not in mapping:
         return bot.answer_callback_query(c.id, "عملیات نامعتبر است.", show_alert=True)
@@ -4024,9 +4180,9 @@ def menu_router(c):
                 return
             if c.message.chat.type != "private":
                 return say(chat, "🔒 پنل ادمین فقط در گفت‌وگوی خصوصی قابل استفاده است.")
-            if not ADMIN_PASSWORD:
-                return say(chat, "⚠️ رمز ادمین در ابتدای فایل bot.py تنظیم نشده است.")
-            until = admin_login_lockout.get(user.id, 0)
+            if len(ADMIN_PASSWORD) < 16:
+                return say(chat, "⚠️ متغیر محیطی ADMIN_PASSWORD روی هاست تنظیم نشده یا ضعیف است؛ حداقل ۱۶ کاراکتر یکتا تنظیم کن.")
+            _, until = _admin_login_status(user.id)
             if until > time.time():
                 return say(chat, f"⏳ ورود موقتاً قفل است؛ {int(until - time.time())} ثانیه دیگر امتحان کن.")
             admin_flow_state[user.id] = {"step": "password", "attempts": 0,
@@ -4494,7 +4650,30 @@ def top_callback(c):
 
 # ---------- ابزارهای ادمین: آمار، پیام همگانی، بازگردانی بکاپ ----------
 def _is_admin_msg(m):
-    return bool(ADMIN_ID and m.from_user and m.from_user.id == ADMIN_ID)
+    return bool(m.from_user and m.chat.type == "private" and _admin_session_valid(m.from_user.id, m.chat.id))
+
+
+def start_admin_broadcast(message_text, admin_chat):
+    """ارسال پیام همگانی؛ فقط از نشست معتبر پنل اصلی فراخوانی شود."""
+    with lock:
+        ids = [int(r["id"]) for r in db.execute("SELECT id FROM players").fetchall()]
+
+    def _run():
+        ok = fail = 0
+        for pid in ids:
+            try:
+                bot.send_message(pid, "📢 " + message_text)  # متن خام؛ بدون تفسیر HTML
+                ok += 1
+            except Exception:
+                fail += 1
+            time.sleep(0.05)
+        try:
+            bot.send_message(admin_chat, f"📢 ارسال تمام شد.\n✅ موفق: {ok}\n❌ ناموفق: {fail}")
+        except Exception:
+            pass
+
+    threading.Thread(target=_run, daemon=True).start()
+    return len(ids)
 
 
 @bot.message_handler(commands=["stats"])
@@ -4518,32 +4697,13 @@ def cmd_stats(m):
 
 @bot.message_handler(commands=["broadcast"])
 def cmd_broadcast(m):
-    if not _is_admin_msg(m) or m.chat.type != "private":
+    if not _is_admin_msg(m):
         return
     parts = (m.text or "").split(maxsplit=1)
     if len(parts) < 2 or not parts[1].strip():
-        return reply(m, "فرمت: <code>/broadcast متن پیام</code>\nپیام برای همه‌ی بازیکنان فرستاده می‌شود.")
-    text = "📢 " + parts[1].strip()
-    with lock:
-        ids = [r["id"] for r in db.execute("SELECT id FROM players").fetchall()]
-    admin_chat = m.chat.id
-
-    def _run():
-        ok = fail = 0
-        for pid in ids:
-            try:
-                bot.send_message(pid, text)  # بدون HTML تا متن ادمین باعث خطا نشود
-                ok += 1
-            except Exception:
-                fail += 1
-            time.sleep(0.05)
-        try:
-            bot.send_message(admin_chat, f"📢 ارسال تمام شد.\n✅ موفق: {ok}\n❌ ناموفق (بات رو بلاک کرده/استارت نکرده): {fail}")
-        except Exception:
-            pass
-
-    threading.Thread(target=_run, daemon=True).start()
-    reply(m, f"⏳ در حال ارسال برای {len(ids)} بازیکن...")
+        return reply(m, "فرمت: <code>/broadcast متن پیام</code>؛ این دستور فقط در نشست معتبر پنل ادمین و چت خصوصی کار می‌کند.")
+    count = start_admin_broadcast(parts[1].strip(), m.chat.id)
+    reply(m, f"⏳ پیام همگانی برای {count:,} حساب در صف ارسال قرار گرفت.")
 
 
 def restore_from_bytes(data):
@@ -4572,6 +4732,7 @@ def restore_from_bytes(data):
                 finally:
                     keep.close()
                 src_db.backup(db)
+                db.execute("CREATE TABLE IF NOT EXISTS web_inbox(id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, text TEXT, created_at REAL, is_read INTEGER DEFAULT 0)")
                 init_schema()  # ستون‌های جدید روی بکاپ قدیمی هم اضافه می‌شود
         finally:
             src_db.close()
@@ -4588,24 +4749,34 @@ def restore_from_bytes(data):
 
 def _restore_document(m, doc):
     if m.chat.type != "private":
-        return reply(m, "🔒 بازگردانی فقط در چت خصوصی با ربات ممکن است.")
+        return False, "🔒 بازگردانی فقط در چت خصوصی با ربات ممکن است."
     if doc.file_size and doc.file_size > 20 * 1024 * 1024:
-        return reply(m, "❌ حجم فایل بیشتر از حد مجاز تلگرام برای ربات‌هاست.")
+        return False, "❌ حجم فایل بیشتر از حد مجاز (۲۰ مگابایت) است."
     try:
         info = bot.get_file(doc.file_id)
         data = bot.download_file(info.file_path)
     except Exception as e:
-        return reply(m, f"❌ دانلود فایل ناموفق بود: {esc(e)}")
+        return False, f"❌ دانلود فایل ناموفق بود: {esc(e)}"
     ok, msg = restore_from_bytes(data)
-    reply(m, msg)
     if ok:
         threading.Thread(target=backup_to_telegram, kwargs={"force": True}, daemon=True).start()
+    return ok, msg
 
 
 @bot.message_handler(content_types=["document"],
-                     func=lambda m: _is_admin_msg(m) and (m.caption or "").strip().lower().startswith("/restore"))
+                     func=lambda m: bool(m.from_user and _is_admin_msg(m) and
+                                         (admin_flow_state.get(m.from_user.id, {}).get("step") == "restore_file" or
+                                          (m.caption or "").strip().lower().startswith("/restore"))))
 def restore_by_caption(m):
-    _restore_document(m, m.document)
+    if not _is_admin_msg(m):
+        return
+    state = admin_flow_state.get(m.from_user.id, {})
+    if state.get("step") != "restore_file":
+        return reply(m, "ابتدا از پنل اصلی ادمین گزینه «بازگردانی بکاپ» را انتخاب کن.", admin_actions_markup())
+    ok, msg = _restore_document(m, m.document)
+    state.update(step="action", operation=None, expires=time.time() + ADMIN_SESSION_SECONDS)
+    state.pop("target_id", None)
+    reply(m, msg + "\n\nعملیات بعدی را از پنل اصلی انتخاب کن:", admin_actions_markup())
 
 
 @bot.message_handler(commands=["restore"])
@@ -4613,10 +4784,16 @@ def cmd_restore(m):
     if not _is_admin_msg(m):
         return
     doc = m.reply_to_message.document if m.reply_to_message and m.reply_to_message.document else None
-    if not doc:
-        return reply(m, "فایل بکاپ (.db) را بفرست و در کپشنش بنویس <code>/restore</code>؛ "
-                        "یا روی همان فایل ریپلای کن و /restore بزن.")
-    _restore_document(m, doc)
+    if doc:
+        state = admin_flow_state.get(m.from_user.id, {})
+        if state.get("step") != "restore_file":
+            return reply(m, "ابتدا از پنل اصلی ادمین گزینه «بازگردانی بکاپ» را انتخاب کن.", admin_actions_markup())
+        ok, msg = _restore_document(m, doc)
+        state.update(step="action", operation=None, expires=time.time() + ADMIN_SESSION_SECONDS)
+        return reply(m, msg + "\n\nعملیات بعدی را از پنل اصلی انتخاب کن:", admin_actions_markup())
+    state = admin_flow_state[m.from_user.id]
+    state.update(step="restore_file", operation="restore", expires=time.time() + ADMIN_SESSION_SECONDS)
+    return reply(m, "فایل بکاپ SQLite را بفرست؛ حداکثر ۲۰ مگابایت. از دیتابیس فعلی پیش از بازگردانی کپی ایمنی گرفته می‌شود.", admin_prompt_markup())
 
 
 # ================== امکانات افزوده‌شده نسخه توسعه‌یافته ==================
@@ -5154,8 +5331,8 @@ def cmd_giftcodes(m):
 @bot.message_handler(commands=["setgiftchannel"])
 def cmd_set_gift_channel(m):
     global ANNOUNCEMENT_CHAT_ID
-    if not ADMIN_ID or not m.from_user or m.from_user.id != ADMIN_ID:
-        return reply(m, "⛔ فقط ادمین می‌تواند گروه اطلاع‌رسانی را تنظیم کند.")
+    if not m.from_user or not _admin_session_valid(m.from_user.id):
+        return reply(m, "⛔ ابتدا در چت خصوصی ربات وارد پنل اصلی ادمین شو؛ سپس این دستور را در گروه اجرا کن.")
     if m.chat.type not in ("group", "supergroup"):
         return reply(m, "این دستور را داخل گروه/سوپرگروهی اجرا کن که ربات در آن اجازه ارسال و سنجاق پیام دارد.")
     ANNOUNCEMENT_CHAT_ID = str(m.chat.id)
