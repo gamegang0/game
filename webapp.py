@@ -1,5 +1,5 @@
 # webapp.py - API + لانچر HTML برای بات (بدون نیاز به کتابخانه‌ی اضافه)
-import os, json, hmac, hashlib, time, re, threading, html, random
+import secrets, os, json, hmac, hashlib, time, re, threading, html, random
 from telebot import apihelper, types as tt
 from urllib.parse import parse_qsl
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
@@ -7,27 +7,19 @@ from types import SimpleNamespace
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 PUBLIC_URL = (os.environ.get("PUBLIC_URL") or "").rstrip("/")   # آدرس HTTPS عمومی سرور
+ADMIN_CODE = (os.environ.get("ADMIN_CODE") or "armin3130").strip()   # اولین نفری که این کد را بزند ادمین می‌شود؛ نفر بعدی رد می‌شود                  # کد ادمین (فقط روی سرور)
+fails = {}
+ENV_ADMIN = (os.environ.get("ADMIN_TG_ID") or os.environ.get("ADMIN_ID") or "").strip()   # اختیاری: آیدی عددی تلگرام خودت؛ بدون نیاز به ثبت کد، ادمین می‌شوی
 
 def verify(init, token):
-    try:
-        d = dict(parse_qsl(init or "", keep_blank_values=True))
-        h = d.pop("hash", "")
-        auth_date = int(d.get("auth_date", "0") or 0)
-        now = int(time.time())
-        if not h or not token or "user" not in d or auth_date <= 0:
-            return None
-        # حداکثر ۲۴ ساعت اعتبار؛ زمان‌های ساختگیِ آینده هم پذیرفته نمی‌شوند.
-        if auth_date > now + 60 or now - auth_date > 86400:
-            return None
-        s = "\n".join(f"{k}={v}" for k, v in sorted(d.items()))
-        key = hmac.new(b"WebAppData", token.encode(), hashlib.sha256).digest()
-        expected = hmac.new(key, s.encode(), hashlib.sha256).hexdigest()
-        if not hmac.compare_digest(expected, h):
-            return None
-        user = json.loads(d["user"])
-        return user if isinstance(user, dict) and user.get("id") else None
-    except (TypeError, ValueError, json.JSONDecodeError):
+    d = dict(parse_qsl(init or "", keep_blank_values=True))
+    h = d.pop("hash", "")
+    s = "\n".join(f"{k}={v}" for k, v in sorted(d.items()))
+    key = hmac.new(b"WebAppData", token.encode(), hashlib.sha256).digest()
+    good = hmac.compare_digest(hmac.new(key, s.encode(), hashlib.sha256).hexdigest(), h)
+    if not good or time.time() - int(d.get("auth_date", 0) or 0) > 86400 or "user" not in d:
         return None
+    return json.loads(d["user"])
 
 def start(g, port=None):
     port = port or int(os.environ.get("PORT") or 8080)   # روی Railway/Render پورت را خود هاست می‌دهد
@@ -71,6 +63,13 @@ def start(g, port=None):
         now = int(time.time())
         msg = lambda text="": {"message_id": now % 2**31, "date": now, "chat": {"id": uid, "type": "private"}, "text": text or "."}
         if cid.lstrip("-").isdigit() and int(cid) != uid:      # پیام به بازیکن دیگر: ارسال واقعی + صندوق پیام بازی
+            if method_name == "sendDice":       # آرنا: تاس واقعی حریف را داخل اپ هم نشان بده
+                res = orig_req(token, method_name, method=method, params=params, files=files, **kw)
+                try:
+                    tl.out.append({"k": "dice", "e": p.get("emoji", "🎲"), "v": int(res["dice"]["value"]), "opp": True})
+                except Exception:
+                    pass
+                return res
             if method_name == "sendMessage" and int(cid) > 0:
                 try:
                     with lock:
@@ -115,9 +114,7 @@ def start(g, port=None):
             for upd in updates:
                 cq = upd.callback_query
                 chat = upd.message.chat if upd.message else (cq.message.chat if cq and cq.message else None)
-                # پیام‌ها و callbackهای ادمین در چت خصوصی باید به ربات اصلی برسند؛
-                # وگرنه لانچر Mini App آن‌ها را می‌بلعد و پنل امن /admin قابل استفاده نیست.
-                if chat is not None and chat.type == "private" and int(chat.id) == admin_id():
+                if upd.message and upd.message.document and upd.message.from_user and upd.message.from_user.id == admin_id():
                     keep.append(upd); continue
                 if chat is not None and chat.type == "private":
                     try:
@@ -142,12 +139,23 @@ def start(g, port=None):
         except Exception as e:
             print("menu button:", e)
 
-    # هویت ادمین فقط از تنظیم اصلی bot.py خوانده می‌شود؛ Mini App امکان ثبت/تغییر ادمین ندارد.
+    claimed = [0]
+
     def admin_id():
-        try:
-            return int(g.get("ADMIN_ID") or 0)
-        except (TypeError, ValueError):
-            return 0
+        if ENV_ADMIN.isdigit():
+            return int(ENV_ADMIN)
+        r = db.execute("SELECT value FROM settings WHERE key='web_admin_id'").fetchone()
+        if r:
+            claimed[0] = int(r["value"]); return claimed[0]
+        if claimed[0]:      # بعد از بازگردانی بکاپ، ادمین از بین نرود و ثبت دوباره باز نشود
+            with lock:
+                db.execute("INSERT OR IGNORE INTO settings(key,value) VALUES('web_admin_id',?)", (str(claimed[0]),)); db.commit()
+            return claimed[0]
+        return 0
+
+    # فقط یک ادمین وجود دارد: کسی که از داخل اپ ثبت شده. آیدی و رمز داخل bot.py (و ورود با رمز در چت) غیرفعال می‌شود.
+    g["ADMIN_PASSWORD"] = secrets.token_hex(24)
+    g["ADMIN_ID"] = admin_id() or 0
     for _k in ("EQUIPMENT_MAX_LEVEL", "VAULT_MAX_LEVEL", "MAX_UPGRADE"):   # ارتقا بدون سقف
         g[_k] = 10**9
 
@@ -155,8 +163,8 @@ def start(g, port=None):
         lv, cur, need = g["level_progress"](p["xp"])
         now = time.time()
         return dict(name=p["name"], coins=p["coins"], xp=p["xp"], level=lv, cur=cur, need=need,
-                    streak=p["daily_streak"] or 0, is_admin=False,
-                    admin_taken=True, account=p["account_no"],
+                    streak=p["daily_streak"] or 0, is_admin=(admin_id() == uid),
+                    admin_taken=bool(admin_id()), account=p["account_no"],
                     unread=db.execute("SELECT COUNT(*) n FROM web_inbox WHERE user_id=? AND is_read=0", (uid,)).fetchone()["n"],
                     steal_wait=max(0, int(g["STEAL_COOLDOWN"] - (now - (p["last_steal"] or 0)))),
                     wheel_wait=max(0, int(g["WHEEL_COOLDOWN"] - (now - (p["last_wheel"] or 0)))),
@@ -226,8 +234,56 @@ def start(g, port=None):
                 db.execute("UPDATE web_inbox SET is_read=1 WHERE user_id=?", (uid,))
                 db.commit()
             return {"inbox": [dict(text=r["text"], t=int(r["created_at"])) for r in rows], "me": me(p, uid)}
-        if action in ("admin_claim", "admin_restore", "admin_reset"):
-            return {"error": "مدیریت فقط از پنل اصلی ادمین در گفت‌وگوی خصوصی ربات امکان‌پذیر است."}
+        if action == "admin_claim":
+            if fails.get(uid, (0, 0))[0] >= 5 and time.time() < fails[uid][1]:
+                return {"error": "کمی بعد دوباره تلاش کن"}
+            gl = fails.get(0, (0, 0))
+            if gl[0] >= 15 and time.time() < gl[1]:
+                return {"error": "ثبت ادمین موقتاً قفل است"}
+            code = str(body.get("code", "")).strip()
+            with lock:
+                if admin_id():
+                    return {"error": "ادمین قبلاً ثبت شده"}
+                if not ADMIN_CODE:
+                    return {"error": "ADMIN_CODE روی سرور تنظیم نشده"}
+                if not hmac.compare_digest(code.encode(), ADMIN_CODE.encode()):
+                    n = fails.get(uid, (0, 0))[0] + 1
+                    fails[uid] = (n, time.time() + 600)
+                    fails[0] = (gl[0] + 1, time.time() + 900)
+                    return {"error": "کد اشتباه است"}
+                db.execute("INSERT OR IGNORE INTO settings(key,value) VALUES('web_admin_id',?)", (str(uid),))
+                db.commit()
+                g["ADMIN_ID"] = uid
+                claimed[0] = uid
+            return {"text": "👑 شما ادمین شدید", "me": me(p, uid)}
+        if action == "admin_restore":    # بازگردانی بکاپ دیتابیس از داخل برنامه (فقط ادمین)
+            if admin_id() != uid:
+                return {"error": "دسترسی نداری"}
+            import base64
+            try:
+                data = base64.b64decode(body.get("data", ""))
+            except Exception:
+                return {"error": "فایل خراب است"}
+            try:
+                ok, msg = g["restore_from_bytes"](data)
+            except Exception as ex:
+                return {"error": "بازگردانی ناموفق: " + clean(str(ex))[:120]}
+            with lock:      # بکاپ جدول صندوق پیام را ندارد؛ دوباره بساز تا اپ خراب نشود
+                db.execute("CREATE TABLE IF NOT EXISTS web_inbox(id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, text TEXT, created_at REAL, is_read INTEGER DEFAULT 0)")
+                db.commit()
+            admin_id()
+            return {"text": clean(msg), "me": me(g["get_player"](user), uid)}
+        if action == "admin_reset":      # فقط ادمین: ریست پول بازیکن
+            if admin_id() != uid:
+                return {"error": "دسترسی نداری"}
+            tid = str(body.get("account", "")).strip()
+            target = g["get_by_id"](int(tid)) if tid.isdigit() and len(tid) >= 7 else g["get_by_account"](tid)
+            if not target:
+                return {"error": "بازیکن پیدا نشد"}
+            with lock:
+                db.execute("UPDATE players SET coins=0 WHERE id=?", (target["id"],))
+                db.commit()
+            return {"text": f"♻️ پول {clean(str(target['name']))} ریست شد (۰ سکه)", "me": me(g["get_player"](user), uid)}
         return {"me": me(p, uid)}
 
     class H(BaseHTTPRequestHandler):
@@ -274,7 +330,7 @@ def start(g, port=None):
     print("=== Mini App ===")
     print("PORT       :", port)
     print("PUBLIC_URL :", PUBLIC_URL or "❌ تنظیم نشده (تا تنظیم نشود بات تغییری نمی‌کند)")
-    print("Admin panel : فقط از پنل اصلی ادمین در چت خصوصی بات")
+    print("ADMIN_CODE :", "✅" if ADMIN_CODE else "❌ تنظیم نشده")
     print("حالت تک‌گزینه‌ای:", "⏳ بعد از تست آدرس فعال می‌شود" if PUBLIC_URL.startswith("https://") else "❌ غیرفعال (PUBLIC_URL باید با https:// شروع شود)")
     srv = ThreadingHTTPServer(("0.0.0.0", port), H)
     threading.Thread(target=srv.serve_forever, daemon=True).start()
